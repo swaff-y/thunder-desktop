@@ -4,5 +4,5 @@ interface ThunderSettings {
   settings?: { get: (key: string) => string | undefined }
 }
 
-const settings = (window.thunder as unknown as ThunderSettings).settings
-export const API_URL = settings?.get('apiUrl') ?? DEFAULT_API_URL
+const thunder = (window as unknown as { thunder?: ThunderSettings }).thunder
+export const API_URL = thunder?.settings?.get('apiUrl') ?? DEFAULT_API_URL

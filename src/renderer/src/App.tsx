@@ -4,6 +4,7 @@ import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import Login from './pages/Login'
+import Home from './pages/Home'
 import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -32,7 +33,7 @@ function App(): React.JSX.Element {
                 element={
                   <ProtectedRoute>
                     <DesktopLayout>
-                      <div>logged in</div>
+                      <Home />
                     </DesktopLayout>
                   </ProtectedRoute>
                 }

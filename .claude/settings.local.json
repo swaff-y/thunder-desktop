@@ -3,7 +3,9 @@
     "allow": [
       "Read(//Users/kyleswaffield/ruby_sei/halo-desktop/**)",
       "Bash(npm run *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Read(//Users/kyleswaffield/ruby_sei/web-thunder/src/**)",
+      "Bash(npm install *)"
     ]
   }
 }

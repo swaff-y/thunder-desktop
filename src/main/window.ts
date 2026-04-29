@@ -1,6 +1,7 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { buildMenu } from './menu'
 
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -18,6 +19,11 @@ export function createMainWindow(): BrowserWindow {
       sandbox: true
     }
   })
+
+  // `Menu.setApplicationMenu` is process-global (macOS has a single app
+  // menu bar), so re-invoking it for each window is harmless — every
+  // window shares the same template.
+  Menu.setApplicationMenu(buildMenu(win, { createWindow: createMainWindow }))
 
   win.on('ready-to-show', () => {
     win.show()

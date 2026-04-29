@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/kyleswaffield/ruby_sei/halo-desktop/**)"
+    ]
+  }
+}

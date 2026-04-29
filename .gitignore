@@ -1,8 +1,14 @@
-node_modules/
-out/
-dist/
+node_modules
+dist
+out
 .DS_Store
-*.log
+.eslintcache
+*.log*
+*.tsbuildinfo
+
 .env
 .env.local
-.eslintcache
+
+# Override the user's global gitignore — this project commits its lockfile
+# so CI (npm ci) and the actions/setup-node cache can resolve dependencies.
+!package-lock.json

@@ -19,6 +19,7 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  executableName: thunder-desktop
   category: public.app-category.developer-tools
   icon: resources/icon.icns
   hardenedRuntime: true

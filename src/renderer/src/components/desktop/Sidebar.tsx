@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { path: "/stats", label: "Stats", icon: IoStatsChartOutline },
 ];
 
-export default function Sidebar(): React.JSX.Element {
+export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
 

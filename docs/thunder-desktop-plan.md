@@ -156,7 +156,7 @@ Goal: web-thunder's renderer renders inside Electron with the smallest possible 
   { path: "/browser", label: "Browser", icon: IoGlobeOutline }
   ```
   Position: between "Tags" and "Stats", or at the bottom — judgment call at implementation time.
-- **`config/env.ts`** — instead of reading `import.meta.env.VITE_API_URL`, read from a renderer-side settings hook backed by `window.thunder.settings.get('apiUrl')`. Default value matches web-thunder's. Means the user can switch between the dev API Gateway URL and a future prod URL without rebuilding.
+- **`config/env.ts`** — instead of reading `import.meta.env.VITE_API_URL`, read from a renderer-side settings hook backed by `window.thunder.settings.get('apiUrl')`. Default value matches web-thunder's dev URL. Means the user can switch between the dev API Gateway URL and a future prod URL without rebuilding. The default flips to the prod URL via [TD-029](tickets/TD-029-prod-url-cutover.md) once that endpoint is provisioned; until then dev is the only baked-in default.
 - **`api/client.ts`** — token still lives in `localStorage` for v1 (web-thunder pattern). Optionally migrated to keychain in a follow-up; see §6.
 
 ### 4.4 Theme parity
@@ -314,7 +314,7 @@ Auto-update wiring: copy `src/main/updater.ts` from halo-desktop. Same toast UX 
 | **3. Browser tab — basic** | Sidebar entry, route, `<webview>` with chrome (back/fwd/reload/address bar). No detection yet. | Can browse arbitrary HTTPS sites inside the app. |
 | **4. Browser tab — detection** | `webRequest` hook on the webview's session, IPC events, `DetectedAssetsPanel`. | Visiting a page with `<video>` or HLS reveals the asset URLs in the right rail within ~1s of the response landing. |
 | **5. Browser tab — downloads** | `will-download` handler, progress IPC, `DownloadsDrawer`, "Show in Finder", cancel. | Click → file lands in chosen folder; progress visible; cancel mid-download leaves a partial file removed. |
-| **6. Polish + sign + ship** | macOS code signing, notarization, GitHub release with `electron-updater` feed. | Signed `.dmg` distributed; auto-update verified by bumping version and re-releasing. |
+| **6. Polish + sign + ship** | macOS code signing, notarization, GitHub release with `electron-updater` feed, and the prod URL cutover (TD-029) once the prod endpoint is provisioned. | Signed `.dmg` distributed; auto-update verified by bumping version and re-releasing; default `apiUrl` points at prod. |
 | **7. (Optional) HLS stitching** | Bundle ffmpeg, stitch `.m3u8` → `.mp4` with progress. | `.m3u8` downloads produce a single playable mp4 in the chosen folder. |
 | **8. (Optional) Keychain auth** | Move tokens out of `localStorage` into Keychain via IPC. | Tokens not visible in `localStorage`; logout clears keychain entry. |
 

@@ -50,3 +50,4 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 
 - [TD-027](TD-027-code-signing.md) — macOS code signing and notarization
 - [TD-028](TD-028-auto-updater.md) — Auto-updater wiring
+- [TD-029](TD-029-prod-url-cutover.md) — Production API URL cutover

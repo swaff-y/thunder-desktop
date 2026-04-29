@@ -28,5 +28,14 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // Files ported verbatim from web-thunder. The porting tickets forbid
+    // edits so signatures stay byte-identical for diffing — this override
+    // lets inferred return types in halo.ts/utils pass lint.
+    files: ['src/renderer/src/{api,utils,types}/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
+  },
   eslintConfigPrettier
 )

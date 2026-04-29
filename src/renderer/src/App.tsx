@@ -4,6 +4,7 @@ import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import Login from './pages/Login'
+import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { isAuthenticated } = useAuth()
@@ -34,6 +35,14 @@ function App(): React.JSX.Element {
                       <div>logged in</div>
                     </DesktopLayout>
                   </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dev/components"
+                element={
+                  <DesktopLayout>
+                    <ComponentGallery />
+                  </DesktopLayout>
                 }
               />
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,161 @@
+/* ─── Global ─── */
+body {
+  font-family: var(--font-family);
+  color: var(--color-text);
+  background: linear-gradient(to bottom, var(--color-bg), var(--color-bg-end));
+  min-height: 100vh;
+}
+
+/* ─── Cards ─── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  color: var(--color-text);
+}
+
+.card-body {
+  padding: var(--space-md);
+}
+
+/* ─── Buttons ─── */
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  box-shadow: var(--shadow-button);
+  padding: 10px var(--space-md);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent-light);
+}
+
+.btn-primary:active {
+  background: var(--color-accent-dark);
+  border-color: var(--color-accent-dark);
+}
+
+.btn-cta,
+.btn-danger {
+  background: var(--color-cta);
+  border-color: var(--color-cta);
+  color: #fff;
+  border-radius: var(--radius-xl);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-button);
+  padding: 10px var(--space-md);
+}
+
+.btn-cta:hover,
+.btn-danger:hover {
+  background: var(--color-cta);
+  border-color: var(--color-cta);
+  opacity: 0.9;
+}
+
+.btn-cta:active,
+.btn-danger:active {
+  background: var(--color-cta-dark);
+  border-color: var(--color-cta-dark);
+}
+
+.btn-outline-primary {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  border-radius: var(--radius-xl);
+  padding: 10px var(--space-md);
+}
+
+.btn-outline-primary:hover {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.btn-success {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  border-radius: var(--radius-xl);
+}
+
+/* ─── Form Controls ─── */
+.form-control {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: none;
+  border-bottom: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+  font-size: var(--text-body);
+}
+
+.form-control::placeholder {
+  color: var(--color-text-muted);
+}
+
+.form-control:focus {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-accent-light);
+  box-shadow: 0 0 0 0.1rem rgba(14, 165, 233, 0.25);
+}
+
+/* ─── Navbar ─── */
+.navbar {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ─── Offcanvas / Modal ─── */
+.offcanvas {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.modal-content {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+/* ─── Spinner ─── */
+.spinner-border {
+  color: var(--color-accent);
+}
+
+/* ─── Links ─── */
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-accent-light);
+}
+
+/* ─── Scrollbar (dark) ─── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-light);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-faint);
+}

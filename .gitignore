@@ -12,3 +12,5 @@ out
 # Override the user's global gitignore — this project commits its lockfile
 # so CI (npm ci) and the actions/setup-node cache can resolve dependencies.
 !package-lock.json
+
+docs/

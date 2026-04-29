@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Hardened Runtime: required for Electron's V8 JIT under
+         hardenedRuntime: true. Without this, JS execution traps. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Renderer + embedded webview need outbound HTTP. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Download folder picker (Settings → Choose Folder). -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Default download destination is ~/Downloads/Thunder. -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+  </dict>
+</plist>

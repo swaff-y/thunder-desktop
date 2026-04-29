@@ -1,0 +1,105 @@
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  IoHomeOutline,
+  IoPeopleOutline,
+  IoFilmOutline,
+  IoVideocamOutline,
+  IoPricetagOutline,
+  IoStatsChartOutline,
+} from "react-icons/io5";
+
+const NAV_ITEMS = [
+  { path: "/", label: "Home", icon: IoHomeOutline },
+  { path: "/actors", label: "Actors", icon: IoPeopleOutline },
+  { path: "/series", label: "Series", icon: IoFilmOutline },
+  { path: "/movies", label: "Movies", icon: IoVideocamOutline },
+  { path: "/tags", label: "Tags", icon: IoPricetagOutline },
+  { path: "/stats", label: "Stats", icon: IoStatsChartOutline },
+];
+
+export default function Sidebar(): React.JSX.Element {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  return (
+    <aside className="desktop-sidebar">
+      <div className="sidebar-brand" onClick={() => navigate("/")}>
+        <h1 className="sidebar-title">Thunder</h1>
+      </div>
+
+      <nav className="sidebar-nav">
+        {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
+          const isActive =
+            path === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(path);
+
+          return (
+            <button
+              key={path}
+              className={`sidebar-link ${isActive ? "active" : ""}`}
+              onClick={() => navigate(path)}
+            >
+              <Icon size={20} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <style>{`
+        .desktop-sidebar {
+          width: 240px;
+          min-width: 240px;
+          background: var(--color-surface);
+          border-right: 1px solid var(--color-border);
+          display: flex;
+          flex-direction: column;
+          padding-top: var(--space-lg);
+        }
+        .sidebar-brand {
+          padding: var(--space-md) var(--space-lg);
+          cursor: pointer;
+          margin-bottom: var(--space-lg);
+        }
+        .sidebar-title {
+          font-size: var(--text-h1);
+          font-weight: var(--weight-extrabold);
+          color: var(--color-accent);
+          margin: 0;
+          letter-spacing: var(--tracking-tight);
+        }
+        .sidebar-nav {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .sidebar-link {
+          display: flex;
+          align-items: center;
+          gap: var(--space-md);
+          padding: var(--space-sm) var(--space-lg);
+          background: none;
+          border: none;
+          color: var(--color-text-muted);
+          font-size: var(--text-body);
+          font-weight: var(--weight-medium);
+          cursor: pointer;
+          transition: all 0.2s;
+          width: 100%;
+          text-align: left;
+          border-left: 3px solid transparent;
+        }
+        .sidebar-link:hover {
+          background: rgba(14, 165, 233, 0.05);
+          color: var(--color-text);
+        }
+        .sidebar-link.active {
+          background: rgba(14, 165, 233, 0.1);
+          color: var(--color-accent);
+          border-left-color: var(--color-accent);
+        }
+      `}</style>
+    </aside>
+  );
+}

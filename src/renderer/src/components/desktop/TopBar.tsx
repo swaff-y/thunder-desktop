@@ -5,7 +5,7 @@ interface TopBarProps {
   onLogout: () => void;
 }
 
-export default function TopBar({ onLogout }: TopBarProps): React.JSX.Element {
+export default function TopBar({ onLogout }: TopBarProps) {
   return (
     <header className="desktop-topbar">
       <div className="topbar-spacer" />

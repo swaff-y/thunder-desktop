@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/kyleswaffield/ruby_sei/halo-desktop/**)"
+      "Read(//Users/kyleswaffield/ruby_sei/halo-desktop/**)",
+      "Bash(npm run *)",
+      "Bash(npm test *)"
     ]
   }
 }

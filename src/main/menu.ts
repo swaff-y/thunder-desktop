@@ -43,7 +43,7 @@ export function buildMenuTemplate(
       { role: 'hideOthers' },
       { role: 'unhide' },
       { type: 'separator' },
-      { role: 'quit', accelerator: 'CmdOrCtrl+Q' }
+      { role: 'quit' }
     ]
   }
 
@@ -58,7 +58,7 @@ export function buildMenuTemplate(
         }
       },
       { type: 'separator' },
-      { role: 'close', accelerator: 'CmdOrCtrl+W' }
+      { role: 'close' }
     ]
   }
 
@@ -80,8 +80,12 @@ export function buildMenuTemplate(
     submenu: [
       { role: 'reload' },
       { role: 'forceReload' },
-      // AC: DevTools toggle works in both dev and prod builds — unlike
-      // halo-desktop, which gates this behind `is.dev`.
+      // AC: DevTools toggle works in both dev and prod builds — a
+      // deliberate divergence from halo-desktop (which gates this
+      // behind `is.dev`). v1 trade-off: end users can inspect /
+      // tamper with renderer state in production. Acceptable while
+      // there are no secrets in the renderer; revisit before v1
+      // release if that changes.
       {
         label: 'Toggle Developer Tools',
         accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
@@ -102,12 +106,7 @@ export function buildMenuTemplate(
       { role: 'minimize' },
       { role: 'zoom' },
       ...(isMac
-        ? ([
-            { type: 'separator' },
-            { role: 'front' },
-            { type: 'separator' },
-            { role: 'window' }
-          ] satisfies MenuItemConstructorOptions[])
+        ? ([{ type: 'separator' }, { role: 'front' }] satisfies MenuItemConstructorOptions[])
         : ([{ role: 'close' }] satisfies MenuItemConstructorOptions[]))
     ]
   }

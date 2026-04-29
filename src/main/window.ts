@@ -20,9 +20,12 @@ export function createMainWindow(): BrowserWindow {
     }
   })
 
-  // `Menu.setApplicationMenu` is process-global (macOS has a single app
-  // menu bar), so re-invoking it for each window is harmless — every
-  // window shares the same template.
+  // `Menu.setApplicationMenu` is process-global. On macOS the system
+  // owns a single app-wide menu bar so re-invoking per window is the
+  // intended pattern — each window gets a menu whose click handlers
+  // close over its own webContents. On Windows/Linux this means the
+  // last window opened replaces the menu for every existing window;
+  // for v1 (macOS-first) this is fine.
   Menu.setApplicationMenu(buildMenu(win, { createWindow: createMainWindow }))
 
   win.on('ready-to-show', () => {

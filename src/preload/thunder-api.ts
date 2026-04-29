@@ -8,6 +8,13 @@ export const THUNDER_IPC_CHANNELS = {
    * Native menu → renderer fan-out. Payload is a {@link ThunderMenuAction}.
    * Future tickets that add custom menu items wire them here; the v1
    * scaffold has no actions yet.
+   *
+   * NOTE: the renderer-side subscription helper (`window.thunder.menu.onAction`,
+   * mirroring halo-desktop's pattern) is intentionally deferred — it
+   * has nothing to listen for while {@link ThunderMenuAction} is `never`.
+   * The first ticket that adds a real action should also add the
+   * `ipcRenderer.on` bridge in `preload/index.ts` and the `menu` key
+   * on {@link ThunderApi}.
    */
   menuAction: 'thunder:menu:action'
 } as const

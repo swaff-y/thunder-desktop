@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
 import CategoryDetail from './pages/CategoryDetail'
+import Watch from './pages/Watch'
 import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -46,6 +47,16 @@ function App(): React.JSX.Element {
                   <DesktopLayout>
                     <ComponentGallery />
                   </DesktopLayout>
+                }
+              />
+              <Route
+                path="/watch/:id"
+                element={
+                  <ProtectedRoute>
+                    <DesktopLayout>
+                      <Watch />
+                    </DesktopLayout>
+                  </ProtectedRoute>
                 }
               />
               <Route

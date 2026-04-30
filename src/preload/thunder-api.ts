@@ -27,8 +27,36 @@ export const THUNDER_IPC_CHANNELS = {
    */
   authGet: 'thunder:auth:get',
   authSet: 'thunder:auth:set',
-  authClear: 'thunder:auth:clear'
+  authClear: 'thunder:auth:clear',
+
+  /**
+   * TD-018: JSON-backed settings store at `<userData>/thunder-desktop-settings.json`.
+   * Main-process handlers are registered in `main/ipc/settings.ts`.
+   */
+  settingsGet: 'thunder:settings:get',
+  settingsSet: 'thunder:settings:set',
+  settingsGetAll: 'thunder:settings:get-all'
 } as const
+
+/**
+ * The set of channels the renderer is permitted to invoke through the
+ * generic `window.thunder.invoke` escape hatch. Anything outside this
+ * list is rejected in the preload before reaching `ipcRenderer.invoke`,
+ * so an attacker who somehow obtained a renderer handle still can't
+ * drive arbitrary main-process IPC.
+ *
+ * `menuAction` is intentionally excluded — it's a one-way main →
+ * renderer channel, not invoke-able. Add new channels here as their
+ * handlers ship.
+ */
+export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
+  THUNDER_IPC_CHANNELS.authGet,
+  THUNDER_IPC_CHANNELS.authSet,
+  THUNDER_IPC_CHANNELS.authClear,
+  THUNDER_IPC_CHANNELS.settingsGet,
+  THUNDER_IPC_CHANNELS.settingsSet,
+  THUNDER_IPC_CHANNELS.settingsGetAll
+]
 
 /**
  * Union of every renderer-facing action the native menu can fire.
@@ -53,6 +81,19 @@ export interface ThunderAuthCredentials {
 }
 
 /**
+ * TD-018: persisted user-tunable settings. `apiUrl` lets us repoint the
+ * desktop client at staging/local Halo without a rebuild;
+ * `downloadFolder` is the destination for any future "save to disk"
+ * actions; `userAgent` overrides the embedded webview's UA when set
+ * (needed for sites that 403 Electron's default).
+ */
+export interface ThunderSettings {
+  apiUrl: string
+  downloadFolder: string
+  userAgent?: string
+}
+
+/**
  * Typed IPC surface for `window.thunder`.
  */
 export interface ThunderApi {
@@ -61,6 +102,18 @@ export interface ThunderApi {
     set: (creds: ThunderAuthCredentials) => Promise<void>
     clear: () => Promise<void>
   }
+  settings: {
+    get: <K extends keyof ThunderSettings>(key: K) => Promise<ThunderSettings[K]>
+    set: <K extends keyof ThunderSettings>(key: K, value: ThunderSettings[K]) => Promise<void>
+    getAll: () => Promise<ThunderSettings>
+  }
+  /**
+   * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
+   * Prefer the typed `auth` / `settings` surfaces — `invoke` exists so
+   * tests can prove the allowlist rejects arbitrary channels and so
+   * future spike code has a forward path before its typed surface lands.
+   */
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
 }
 
 export const thunderApi: ThunderApi = {
@@ -68,5 +121,18 @@ export const thunderApi: ThunderApi = {
     get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
     set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),
     clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear)
+  },
+  settings: {
+    get: (key) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGet, key),
+    set: (key, value) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsSet, key, value),
+    getAll: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGetAll)
+  },
+  invoke: (channel, ...args) => {
+    if (!THUNDER_ALLOWLIST.includes(channel)) {
+      return Promise.reject(
+        new Error(`[thunder] channel "${channel}" is not in the Thunder IPC allowlist`)
+      )
+    }
+    return ipcRenderer.invoke(channel, ...args)
   }
 }

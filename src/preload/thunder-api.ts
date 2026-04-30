@@ -1,4 +1,7 @@
 import { ipcRenderer } from 'electron'
+import type { ThunderSettings } from '../shared/settings'
+
+export type { ThunderSettings }
 
 /**
  * IPC channels exposed across the main / preload / renderer boundary.
@@ -78,19 +81,6 @@ export interface ThunderAuthCredentials {
   email?: string
   /** Present iff "Stay signed in" was checked at login time. */
   password?: string
-}
-
-/**
- * TD-018: persisted user-tunable settings. `apiUrl` lets us repoint the
- * desktop client at staging/local Halo without a rebuild;
- * `downloadFolder` is the destination for any future "save to disk"
- * actions; `userAgent` overrides the embedded webview's UA when set
- * (needed for sites that 403 Electron's default).
- */
-export interface ThunderSettings {
-  apiUrl: string
-  downloadFolder: string
-  userAgent?: string
 }
 
 /**

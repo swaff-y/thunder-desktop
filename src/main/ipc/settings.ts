@@ -8,31 +8,37 @@
 import { app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
+import { DEFAULT_API_URL, type ThunderSettings } from '../../shared/settings'
 import {
   ensureSettingsFile,
   getSetting,
   readSettings,
-  setSetting,
-  type ThunderSettings
+  setSetting
 } from './settings-io'
 
-/**
- * Default Halo dev URL. Mirrors the renderer fallback in
- * `src/renderer/src/config/env.ts` so a renderer that boots with no
- * IPC channel still hits the same backend the main process would
- * write into the settings file on first launch.
- */
-const DEFAULT_API_URL = 'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+// Memoised after first access. `app.getPath()` is cheap, but we hit
+// these on every IPC invocation and the values can't change after
+// `app.whenReady()` — so cache them at first read. The lazy form
+// (rather than top-level constants) is required because `app.getPath`
+// throws if called before `app.whenReady()`.
+let cachedPath: string | null = null
+let cachedDefaults: ThunderSettings | null = null
 
 function settingsPath(): string {
-  return join(app.getPath('userData'), 'thunder-desktop-settings.json')
+  if (cachedPath === null) {
+    cachedPath = join(app.getPath('userData'), 'thunder-desktop-settings.json')
+  }
+  return cachedPath
 }
 
 function defaults(): ThunderSettings {
-  return {
-    apiUrl: DEFAULT_API_URL,
-    downloadFolder: join(app.getPath('downloads'), 'Thunder')
+  if (cachedDefaults === null) {
+    cachedDefaults = {
+      apiUrl: DEFAULT_API_URL,
+      downloadFolder: join(app.getPath('downloads'), 'Thunder')
+    }
   }
+  return cachedDefaults
 }
 
 const VALID_KEYS: ReadonlyArray<keyof ThunderSettings> = ['apiUrl', 'downloadFolder', 'userAgent']
@@ -41,10 +47,13 @@ function isValidKey(key: unknown): key is keyof ThunderSettings {
   return typeof key === 'string' && (VALID_KEYS as ReadonlyArray<string>).includes(key)
 }
 
-function isValidValue(key: keyof ThunderSettings, value: unknown): boolean {
-  if (key === 'userAgent') {
-    return value === undefined || (typeof value === 'string' && value.length > 0)
-  }
+// All persistable values are non-empty strings. `userAgent` is optional
+// in the schema, but "absent" means the key isn't present at all — IPC
+// drops `undefined` arguments anyway, so we don't try to support
+// `set('userAgent', undefined)` as a clear path. A dedicated
+// `settings:clear` channel would be the right shape if that's ever
+// needed.
+function isValidValue(_key: keyof ThunderSettings, value: unknown): boolean {
   return typeof value === 'string' && value.length > 0
 }
 

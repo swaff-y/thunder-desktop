@@ -12,7 +12,7 @@
  * harness, etc.) so tests don't have to stub `window.thunder`.
  */
 
-const DEFAULT_API_URL = 'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+import { DEFAULT_API_URL } from '../../../shared/settings'
 
 // `let` + ESM live binding: consumers `import { API_URL }` and see
 // reassignments made inside this module. `bootstrapEnv` is the only

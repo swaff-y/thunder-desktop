@@ -17,12 +17,9 @@
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import type { ThunderSettings } from '../../shared/settings'
 
-export interface ThunderSettings {
-  apiUrl: string
-  downloadFolder: string
-  userAgent?: string
-}
+export type { ThunderSettings }
 
 function parseFile(filePath: string): Partial<ThunderSettings> | null {
   try {

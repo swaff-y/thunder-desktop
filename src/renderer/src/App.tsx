@@ -6,6 +6,7 @@ import { CartProvider } from './hooks/useCart'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
+import CategoryDetail from './pages/CategoryDetail'
 import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -53,6 +54,16 @@ function App(): React.JSX.Element {
                   <ProtectedRoute>
                     <DesktopLayout>
                       <CategoryList />
+                    </DesktopLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/:category/:id"
+                element={
+                  <ProtectedRoute>
+                    <DesktopLayout>
+                      <CategoryDetail />
                     </DesktopLayout>
                   </ProtectedRoute>
                 }

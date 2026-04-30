@@ -1,12 +1,10 @@
 import { useRandomRecords } from "../hooks/useRecords";
-import { useIsDesktop } from "../hooks/useMediaQuery";
 import HeroCarousel from "../components/desktop/HeroCarousel";
 import VirtualRecordList from "../components/shared/VirtualRecordList";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
 
 export default function Home() {
-  const isDesktop = useIsDesktop();
   const { data, isLoading, isError, error, refetch } = useRandomRecords();
 
   const records = data?.data ?? [];
@@ -22,12 +20,8 @@ export default function Home() {
 
   return (
     <div>
-      {isDesktop && (
-        <>
-          <HeroCarousel records={records} />
-          <h2 className="section-title">Your Library</h2>
-        </>
-      )}
+      <HeroCarousel records={records} />
+      <h2 className="section-title">Your Library</h2>
       <VirtualRecordList records={records} />
 
       <style>{`

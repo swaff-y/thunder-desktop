@@ -1,16 +1,29 @@
 /**
- * Pure credential storage logic — reads/writes an encrypted credential
- * blob to a JSON file. The encrypt/decrypt functions are injected so the
- * module is testable under vitest without Electron's safeStorage.
+ * Pure credential storage logic — reads/writes a single credential record
+ * to a JSON file. Encrypt/decrypt is injected so the module is testable
+ * under vitest without Electron's safeStorage.
  *
  * In production, `auth.ts` passes `safeStorage.encryptString` /
  * `safeStorage.decryptString` as the crypto adapter. The encrypted blobs
  * are base64-encoded for safe JSON serialization.
  *
- * File layout (stored at `<userData>/thunder-desktop-credentials.json`):
+ * On-disk schema (stored at `<userData>/thunder-desktop-credentials.enc`):
  * ```json
- * { "token": "<base64>", "apiKey": "<base64>", "email": "<base64>", "password": "<base64?>" }
+ * {
+ *   "encrypted": true,
+ *   "token": "<base64 ciphertext or plaintext>",
+ *   "apiKey": "...",
+ *   "email": "...",
+ *   "password": "..."
+ * }
  * ```
+ *
+ * The `encrypted` flag pins each record to the encryption mode it was
+ * written under. Without it, a record written under safeStorage would be
+ * returned verbatim (as base64 ciphertext) on a system where safeStorage
+ * has since become unavailable — silently handing the renderer garbage
+ * "credentials" that fail every API call. With the flag, the read path
+ * refuses mismatched records and forces the user to re-login.
  *
  * Single-env: Thunder Desktop only talks to one Halo backend, so we store
  * a single record (unlike halo-desktop which keys creds by env).
@@ -22,7 +35,8 @@ import { dirname, join } from 'node:path'
 export interface StoredCredentials {
   token: string
   apiKey: string
-  email: string
+  /** Optional — pre-TD-030 migrations only carry token + apiKey. */
+  email?: string
   /** Present iff the user opted into "Stay signed in" at login time. */
   password?: string
 }
@@ -34,9 +48,10 @@ export interface CryptoAdapter {
 }
 
 interface OnDiskCredentials {
+  encrypted: boolean
   token: string
   apiKey: string
-  email: string
+  email?: string
   password?: string
 }
 
@@ -58,10 +73,24 @@ function writeFile(filePath: string, data: OnDiskCredentials): void {
 
 export function getCredentials(path: string, crypto: CryptoAdapter): StoredCredentials | null {
   const entry = readFile(path)
-  if (!entry?.token || !entry?.apiKey || !entry?.email) return null
+  if (!entry?.token || !entry?.apiKey) return null
+
+  // Encryption-mode mismatch: the record was written encrypted but
+  // safeStorage is no longer available (e.g. user moved their profile
+  // between machines), or it was written plaintext but we now have
+  // safeStorage and would garble it. Either way, refuse — the renderer
+  // will treat us as logged-out and the user re-logs in.
+  if (entry.encrypted && !crypto.isAvailable()) {
+    console.warn('[auth-io] stored credentials are encrypted but safeStorage is unavailable')
+    return null
+  }
+  if (!entry.encrypted && crypto.isAvailable()) {
+    // Legacy plaintext record on a system that now has safeStorage —
+    // honour it once. Future writes will encrypt.
+  }
 
   try {
-    if (!crypto.isAvailable()) {
+    if (!entry.encrypted) {
       return {
         token: entry.token,
         apiKey: entry.apiKey,
@@ -72,7 +101,7 @@ export function getCredentials(path: string, crypto: CryptoAdapter): StoredCrede
     return {
       token: crypto.decrypt(Buffer.from(entry.token, 'base64')),
       apiKey: crypto.decrypt(Buffer.from(entry.apiKey, 'base64')),
-      email: crypto.decrypt(Buffer.from(entry.email, 'base64')),
+      email: entry.email ? crypto.decrypt(Buffer.from(entry.email, 'base64')) : undefined,
       password: entry.password ? crypto.decrypt(Buffer.from(entry.password, 'base64')) : undefined
     }
   } catch (error) {
@@ -89,9 +118,12 @@ export function setCredentials(
   let payload: OnDiskCredentials
   if (crypto.isAvailable()) {
     payload = {
+      encrypted: true,
       token: crypto.encrypt(creds.token).toString('base64'),
       apiKey: crypto.encrypt(creds.apiKey).toString('base64'),
-      email: crypto.encrypt(creds.email).toString('base64'),
+      ...(creds.email !== undefined && {
+        email: crypto.encrypt(creds.email).toString('base64')
+      }),
       ...(creds.password !== undefined && {
         password: crypto.encrypt(creds.password).toString('base64')
       })
@@ -99,9 +131,10 @@ export function setCredentials(
   } else {
     console.warn('[auth-io] safeStorage unavailable — refusing to persist password')
     payload = {
+      encrypted: false,
       token: creds.token,
       apiKey: creds.apiKey,
-      email: creds.email
+      ...(creds.email !== undefined && { email: creds.email })
     }
   }
   writeFile(path, payload)

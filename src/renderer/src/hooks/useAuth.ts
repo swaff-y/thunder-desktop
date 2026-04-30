@@ -53,33 +53,28 @@ function decodeUserId(token: string): string | null {
 }
 
 // One-shot migration: copy any pre-TD-030 localStorage tokens into the
-// keychain (without password — there's nothing to recover) and wipe the
-// localStorage keys so we never read them again. Returns the migrated
-// creds when it ran, null otherwise.
+// keychain and wipe the localStorage keys so we never read them again.
+// Pre-030 builds didn't store the email or password — without those,
+// silent reauth can't fire, so the migrated record is a one-shot session
+// that will end at JWT expiry like the old behaviour. The user gets a
+// proper "Stay signed in" record on their next explicit login.
 async function migrateFromLocalStorage(): Promise<{
   token: string;
   apiKey: string;
-  email: string;
 } | null> {
   const token = localStorage.getItem("userToken");
   const apiKey = localStorage.getItem("apiKey");
   if (!token || !apiKey) return null;
 
-  // Pre-030 builds didn't store email; decode `sub` as a placeholder so
-  // the schema's `email: string` field is non-empty. The user will fill
-  // it in on next explicit login. Without an email we can't silent-reauth
-  // anyway (no password stored either), so this is purely a record.
-  const email = decodeUserId(token) ?? "migrated@thunder";
-
   try {
-    await window.thunder?.auth.set({ token, apiKey, email });
+    await window.thunder?.auth.set({ token, apiKey });
   } catch (error) {
     console.error("[useAuth] localStorage migration failed", error);
     return null;
   }
   localStorage.removeItem("userToken");
   localStorage.removeItem("apiKey");
-  return { token, apiKey, email };
+  return { token, apiKey };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -183,11 +178,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void clearImageCache().catch(() => {});
   }, []);
 
-  // Re-check token validity on window focus
+  // Re-check token validity on window focus. If the JWT has expired,
+  // try silent reauth first — only fall through to logout (which clears
+  // the stored password) if reauth itself fails. Without this, a user
+  // who leaves the app long enough for the JWT to expire would lose
+  // their "Stay signed in" credential the moment they refocus the window.
   useEffect(() => {
-    const handleFocus = () => {
-      if (state.token && !isTokenValid(state.token)) {
-        void logout();
+    const handleFocus = async () => {
+      if (!state.token || isTokenValid(state.token)) return;
+      try {
+        const fresh = await reauthenticate();
+        setState({
+          token: fresh.token,
+          apiKey: fresh.apiKey,
+          userId: decodeUserId(fresh.token),
+        });
+      } catch {
+        await logout();
       }
     };
     window.addEventListener("focus", handleFocus);

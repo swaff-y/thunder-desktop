@@ -45,7 +45,10 @@ export type ThunderMenuAction = never
 export interface ThunderAuthCredentials {
   token: string
   apiKey: string
-  email: string
+  /** Optional — pre-TD-030 migrations only carry token + apiKey.
+   *  Required for silent reauth; absence simply means no auto-refresh. */
+  email?: string
+  /** Present iff "Stay signed in" was checked at login time. */
   password?: string
 }
 

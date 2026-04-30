@@ -1,6 +1,8 @@
 import { ipcRenderer } from 'electron'
+import { THUNDER_BROWSER_PARTITION } from '../shared/browser'
 import type { ThunderSettings } from '../shared/settings'
 
+export { THUNDER_BROWSER_PARTITION }
 export type { ThunderSettings }
 
 /**
@@ -45,7 +47,18 @@ export const THUNDER_IPC_CHANNELS = {
    * gated by an allowlist in `main/ipc/shell.ts`. Used by the embedded
    * `<webview>` for `mailto:`/`tel:` links the user clicks inside a page.
    */
-  shellOpenExternal: 'thunder:shell:open-external'
+  shellOpenExternal: 'thunder:shell:open-external',
+
+  /**
+   * TD-022: video-asset detection on the embedded browser session.
+   * `browserAssetDetected` is a one-way main → renderer push fired
+   * from the partition's `webRequest.onResponseStarted` listener;
+   * `browserAssetsGetCurrent` lets the renderer reconcile its list on
+   * mount / tab re-entry without waiting for the next detection.
+   * Handlers in `main/ipc/browser-detect.ts`.
+   */
+  browserAssetDetected: 'thunder:browser:asset-detected',
+  browserAssetsGetCurrent: 'thunder:browser:assets:get-current'
 } as const
 
 /**
@@ -66,7 +79,8 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.settingsGet,
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
-  THUNDER_IPC_CHANNELS.shellOpenExternal
+  THUNDER_IPC_CHANNELS.shellOpenExternal,
+  THUNDER_IPC_CHANNELS.browserAssetsGetCurrent
 ]
 
 /**
@@ -92,6 +106,23 @@ export interface ThunderAuthCredentials {
 }
 
 /**
+ * TD-022: shape of the event the main process pushes whenever the
+ * embedded browser receives a response that matches the video-asset
+ * detection rules. `sizeBytes` is forwarded from `Content-Length`
+ * when the server sends it; chunked responses (HLS manifests over
+ * h2, signed-url APIs) often omit it, so consumers must treat it as
+ * optional rather than implementing a "size unknown" sentinel.
+ */
+export interface ThunderAssetDetectedPayload {
+  id: string
+  pageUrl: string
+  assetUrl: string
+  mimeType: string
+  sizeBytes?: number
+  detectedAt: number
+}
+
+/**
  * Typed IPC surface for `window.thunder`.
  */
 export interface ThunderApi {
@@ -107,6 +138,22 @@ export interface ThunderApi {
   }
   shell: {
     openExternal: (url: string) => Promise<boolean>
+  }
+  browser: {
+    /**
+     * Subscribe to detection events from the embedded browser session.
+     * Returns an unsubscribe function — call it on unmount to avoid
+     * a leaked listener (and a duplicate-event storm if the renderer
+     * remounts the Browser tab).
+     */
+    onAssetDetected: (callback: (payload: ThunderAssetDetectedPayload) => void) => () => void
+    /**
+     * Fetch the current page's accumulated detections for a webview,
+     * keyed by the webview's `webContents.id` (renderer obtains it via
+     * `webview.getWebContentsId()`). Used on mount and tab re-entry to
+     * avoid showing an empty list while waiting for the next event.
+     */
+    getCurrentAssets: (webContentsId: number) => Promise<ThunderAssetDetectedPayload[]>
   }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
@@ -130,6 +177,21 @@ export const thunderApi: ThunderApi = {
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.shellOpenExternal, url)
+  },
+  browser: {
+    onAssetDetected: (callback) => {
+      // Wrap rather than passing `callback` directly to `ipcRenderer.on`
+      // so the unsubscribe closure references the same function instance
+      // we registered — `ipcRenderer.removeListener` is identity-based.
+      const handler = (_event: unknown, payload: ThunderAssetDetectedPayload): void =>
+        callback(payload)
+      ipcRenderer.on(THUNDER_IPC_CHANNELS.browserAssetDetected, handler)
+      return (): void => {
+        ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.browserAssetDetected, handler)
+      }
+    },
+    getCurrentAssets: (webContentsId) =>
+      ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserAssetsGetCurrent, webContentsId)
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

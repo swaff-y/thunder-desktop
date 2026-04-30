@@ -4,6 +4,7 @@
    about. The webview type augmentation in `webview.d.ts` keeps the
    TypeScript side honest. */
 import { useEffect, useState } from 'react'
+import { THUNDER_BROWSER_PARTITION } from '../../../shared/browser'
 import type { BrowserNav } from './useBrowserNav'
 
 /**
@@ -57,7 +58,7 @@ export default function EmbeddedWebview({
         <webview
           ref={attachWebview}
           src={initialUrl}
-          partition="persist:thunder-browser"
+          partition={THUNDER_BROWSER_PARTITION}
           webpreferences="contextIsolation=yes,sandbox=yes,nodeIntegration=no"
           useragent={userAgent}
           allowpopups={false}

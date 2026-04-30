@@ -9,6 +9,7 @@ import CategoryList from './pages/CategoryList'
 import CategoryDetail from './pages/CategoryDetail'
 import Watch from './pages/Watch'
 import MultiWatch from './pages/MultiWatch'
+import Stats from './pages/Stats'
 import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -65,6 +66,16 @@ function App(): React.JSX.Element {
                 element={
                   <ProtectedRoute>
                     <MultiWatch />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/stats"
+                element={
+                  <ProtectedRoute>
+                    <DesktopLayout>
+                      <Stats />
+                    </DesktopLayout>
                   </ProtectedRoute>
                 }
               />

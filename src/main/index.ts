@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
+import { registerAuthHandlers } from './ipc/auth'
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.ruby-sei.thunder-desktop')
@@ -9,6 +10,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  registerAuthHandlers()
   createMainWindow()
 
   app.on('activate', () => {

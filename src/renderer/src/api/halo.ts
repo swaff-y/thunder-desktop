@@ -1,4 +1,4 @@
-import client, { getAuthHeaders } from "./client";
+import client, { getAuthHeaders, getCachedCreds } from "./client";
 import type {
   PaginatedResponse,
   CategoryItem,
@@ -131,8 +131,9 @@ export function getProxyUrl(recordId: string): string {
 // Authenticated video URL — appends stored tokens as query params
 export function buildAuthProxyUrl(recordId: string): string {
   const base = getProxyUrl(recordId);
-  const token = localStorage.getItem("userToken") || "";
-  const apiKey = localStorage.getItem("apiKey") || "";
+  const creds = getCachedCreds();
+  const token = creds?.token ?? "";
+  const apiKey = creds?.apiKey ?? "";
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}token=${encodeURIComponent(token)}&api_key=${encodeURIComponent(apiKey)}`;
 }

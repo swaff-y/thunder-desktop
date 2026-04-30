@@ -1,3 +1,5 @@
+import { ipcRenderer } from 'electron'
+
 /**
  * IPC channels exposed across the main / preload / renderer boundary.
  * Centralised so main-process senders and the renderer's
@@ -16,7 +18,16 @@ export const THUNDER_IPC_CHANNELS = {
    * `ipcRenderer.on` bridge in `preload/index.ts` and the `menu` key
    * on {@link ThunderApi}.
    */
-  menuAction: 'thunder:menu:action'
+  menuAction: 'thunder:menu:action',
+
+  /**
+   * TD-030: encrypted credential store. The renderer NEVER touches the
+   * credential file or `safeStorage` directly — these channels are the
+   * only path. Main-process handlers are registered in `main/ipc/auth.ts`.
+   */
+  authGet: 'thunder:auth:get',
+  authSet: 'thunder:auth:set',
+  authClear: 'thunder:auth:clear'
 } as const
 
 /**
@@ -27,12 +38,35 @@ export const THUNDER_IPC_CHANNELS = {
 export type ThunderMenuAction = never
 
 /**
- * Typed IPC surface for `window.thunder`. Empty in TD-001 — later tickets
- * (settings, dialog, browser-detect, browser-download, …) hang their
- * channels off this object.
+ * TD-030: shape of credentials persisted via the keychain. `password` is
+ * present iff the user opted into "Stay signed in" — its presence is
+ * what enables silent reauth on token expiry.
  */
-export interface ThunderApi {
-  _placeholder?: never
+export interface ThunderAuthCredentials {
+  token: string
+  apiKey: string
+  /** Optional — pre-TD-030 migrations only carry token + apiKey.
+   *  Required for silent reauth; absence simply means no auto-refresh. */
+  email?: string
+  /** Present iff "Stay signed in" was checked at login time. */
+  password?: string
 }
 
-export const thunderApi: ThunderApi = {}
+/**
+ * Typed IPC surface for `window.thunder`.
+ */
+export interface ThunderApi {
+  auth: {
+    get: () => Promise<ThunderAuthCredentials | null>
+    set: (creds: ThunderAuthCredentials) => Promise<void>
+    clear: () => Promise<void>
+  }
+}
+
+export const thunderApi: ThunderApi = {
+  auth: {
+    get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
+    set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),
+    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear)
+  }
+}

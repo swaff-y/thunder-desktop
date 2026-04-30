@@ -8,6 +8,7 @@ import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
 import CategoryDetail from './pages/CategoryDetail'
 import Watch from './pages/Watch'
+import MultiWatch from './pages/MultiWatch'
 import ComponentGallery from './pages/dev/ComponentGallery'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -56,6 +57,14 @@ function App(): React.JSX.Element {
                     <DesktopLayout>
                       <Watch />
                     </DesktopLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/multi-watch"
+                element={
+                  <ProtectedRoute>
+                    <MultiWatch />
                   </ProtectedRoute>
                 }
               />

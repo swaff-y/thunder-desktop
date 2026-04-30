@@ -11,9 +11,11 @@ import Watch from './pages/Watch'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import ComponentGallery from './pages/dev/ComponentGallery'
+import LoadingSpinner from './components/shared/LoadingSpinner'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading) return <LoadingSpinner fullScreen />
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return <>{children}</>
 }

@@ -45,9 +45,14 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-024](TD-024-download-manager-main.md) — Browser tab — download manager (main)
 - [TD-025](TD-025-downloads-drawer.md) — Browser tab — downloads drawer (renderer)
 - [TD-026](TD-026-download-folder-picker.md) — Browser tab — download folder picker
+- [TD-032](TD-032-download-safety.md) — Browser tab — download safety hardening (lands with TD-024)
 
 ## Phase 6 — Polish & ship
 
 - [TD-027](TD-027-code-signing.md) — macOS code signing and notarization
 - [TD-028](TD-028-auto-updater.md) — Auto-updater wiring
 - [TD-029](TD-029-prod-url-cutover.md) — Production API URL cutover
+
+## Phase 7 — Browser hardening
+
+- [TD-031](TD-031-safe-browsing.md) — Browser tab — Safe Browsing URL filtering

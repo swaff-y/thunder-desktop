@@ -3,6 +3,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
 import { registerSettingsHandlers } from './ipc/settings'
+import { registerShellHandlers } from './ipc/shell'
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.ruby-sei.thunder-desktop')
@@ -13,6 +14,7 @@ app.whenReady().then(() => {
 
   registerSettingsHandlers()
   registerAuthHandlers()
+  registerShellHandlers()
   createMainWindow()
 
   app.on('activate', () => {

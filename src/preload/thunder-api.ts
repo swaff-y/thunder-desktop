@@ -38,7 +38,14 @@ export const THUNDER_IPC_CHANNELS = {
    */
   settingsGet: 'thunder:settings:get',
   settingsSet: 'thunder:settings:set',
-  settingsGetAll: 'thunder:settings:get-all'
+  settingsGetAll: 'thunder:settings:get-all',
+
+  /**
+   * TD-021: routes a URL to the OS default handler via `shell.openExternal`,
+   * gated by an allowlist in `main/ipc/shell.ts`. Used by the embedded
+   * `<webview>` for `mailto:`/`tel:` links the user clicks inside a page.
+   */
+  shellOpenExternal: 'thunder:shell:open-external'
 } as const
 
 /**
@@ -58,7 +65,8 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authClear,
   THUNDER_IPC_CHANNELS.settingsGet,
   THUNDER_IPC_CHANNELS.settingsSet,
-  THUNDER_IPC_CHANNELS.settingsGetAll
+  THUNDER_IPC_CHANNELS.settingsGetAll,
+  THUNDER_IPC_CHANNELS.shellOpenExternal
 ]
 
 /**
@@ -97,6 +105,9 @@ export interface ThunderApi {
     set: <K extends keyof ThunderSettings>(key: K, value: ThunderSettings[K]) => Promise<void>
     getAll: () => Promise<ThunderSettings>
   }
+  shell: {
+    openExternal: (url: string) => Promise<boolean>
+  }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
    * Prefer the typed `auth` / `settings` surfaces — `invoke` exists so
@@ -116,6 +127,9 @@ export const thunderApi: ThunderApi = {
     get: (key) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGet, key),
     set: (key, value) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsSet, key, value),
     getAll: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGetAll)
+  },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.shellOpenExternal, url)
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

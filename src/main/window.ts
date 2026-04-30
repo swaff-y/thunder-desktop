@@ -100,7 +100,12 @@ export function createMainWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // TD-021: enables the embedded `<webview>` tag used by the Browser
+      // tab. The webview itself is locked down via per-tag attributes
+      // (`partition=persist:thunder-browser`, `sandbox=yes`, no node
+      // integration) — see `EmbeddedWebview.tsx`.
+      webviewTag: true
     }
   })
 

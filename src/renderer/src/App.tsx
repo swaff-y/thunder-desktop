@@ -12,6 +12,7 @@ import CategoryDetail from './pages/CategoryDetail'
 import Watch from './pages/Watch'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
+import Browser from './pages/Browser'
 import LoadingSpinner from './components/shared/LoadingSpinner'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -48,6 +49,16 @@ function AppRoutes(): React.JSX.Element {
           <ProtectedRoute>
             <DesktopLayout>
               <Stats />
+            </DesktopLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/browser"
+        element={
+          <ProtectedRoute>
+            <DesktopLayout>
+              <Browser />
             </DesktopLayout>
           </ProtectedRoute>
         }

@@ -1,49 +1,49 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   IoHomeOutline,
   IoPeopleOutline,
   IoFilmOutline,
   IoVideocamOutline,
   IoPricetagOutline,
-  IoStatsChartOutline,
-} from "react-icons/io5";
+  IoGlobeOutline,
+  IoStatsChartOutline
+} from 'react-icons/io5'
 
 const NAV_ITEMS = [
-  { path: "/", label: "Home", icon: IoHomeOutline },
-  { path: "/actors", label: "Actors", icon: IoPeopleOutline },
-  { path: "/series", label: "Series", icon: IoFilmOutline },
-  { path: "/movies", label: "Movies", icon: IoVideocamOutline },
-  { path: "/tags", label: "Tags", icon: IoPricetagOutline },
-  { path: "/stats", label: "Stats", icon: IoStatsChartOutline },
-];
+  { path: '/', label: 'Home', icon: IoHomeOutline },
+  { path: '/actors', label: 'Actors', icon: IoPeopleOutline },
+  { path: '/series', label: 'Series', icon: IoFilmOutline },
+  { path: '/movies', label: 'Movies', icon: IoVideocamOutline },
+  { path: '/tags', label: 'Tags', icon: IoPricetagOutline },
+  { path: '/browser', label: 'Browser', icon: IoGlobeOutline },
+  { path: '/stats', label: 'Stats', icon: IoStatsChartOutline }
+]
 
 export default function Sidebar() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate = useNavigate()
+  const location = useLocation()
 
   return (
     <aside className="desktop-sidebar">
-      <div className="sidebar-brand" onClick={() => navigate("/")}>
+      <div className="sidebar-brand" onClick={() => navigate('/')}>
         <h1 className="sidebar-title">Thunder</h1>
       </div>
 
       <nav className="sidebar-nav">
         {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
           const isActive =
-            path === "/"
-              ? location.pathname === "/"
-              : location.pathname.startsWith(path);
+            path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
 
           return (
             <button
               key={path}
-              className={`sidebar-link ${isActive ? "active" : ""}`}
+              className={`sidebar-link ${isActive ? 'active' : ''}`}
               onClick={() => navigate(path)}
             >
               <Icon size={20} />
               <span>{label}</span>
             </button>
-          );
+          )
         })}
       </nav>
 
@@ -101,5 +101,5 @@ export default function Sidebar() {
         }
       `}</style>
     </aside>
-  );
+  )
 }

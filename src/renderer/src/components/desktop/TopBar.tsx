@@ -1,19 +1,32 @@
-import { IoLogOutOutline } from "react-icons/io5";
+import { useState } from "react";
+import { IoLogOutOutline, IoSettingsOutline } from "react-icons/io5";
 import CartDropdown from "../shared/CartDropdown";
+import SettingsModal from "./SettingsModal";
 
 interface TopBarProps {
   onLogout: () => void;
 }
 
 export default function TopBar({ onLogout }: TopBarProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   return (
     <header className="desktop-topbar">
       <div className="topbar-spacer" />
+      <button
+        className="topbar-icon-btn"
+        onClick={() => setSettingsOpen(true)}
+        aria-label="Settings"
+      >
+        <IoSettingsOutline size={20} />
+      </button>
       <CartDropdown />
       <button className="topbar-logout" onClick={onLogout}>
         <IoLogOutOutline size={20} />
         <span>Logout</span>
       </button>
+
+      <SettingsModal show={settingsOpen} onHide={() => setSettingsOpen(false)} />
 
       <style>{`
         .desktop-topbar {
@@ -28,6 +41,23 @@ export default function TopBar({ onLogout }: TopBarProps) {
         }
         .topbar-spacer {
           flex: 1;
+        }
+        .topbar-icon-btn {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border);
+          color: var(--color-text);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        .topbar-icon-btn:hover {
+          background: var(--color-surface-light);
+          color: var(--color-cta);
         }
         .topbar-logout {
           display: flex;

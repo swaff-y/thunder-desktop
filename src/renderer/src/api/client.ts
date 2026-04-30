@@ -24,6 +24,13 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+// `API_URL` is captured here at module-load time. `main.tsx` defers
+// the static import of this module behind `bootstrapEnv()` (TD-018) so
+// `API_URL` already reflects the persisted setting before
+// `axios.create` runs. Any new entry point that imports `client.ts`
+// directly (e.g. a test harness or worker) MUST either await
+// `bootstrapEnv()` first or accept the default URL — otherwise the
+// captured `baseURL` will silently differ from the user's setting.
 const client = axios.create({
   baseURL: API_URL,
   headers: {

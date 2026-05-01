@@ -71,7 +71,18 @@ export const THUNDER_IPC_CHANNELS = {
   browserDownloadCancel: 'thunder:browser:download:cancel',
   browserDownloadShowInFolder: 'thunder:browser:download:show-in-folder',
   browserDownloadProgress: 'thunder:browser:download:progress',
-  browserDownloadComplete: 'thunder:browser:download:complete'
+  browserDownloadComplete: 'thunder:browser:download:complete',
+
+  /**
+   * TD-026: native dialog bridge. `openDirectory` drives the folder
+   * picker behind Settings' "Choose…" button and probes the chosen
+   * folder for writability before returning. `showItemInFolder`
+   * reveals a path in the OS file manager — used by the downloads
+   * surface to "Show in Finder" a completed file. Handlers in
+   * `main/ipc/dialog.ts`.
+   */
+  dialogOpenDirectory: 'thunder:dialog:open-directory',
+  dialogShowItemInFolder: 'thunder:dialog:show-item-in-folder'
 } as const
 
 /**
@@ -96,7 +107,9 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.browserAssetsGetCurrent,
   THUNDER_IPC_CHANNELS.browserDownloadStart,
   THUNDER_IPC_CHANNELS.browserDownloadCancel,
-  THUNDER_IPC_CHANNELS.browserDownloadShowInFolder
+  THUNDER_IPC_CHANNELS.browserDownloadShowInFolder,
+  THUNDER_IPC_CHANNELS.dialogOpenDirectory,
+  THUNDER_IPC_CHANNELS.dialogShowItemInFolder
 ]
 
 /**
@@ -157,6 +170,22 @@ export interface ThunderDownloadCompletePayload {
 }
 
 /**
+ * TD-026: result of `window.thunder.dialog.openDirectory()`.
+ * Discriminated union so callers don't need a cast to use `path`:
+ * the only variant carrying `path` is the success case.
+ *
+ * - `{ canceled: true }` — user dismissed the picker; settings unchanged.
+ * - `{ canceled: false, error: 'not-writable' }` — the chosen folder
+ *   failed the writability probe (e.g., `/System`); renderer should
+ *   surface this and refuse to persist the value.
+ * - `{ canceled: false, path }` — verified-writable absolute path.
+ */
+export type ThunderOpenDirectoryResult =
+  | { canceled: true }
+  | { canceled: false; error: 'not-writable' }
+  | { canceled: false; path: string }
+
+/**
  * Typed IPC surface for `window.thunder`.
  */
 export interface ThunderApi {
@@ -172,6 +201,10 @@ export interface ThunderApi {
   }
   shell: {
     openExternal: (url: string) => Promise<boolean>
+  }
+  dialog: {
+    openDirectory: () => Promise<ThunderOpenDirectoryResult>
+    showItemInFolder: (path: string) => Promise<void>
   }
   browser: {
     /**
@@ -224,6 +257,11 @@ export const thunderApi: ThunderApi = {
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.shellOpenExternal, url)
+  },
+  dialog: {
+    openDirectory: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.dialogOpenDirectory),
+    showItemInFolder: (path) =>
+      ipcRenderer.invoke(THUNDER_IPC_CHANNELS.dialogShowItemInFolder, { path })
   },
   browser: {
     onAssetDetected: (callback) => {

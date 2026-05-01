@@ -58,7 +58,20 @@ export const THUNDER_IPC_CHANNELS = {
    * Handlers in `main/ipc/browser-detect.ts`.
    */
   browserAssetDetected: 'thunder:browser:asset-detected',
-  browserAssetsGetCurrent: 'thunder:browser:assets:get-current'
+  browserAssetsGetCurrent: 'thunder:browser:assets:get-current',
+
+  /**
+   * TD-024: browser-tab download manager. `start` / `cancel` /
+   * `showInFolder` are renderer → main invokes; `progress` /
+   * `complete` are one-way main → renderer pushes (mirroring the
+   * halo-desktop updater fan-out). Handlers in
+   * `main/ipc/browser-download.ts`.
+   */
+  browserDownloadStart: 'thunder:browser:download:start',
+  browserDownloadCancel: 'thunder:browser:download:cancel',
+  browserDownloadShowInFolder: 'thunder:browser:download:show-in-folder',
+  browserDownloadProgress: 'thunder:browser:download:progress',
+  browserDownloadComplete: 'thunder:browser:download:complete'
 } as const
 
 /**
@@ -80,7 +93,10 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
   THUNDER_IPC_CHANNELS.shellOpenExternal,
-  THUNDER_IPC_CHANNELS.browserAssetsGetCurrent
+  THUNDER_IPC_CHANNELS.browserAssetsGetCurrent,
+  THUNDER_IPC_CHANNELS.browserDownloadStart,
+  THUNDER_IPC_CHANNELS.browserDownloadCancel,
+  THUNDER_IPC_CHANNELS.browserDownloadShowInFolder
 ]
 
 /**

@@ -4,6 +4,7 @@ import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
 import { registerBrowserDownloadHandlers } from './ipc/browser-download'
+import { registerDialogHandlers } from './ipc/dialog'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
 
@@ -17,6 +18,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers()
   registerAuthHandlers()
   registerShellHandlers()
+  registerDialogHandlers()
   registerBrowserDetectHandlers()
   registerBrowserDownloadHandlers()
   createMainWindow()

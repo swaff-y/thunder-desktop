@@ -32,12 +32,14 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
   const [initial, setInitial] = useState<FormState>(EMPTY_FORM);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [urlError, setUrlError] = useState<string>("");
+  const [folderError, setFolderError] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string>("");
 
   useEffect(() => {
     if (!show) return;
     setUrlError("");
+    setFolderError("");
     setNotice("");
     let cancelled = false;
     (async () => {
@@ -92,22 +94,19 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
   };
 
   const handleChooseFolder = async () => {
-    // TD-026 dialog IPC isn't ready yet; fall back to a prompt so the
-    // field stays editable end-to-end without blocking this ticket.
-    const picker = (window.thunder as unknown as { dialog?: { openDirectory?: () => Promise<string | null> } })
-      .dialog?.openDirectory;
-    if (typeof picker === "function") {
-      try {
-        const picked = await picker();
-        if (picked) setForm((f) => ({ ...f, downloadFolder: picked }));
-      } catch {
-        // ignore
+    setFolderError("");
+    try {
+      const result = await window.thunder.dialog.openDirectory();
+      if (result.canceled) return;
+      if (result.error === "not-writable") {
+        setFolderError("That folder isn't writable. Pick another.");
+        return;
       }
-      return;
-    }
-    const entered = window.prompt("Download folder path", form.downloadFolder);
-    if (entered && entered.length > 0) {
-      setForm((f) => ({ ...f, downloadFolder: entered }));
+      if (result.path) {
+        setForm((f) => ({ ...f, downloadFolder: result.path as string }));
+      }
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "Failed to open folder picker.");
     }
   };
 
@@ -140,11 +139,19 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
           <Form.Group className="mb-3">
             <Form.Label>Download Folder</Form.Label>
             <div className="settings-folder-row">
-              <Form.Control type="text" value={form.downloadFolder} readOnly />
+              <Form.Control
+                type="text"
+                value={form.downloadFolder}
+                readOnly
+                isInvalid={Boolean(folderError)}
+              />
               <Button variant="secondary" onClick={handleChooseFolder} type="button">
                 Choose…
               </Button>
             </div>
+            {folderError && (
+              <Form.Text className="settings-folder-error">{folderError}</Form.Text>
+            )}
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -176,6 +183,9 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
         }
         .settings-folder-row .form-control {
           flex: 1;
+        }
+        .settings-folder-error {
+          color: var(--bs-danger, #dc3545);
         }
         .settings-notice {
           background: rgba(59, 130, 246, 0.12);

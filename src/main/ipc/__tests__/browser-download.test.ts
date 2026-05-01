@@ -283,7 +283,7 @@ describe('browser-download IPC (TD-024)', () => {
       assetUrl: 'https://x/c.mp4',
       suggestedFilename: 'c.mp4'
     })
-    const item = makeFakeItem('https://x/c.mp4')
+    const item = makeFakeItem('https://x/c.mp4', 1000)
     mockSession.emit('will-download', {}, item)
     item.emit('done', {}, 'completed')
 
@@ -296,6 +296,51 @@ describe('browser-download IPC (TD-024)', () => {
     await callShowInFolder({ id })
     expect(showItemInFolderSpy).toHaveBeenCalledTimes(1)
     expect(showItemInFolderSpy).toHaveBeenCalledWith(item.getSavePath())
+  })
+
+  it('emits a final progress event before complete on done(completed)', async () => {
+    // Regression: the 250ms progress throttle suppresses the last
+    // 'updated' for fast downloads, so the renderer's last-known
+    // progress is `receivedBytes=0`. The done(completed) handler
+    // must push one final progress with the real counts so the
+    // progress bar lands at 100% (and not pinned at 0%).
+    const { id } = await callStart({
+      assetUrl: 'https://x/fast.mp4',
+      suggestedFilename: 'fast.mp4'
+    })
+    const item = makeFakeItem('https://x/fast.mp4', 1000)
+    mockSession.emit('will-download', {}, item)
+    item.__setBytes(1000, 1000)
+    item.emit('done', {}, 'completed')
+
+    const progressCalls = sendSpy.mock.calls.filter(
+      (c) => c[0] === THUNDER_IPC_CHANNELS.browserDownloadProgress
+    )
+    expect(progressCalls).toHaveLength(1)
+    expect(progressCalls[0][1]).toMatchObject({
+      id,
+      receivedBytes: 1000,
+      totalBytes: 1000,
+      state: 'progressing'
+    })
+
+    // The final progress must precede the complete fan-out so the
+    // renderer applies bytes before flipping state to 'completed'.
+    const channelOrder = sendSpy.mock.calls.map((c) => c[0])
+    expect(channelOrder.indexOf(THUNDER_IPC_CHANNELS.browserDownloadProgress)).toBeLessThan(
+      channelOrder.indexOf(THUNDER_IPC_CHANNELS.browserDownloadComplete)
+    )
+  })
+
+  it('does not emit a final progress event on done(cancelled or interrupted)', async () => {
+    await callStart({ assetUrl: 'https://x/c.mp4', suggestedFilename: 'c.mp4' })
+    const item = makeFakeItem('https://x/c.mp4')
+    mockSession.emit('will-download', {}, item)
+    item.emit('done', {}, 'cancelled')
+    const progressCalls = sendSpy.mock.calls.filter(
+      (c) => c[0] === THUNDER_IPC_CHANNELS.browserDownloadProgress
+    )
+    expect(progressCalls).toHaveLength(0)
   })
 
   // ─── done: cancelled ──────────────────────────────────────────────

@@ -23,7 +23,7 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import type { DownloadItem, Event, Session } from 'electron'
 import { mkdirSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
 import { DEFAULT_API_URL, type ThunderSettings } from '../../shared/settings'
@@ -37,9 +37,24 @@ import { getSetting } from './settings-io'
 // information.
 const PROGRESS_THROTTLE_MS = 250
 
+// If `will-download` hasn't fired this long after `downloadURL`, the
+// request almost certainly failed pre-headers (DNS, TCP reset, TLS
+// error). Prune the queue entry so a long-running session doesn't
+// accumulate orphaned `PendingStart`s. Generous enough to tolerate a
+// slow proxy without false-positive cleanup.
+const WILL_DOWNLOAD_TIMEOUT_MS = 30_000
+
+// Soft cap on the savePath cache. `show-in-folder` needs savePath
+// retained past `done`, but unbounded retention turns the map into a
+// slow leak across long sessions with heavy download history. FIFO
+// eviction is sufficient — older completed downloads drop out of the
+// renderer's UI list anyway.
+const SAVE_PATH_CACHE_MAX = 256
+
 interface PendingStart {
   id: string
   targetPath: string
+  timeoutHandle: NodeJS.Timeout
 }
 
 interface DownloadProgressPayload {
@@ -100,6 +115,18 @@ export function registerBrowserDownloadHandlers(): void {
   const savePathById = new Map<string, string>()
   const lastProgressAt = new Map<string, number>()
 
+  function rememberSavePath(id: string, path: string): void {
+    // Insertion-order Map: re-setting an existing key keeps its
+    // original position, but we want completed downloads to refresh
+    // their freshness — delete-then-set so eviction skips them.
+    savePathById.delete(id)
+    savePathById.set(id, path)
+    if (savePathById.size > SAVE_PATH_CACHE_MAX) {
+      const oldest = savePathById.keys().next().value
+      if (oldest !== undefined) savePathById.delete(oldest)
+    }
+  }
+
   sess.on('will-download', (_event: Event, item: DownloadItem) => {
     const url = item.getURL()
     const queue = pendingByUrl.get(url)
@@ -107,10 +134,11 @@ export function registerBrowserDownloadHandlers(): void {
     const next = queue.shift() as PendingStart
     if (queue.length === 0) pendingByUrl.delete(url)
 
-    const { id, targetPath } = next
+    const { id, targetPath, timeoutHandle } = next
+    clearTimeout(timeoutHandle)
     item.setSavePath(targetPath)
     itemsById.set(id, item)
-    savePathById.set(id, targetPath)
+    rememberSavePath(id, targetPath)
 
     item.on('updated', (_e, state) => {
       const now = Date.now()
@@ -167,13 +195,37 @@ export function registerBrowserDownloadHandlers(): void {
         throw new Error('[browser-download] suggestedFilename must be a non-empty string')
       }
 
+      // `path.join` doesn't block traversal: a malicious or buggy
+      // renderer could send `../../evil.sh` and write outside the
+      // download folder. `basename` strips every path component, so
+      // the resolved file always lands inside `folder`. Reject if the
+      // result is empty (e.g., `/`) — there's nothing safe to write.
+      const safeFilename = basename(suggestedFilename)
+      if (safeFilename.length === 0 || safeFilename === '.' || safeFilename === '..') {
+        throw new Error('[browser-download] suggestedFilename has no usable basename')
+      }
+
       const folder = getSetting(settingsPath(), defaults(), 'downloadFolder')
       mkdirSync(folder, { recursive: true })
-      const targetPath = resolveCollisionSafePath(folder, suggestedFilename)
+      const targetPath = resolveCollisionSafePath(folder, safeFilename)
 
       const id = randomUUID()
       const queue = pendingByUrl.get(assetUrl) ?? []
-      queue.push({ id, targetPath })
+      // Bound the leak if `will-download` never fires (network failed
+      // before headers): drop our queue entry after a timeout so the
+      // map doesn't grow per orphaned start.
+      const timeoutHandle = setTimeout(() => {
+        const q = pendingByUrl.get(assetUrl)
+        if (!q) return
+        const idx = q.findIndex((p) => p.id === id)
+        if (idx === -1) return
+        q.splice(idx, 1)
+        if (q.length === 0) pendingByUrl.delete(assetUrl)
+      }, WILL_DOWNLOAD_TIMEOUT_MS)
+      // Don't keep the event loop alive solely for this cleanup —
+      // app shutdown should still proceed cleanly.
+      timeoutHandle.unref?.()
+      queue.push({ id, targetPath, timeoutHandle })
       pendingByUrl.set(assetUrl, queue)
 
       sess.downloadURL(assetUrl)

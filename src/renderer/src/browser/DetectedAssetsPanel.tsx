@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ThunderAssetDetectedPayload } from '../../../preload/thunder-api'
 import { useDetectedAssets } from './useDetectedAssets'
 import type { BrowserNav } from './useBrowserNav'
@@ -7,8 +7,9 @@ import type { BrowserNav } from './useBrowserNav'
  * TD-023: right-rail listing of video assets the embedded browser has
  * detected on the current page. State, IPC subscription and clear-on-
  * navigate live in {@link useDetectedAssets}; this component is purely
- * presentational. The Download button is a stub — TD-024 wires the
- * download manager and replaces the `console.log`.
+ * presentational. The Download button calls into the TD-024
+ * main-process download manager and tracks per-row in-flight state so
+ * a second click can't double-fire while the first is still going.
  *
  * Drawer behaviour: the panel is collapsible to a narrow rail so the
  * embedded webview gets the full window width when the user doesn't
@@ -269,10 +270,65 @@ const drawerStyles = `
   }
 `
 
+type DownloadStatus =
+  | { kind: 'idle' }
+  | { kind: 'in-flight'; id: string }
+  | { kind: 'completed'; id: string }
+  | { kind: 'failed'; reason: string }
+
 function AssetRow({ asset }: { asset: ThunderAssetDetectedPayload }): React.JSX.Element {
   const filename = filenameFromUrl(asset.assetUrl)
   const kind = kindLabel(asset.mimeType, asset.assetUrl)
   const size = asset.sizeBytes !== undefined ? formatBytes(asset.sizeBytes) : null
+  const [status, setStatus] = useState<DownloadStatus>({ kind: 'idle' })
+
+  // Subscribe once per row to the main-process complete fan-out and
+  // filter to our id. Subscribing here (rather than at the panel
+  // level) keeps each row's lifecycle self-contained — unmounting the
+  // panel tears the listeners down with the rows.
+  useEffect(() => {
+    if (status.kind !== 'in-flight') return
+    const inFlightId = status.id
+    const unsub = window.thunder.browser.download.onComplete((payload) => {
+      if (payload.id !== inFlightId) return
+      if (payload.state === 'completed') {
+        setStatus({ kind: 'completed', id: inFlightId })
+      } else {
+        setStatus({ kind: 'failed', reason: payload.state })
+      }
+    })
+    return unsub
+  }, [status])
+
+  const handleDownload = async (): Promise<void> => {
+    if (status.kind === 'in-flight') return
+    try {
+      const { id } = await window.thunder.browser.download.start({
+        assetUrl: asset.assetUrl,
+        suggestedFilename: filename
+      })
+      setStatus({ kind: 'in-flight', id })
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'failed'
+      setStatus({ kind: 'failed', reason })
+    }
+  }
+
+  const handleShowInFolder = (): void => {
+    if (status.kind !== 'completed') return
+    void window.thunder.browser.download.showInFolder({ id: status.id })
+  }
+
+  const label =
+    status.kind === 'in-flight'
+      ? 'Downloading…'
+      : status.kind === 'completed'
+        ? 'Show in folder'
+        : status.kind === 'failed'
+          ? 'Retry'
+          : 'Download'
+
+  const onClick = status.kind === 'completed' ? handleShowInFolder : handleDownload
 
   return (
     <div className="detected-asset-row">
@@ -286,12 +342,11 @@ function AssetRow({ asset }: { asset: ThunderAssetDetectedPayload }): React.JSX.
       <button
         type="button"
         className="detected-asset-download"
-        onClick={() => {
-          // TD-024 replaces this with a real download IPC.
-          console.log('would download', asset)
-        }}
+        onClick={onClick}
+        disabled={status.kind === 'in-flight'}
+        title={status.kind === 'failed' ? `Last attempt: ${status.reason}` : undefined}
       >
-        Download
+        {label}
       </button>
     </div>
   )

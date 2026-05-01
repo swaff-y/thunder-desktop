@@ -8,7 +8,8 @@
       "Bash(npm install *)",
       "Read(//Users/kyleswaffield/ruby_sei/halo/**)",
       "Bash(awk *)",
-      "Bash(head *)"
+      "Bash(head *)",
+      "Bash(grep *)"
     ]
   }
 }

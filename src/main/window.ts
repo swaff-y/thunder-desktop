@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import icon from '../../resources/icon.png?asset'
 import { buildMenu } from './menu'
 import {
   clampToVisibleDisplay,
@@ -96,6 +97,9 @@ export function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
+    // macOS reads the dock icon from the bundled .icns and ignores
+    // this; Linux/Windows rely on it for the taskbar/window icon.
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

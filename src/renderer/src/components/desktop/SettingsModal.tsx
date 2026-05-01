@@ -98,13 +98,11 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
     try {
       const result = await window.thunder.dialog.openDirectory();
       if (result.canceled) return;
-      if (result.error === "not-writable") {
+      if ("error" in result) {
         setFolderError("That folder isn't writable. Pick another.");
         return;
       }
-      if (result.path) {
-        setForm((f) => ({ ...f, downloadFolder: result.path as string }));
-      }
+      setForm((f) => ({ ...f, downloadFolder: result.path }));
     } catch (err) {
       setFolderError(err instanceof Error ? err.message : "Failed to open folder picker.");
     }
@@ -148,10 +146,10 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
               <Button variant="secondary" onClick={handleChooseFolder} type="button">
                 Choose…
               </Button>
+              {folderError && (
+                <Form.Control.Feedback type="invalid">{folderError}</Form.Control.Feedback>
+              )}
             </div>
-            {folderError && (
-              <Form.Text className="settings-folder-error">{folderError}</Form.Text>
-            )}
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -184,8 +182,11 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
         .settings-folder-row .form-control {
           flex: 1;
         }
-        .settings-folder-error {
-          color: var(--bs-danger, #dc3545);
+        .settings-folder-row .invalid-feedback {
+          /* Force the feedback element onto its own row beneath the
+             input + button rather than wedging between them in the
+             flex layout. */
+          flex-basis: 100%;
         }
         .settings-notice {
           background: rgba(59, 130, 246, 0.12);

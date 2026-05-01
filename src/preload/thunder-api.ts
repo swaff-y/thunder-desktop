@@ -171,17 +171,19 @@ export interface ThunderDownloadCompletePayload {
 
 /**
  * TD-026: result of `window.thunder.dialog.openDirectory()`.
- * - `canceled: true` — user dismissed the picker; settings unchanged.
- * - `error: 'not-writable'` — the chosen folder failed the writability
- *   probe (e.g., `/System`); the renderer should surface this and
- *   refuse to persist the value.
- * - `path` — the chosen, verified-writable absolute path.
+ * Discriminated union so callers don't need a cast to use `path`:
+ * the only variant carrying `path` is the success case.
+ *
+ * - `{ canceled: true }` — user dismissed the picker; settings unchanged.
+ * - `{ canceled: false, error: 'not-writable' }` — the chosen folder
+ *   failed the writability probe (e.g., `/System`); renderer should
+ *   surface this and refuse to persist the value.
+ * - `{ canceled: false, path }` — verified-writable absolute path.
  */
-export interface ThunderOpenDirectoryResult {
-  canceled: boolean
-  path?: string
-  error?: 'not-writable'
-}
+export type ThunderOpenDirectoryResult =
+  | { canceled: true }
+  | { canceled: false; error: 'not-writable' }
+  | { canceled: false; path: string }
 
 /**
  * Typed IPC surface for `window.thunder`.

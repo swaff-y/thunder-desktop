@@ -14,13 +14,10 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
-
-export interface OpenDirectoryResult {
-  canceled: boolean
-  path?: string
-  error?: 'not-writable'
-}
+import {
+  THUNDER_IPC_CHANNELS,
+  type ThunderOpenDirectoryResult
+} from '../../preload/thunder-api'
 
 async function isDirectoryWritable(dirPath: string): Promise<boolean> {
   // `fs.access(.., W_OK)` is unreliable on macOS for ACL-protected
@@ -28,19 +25,29 @@ async function isDirectoryWritable(dirPath: string): Promise<boolean> {
   // an actual write fails. Probe with an actual create+unlink so we
   // reject those folders honestly.
   const probe = join(dirPath, `.thunder-write-probe-${randomBytes(6).toString('hex')}`)
+  let written = false
   try {
     await fs.writeFile(probe, '')
-    await fs.unlink(probe)
+    written = true
     return true
   } catch {
     return false
+  } finally {
+    // Unconditional cleanup: if `writeFile` succeeded but a later
+    // step (or this function's caller) throws, we must still remove
+    // the probe file so it doesn't litter the user's folder.
+    if (written) {
+      await fs.unlink(probe).catch(() => {
+        /* probe file already gone or permission flipped — nothing to do */
+      })
+    }
   }
 }
 
 export function registerDialogHandlers(): void {
   ipcMain.handle(
     THUNDER_IPC_CHANNELS.dialogOpenDirectory,
-    async (event): Promise<OpenDirectoryResult> => {
+    async (event): Promise<ThunderOpenDirectoryResult> => {
       const window = BrowserWindow.fromWebContents(event.sender)
       const result = window
         ? await dialog.showOpenDialog(window, {

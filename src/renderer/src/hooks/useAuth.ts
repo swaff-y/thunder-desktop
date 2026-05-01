@@ -10,7 +10,6 @@ import { jwtDecode } from "jwt-decode";
 import { login as apiLogin } from "../api/halo";
 import { reauthenticate } from "../api/auth";
 import { setCachedCreds, resetClientGuards } from "../api/client";
-import { clearImageCache } from "../utils/imageCache";
 import React from "react";
 
 interface JwtPayload {
@@ -175,7 +174,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCachedCreds(null);
     resetClientGuards();
     setState(EMPTY_STATE);
-    void clearImageCache().catch(() => {});
   }, []);
 
   // Re-check token validity on window focus. If the JWT has expired,

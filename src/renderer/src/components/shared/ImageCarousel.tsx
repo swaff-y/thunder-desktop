@@ -1,34 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import type { RecordImage } from "../../types";
-import { useImage } from "../../hooks/useImage";
-import { buildImageCacheKey } from "../../utils/imageCacheKey";
 
 interface ImageCarouselProps {
   images: RecordImage[];
   height?: number | string;
 }
 
-// Always-on cache path. Mounted only when a stable cache key exists.
-function CachedCarouselImage({
-  cacheKey,
-  url,
-  isActive,
-}: {
-  cacheKey: string;
-  url: string;
-  isActive: boolean;
-}) {
-  const src = useImage(cacheKey, url);
-  const className = `carousel-image ${isActive ? "active" : ""}`;
-  // The .carousel-image class already handles absolute positioning + opacity
-  // transitions for both <img> and <div>, so the loading div drops cleanly into
-  // the same slot.
-  if (!src) return <div className={className} aria-hidden="true" />;
-  return <img src={src} alt="" className={className} />;
-}
-
-// Picks between cached and direct rendering. Falls through to a plain <img>
-// when imageKey is missing.
 function CarouselImage({
   image,
   isActive,
@@ -36,16 +13,6 @@ function CarouselImage({
   image: RecordImage;
   isActive: boolean;
 }) {
-  const cacheKey = buildImageCacheKey(image);
-  if (cacheKey) {
-    return (
-      <CachedCarouselImage
-        cacheKey={cacheKey}
-        url={image.url}
-        isActive={isActive}
-      />
-    );
-  }
   return (
     <img
       src={image.url}

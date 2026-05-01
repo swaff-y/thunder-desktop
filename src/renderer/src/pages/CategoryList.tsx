@@ -4,45 +4,12 @@ import { useParams } from "react-router-dom";
 import { Row, Col } from "react-bootstrap";
 import { useCategoryList } from "../hooks/useCategories";
 import { useListFilter } from "../hooks/useListFilter";
-import { useImage } from "../hooks/useImage";
-import { buildImageCacheKey } from "../utils/imageCacheKey";
 import { getCategoryConfig } from "../types";
-import type { CategoryItem } from "../types";
 import { trackEntityClick } from "../api/halo";
 import FilterBar from "../components/shared/FilterBar";
 import LoadMore from "../components/shared/LoadMore";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
-
-// Always-on cache path. Mounted only when a stable cache key exists.
-function CachedCategoryImage({
-  cacheKey,
-  url,
-  alt,
-}: {
-  cacheKey: string;
-  url: string;
-  alt: string;
-}) {
-  const src = useImage(cacheKey, url);
-  // Loading: render an empty same-dimensions div so the parent's
-  // background-coloured slot stays in place (no layout shift).
-  if (!src) return <div className="dlc-image-loading" aria-hidden="true" />;
-  return <img src={src} alt={alt} />;
-}
-
-// Picks between cached and direct rendering. Falls through to a plain <img>
-// when the BE response did not include imageKey, so the component still works
-// against any endpoint that hasn't been HALO-124-updated yet.
-function CategoryImage({ item }: { item: CategoryItem }) {
-  const cacheKey = buildImageCacheKey(item);
-  if (cacheKey) {
-    return (
-      <CachedCategoryImage cacheKey={cacheKey} url={item.url} alt={item.name} />
-    );
-  }
-  return <img src={item.url} alt={item.name} />;
-}
 
 export default function CategoryList() {
   const { category } = useParams<{ category: string }>();
@@ -130,7 +97,7 @@ export default function CategoryList() {
             >
               <div className="dlc-image">
                 {item.status === "processed" && item.url ? (
-                  <CategoryImage item={item} />
+                  <img src={item.url} alt={item.name} />
                 ) : (
                   <div className="dlc-placeholder">Processing...</div>
                 )}

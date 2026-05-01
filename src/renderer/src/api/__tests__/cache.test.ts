@@ -4,10 +4,12 @@ import { QueryClient } from '@tanstack/react-query'
 import { PERSIST_KEY, cacheBuster, cacheMaxAge, createPersister, queryClient } from '../cache'
 
 describe('cache', () => {
-  it('queryClient uses web-thunder defaults', () => {
+  it('queryClient gcTime stays under presigned-URL TTL', () => {
     const opts = queryClient.getDefaultOptions().queries!
     expect(opts.staleTime).toBe(5 * 60 * 1000)
-    expect(opts.gcTime).toBe(15 * 60 * 1000)
+    // gcTime must be < the 15-min Halo presigned-URL TTL so cached
+    // responses don't outlive their embedded image URLs (TD-034).
+    expect(opts.gcTime).toBe(10 * 60 * 1000)
     expect(opts.refetchOnWindowFocus).toBe(true)
   })
 
@@ -15,8 +17,8 @@ describe('cache', () => {
     expect(cacheBuster).toBe('test')
   })
 
-  it('cacheMaxAge aligns with gcTime', () => {
-    expect(cacheMaxAge).toBe(15 * 60 * 1000)
+  it('cacheMaxAge aligns with gcTime and stays under URL TTL', () => {
+    expect(cacheMaxAge).toBe(10 * 60 * 1000)
   })
 
   it('persister writes hydrated cache through stub key-val storage', async () => {

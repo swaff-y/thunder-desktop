@@ -56,3 +56,8 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 ## Phase 7 — Browser hardening
 
 - [TD-031](TD-031-safe-browsing.md) — Browser tab — Safe Browsing URL filtering
+
+## Bugs / polish
+
+- [TD-033](TD-033-settings-url-trim.md) — Settings: trim whitespace from API URL
+- [TD-034](TD-034-actor-card-images.md) — Fix missing images on actor cards

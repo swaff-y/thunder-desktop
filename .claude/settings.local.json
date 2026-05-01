@@ -6,7 +6,10 @@
       "Bash(npm test *)",
       "Read(//Users/kyleswaffield/ruby_sei/web-thunder/src/**)",
       "Bash(npm install *)",
-      "Read(//Users/kyleswaffield/ruby_sei/halo/**)"
+      "Read(//Users/kyleswaffield/ruby_sei/halo/**)",
+      "Bash(awk *)",
+      "Bash(head *)",
+      "Bash(grep *)"
     ]
   }
 }

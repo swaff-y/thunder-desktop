@@ -3,6 +3,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
+import { registerBrowserDownloadHandlers } from './ipc/browser-download'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
 
@@ -17,6 +18,7 @@ app.whenReady().then(() => {
   registerAuthHandlers()
   registerShellHandlers()
   registerBrowserDetectHandlers()
+  registerBrowserDownloadHandlers()
   createMainWindow()
 
   app.on('activate', () => {

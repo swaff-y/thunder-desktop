@@ -58,7 +58,20 @@ export const THUNDER_IPC_CHANNELS = {
    * Handlers in `main/ipc/browser-detect.ts`.
    */
   browserAssetDetected: 'thunder:browser:asset-detected',
-  browserAssetsGetCurrent: 'thunder:browser:assets:get-current'
+  browserAssetsGetCurrent: 'thunder:browser:assets:get-current',
+
+  /**
+   * TD-024: browser-tab download manager. `start` / `cancel` /
+   * `showInFolder` are renderer → main invokes; `progress` /
+   * `complete` are one-way main → renderer pushes (mirroring the
+   * halo-desktop updater fan-out). Handlers in
+   * `main/ipc/browser-download.ts`.
+   */
+  browserDownloadStart: 'thunder:browser:download:start',
+  browserDownloadCancel: 'thunder:browser:download:cancel',
+  browserDownloadShowInFolder: 'thunder:browser:download:show-in-folder',
+  browserDownloadProgress: 'thunder:browser:download:progress',
+  browserDownloadComplete: 'thunder:browser:download:complete'
 } as const
 
 /**
@@ -80,7 +93,10 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
   THUNDER_IPC_CHANNELS.shellOpenExternal,
-  THUNDER_IPC_CHANNELS.browserAssetsGetCurrent
+  THUNDER_IPC_CHANNELS.browserAssetsGetCurrent,
+  THUNDER_IPC_CHANNELS.browserDownloadStart,
+  THUNDER_IPC_CHANNELS.browserDownloadCancel,
+  THUNDER_IPC_CHANNELS.browserDownloadShowInFolder
 ]
 
 /**
@@ -123,6 +139,24 @@ export interface ThunderAssetDetectedPayload {
 }
 
 /**
+ * TD-024: payloads emitted by the main-process download manager.
+ * `progress` is throttled to ≤4 events/sec per item; `complete` fires
+ * exactly once per started download (regardless of outcome).
+ */
+export interface ThunderDownloadProgressPayload {
+  id: string
+  receivedBytes: number
+  totalBytes: number
+  state: 'progressing' | 'interrupted'
+}
+
+export interface ThunderDownloadCompletePayload {
+  id: string
+  state: 'completed' | 'cancelled' | 'interrupted'
+  savePath: string
+}
+
+/**
  * Typed IPC surface for `window.thunder`.
  */
 export interface ThunderApi {
@@ -154,6 +188,19 @@ export interface ThunderApi {
      * avoid showing an empty list while waiting for the next event.
      */
     getCurrentAssets: (webContentsId: number) => Promise<ThunderAssetDetectedPayload[]>
+    /**
+     * TD-024: download manager for detected assets. `start` returns
+     * the id immediately (the download is in flight); progress and
+     * completion arrive via the `onProgress` / `onComplete`
+     * subscriptions, both of which return an unsubscribe function.
+     */
+    download: {
+      start: (args: { assetUrl: string; suggestedFilename: string }) => Promise<{ id: string }>
+      cancel: (args: { id: string }) => Promise<void>
+      showInFolder: (args: { id: string }) => Promise<void>
+      onProgress: (callback: (payload: ThunderDownloadProgressPayload) => void) => () => void
+      onComplete: (callback: (payload: ThunderDownloadCompletePayload) => void) => () => void
+    }
   }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
@@ -191,7 +238,29 @@ export const thunderApi: ThunderApi = {
       }
     },
     getCurrentAssets: (webContentsId) =>
-      ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserAssetsGetCurrent, webContentsId)
+      ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserAssetsGetCurrent, webContentsId),
+    download: {
+      start: (args) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserDownloadStart, args),
+      cancel: (args) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserDownloadCancel, args),
+      showInFolder: (args) =>
+        ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserDownloadShowInFolder, args),
+      onProgress: (callback) => {
+        const handler = (_event: unknown, payload: ThunderDownloadProgressPayload): void =>
+          callback(payload)
+        ipcRenderer.on(THUNDER_IPC_CHANNELS.browserDownloadProgress, handler)
+        return (): void => {
+          ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.browserDownloadProgress, handler)
+        }
+      },
+      onComplete: (callback) => {
+        const handler = (_event: unknown, payload: ThunderDownloadCompletePayload): void =>
+          callback(payload)
+        ipcRenderer.on(THUNDER_IPC_CHANNELS.browserDownloadComplete, handler)
+        return (): void => {
+          ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.browserDownloadComplete, handler)
+        }
+      }
+    }
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

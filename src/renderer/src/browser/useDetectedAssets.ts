@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ThunderAssetDetectedPayload } from '../../../preload/thunder-api'
 import type { BrowserNav } from './useBrowserNav'
 
@@ -26,12 +26,25 @@ import type { BrowserNav } from './useBrowserNav'
  * would trip. Main clears its per-webContents state on the same
  * `did-navigate`, so the seed-effect's `getCurrentAssets` call after a
  * navigation returns `[]` until new responses land.
+ *
+ * Manual controls:
+ *   - `clear` empties the displayed list. Main-process state is left
+ *     intact, so subsequent push events still arrive normally.
+ *   - `refresh` re-pulls the main-process snapshot for the current
+ *     `webContentsId` and replaces local state with it.
  */
 
-export function useDetectedAssets(nav: BrowserNav): ThunderAssetDetectedPayload[] {
+export interface DetectedAssets {
+  assets: ThunderAssetDetectedPayload[]
+  clear: () => void
+  refresh: () => void
+}
+
+export function useDetectedAssets(nav: BrowserNav): DetectedAssets {
   const { url, webContentsId } = nav
   const [assets, setAssets] = useState<ThunderAssetDetectedPayload[]>([])
   const [trackedUrl, setTrackedUrl] = useState(url)
+  const [seedNonce, setSeedNonce] = useState(0)
   if (url !== trackedUrl) {
     setTrackedUrl(url)
     setAssets([])
@@ -57,7 +70,7 @@ export function useDetectedAssets(nav: BrowserNav): ThunderAssetDetectedPayload[
     return () => {
       cancelled = true
     }
-  }, [url, webContentsId])
+  }, [url, webContentsId, seedNonce])
 
   useEffect(() => {
     // TD-024: subscription is partition-wide, not scoped to this
@@ -76,5 +89,13 @@ export function useDetectedAssets(nav: BrowserNav): ThunderAssetDetectedPayload[
     return unsubscribe
   }, [])
 
-  return assets
+  const clear = useCallback(() => {
+    setAssets([])
+  }, [])
+
+  const refresh = useCallback(() => {
+    setSeedNonce((n) => n + 1)
+  }, [])
+
+  return { assets, clear, refresh }
 }

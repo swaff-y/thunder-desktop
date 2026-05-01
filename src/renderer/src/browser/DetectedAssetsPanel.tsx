@@ -112,7 +112,7 @@ export default function DetectedAssetsPanel({
           margin-top: var(--space-xs);
           padding: 4px 12px;
           background: var(--color-accent);
-          color: white;
+          color: var(--color-text-on-accent);
           border: none;
           border-radius: var(--radius-sm);
           font-size: var(--text-caption);
@@ -185,7 +185,7 @@ const KIND_BY_MIME: Record<string, string> = {
 }
 
 function kindLabel(mimeType: string, assetUrl: string): string {
-  const mime = mimeType.toLowerCase().split(';')[0]?.trim() ?? ''
+  const mime = mimeType.toLowerCase().split(';')[0].trim()
   if (KIND_BY_MIME[mime]) return KIND_BY_MIME[mime]
   // Fallback: extension lookup for servers that send a generic
   // `application/octet-stream` for HLS/DASH responses.

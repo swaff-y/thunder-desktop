@@ -18,33 +18,34 @@ import type { BrowserNav } from './useBrowserNav'
  *      a snapshot + a push for the same asset would otherwise double-up
  *      on the seed/event boundary).
  *
- * Navigation handling: we key the seed effect on `nav.url`, which
- * `useBrowserNav` updates on `did-navigate`. The main process clears
- * its per-webContents state on the same event, so a fresh
- * `getCurrentAssets` after a navigation returns `[]` until the new
- * page's responses land.
+ * Navigation handling: we mirror `nav.url` into local state and reset
+ * the list during render when it changes — the React-recommended
+ * pattern for "reset state when a prop changes". This is synchronous
+ * (no flicker of stale assets) and bypasses the
+ * `react-hooks/set-state-in-effect` lint that a clear-inside-effect
+ * would trip. Main clears its per-webContents state on the same
+ * `did-navigate`, so the seed-effect's `getCurrentAssets` call after a
+ * navigation returns `[]` until new responses land.
  */
 
 export function useDetectedAssets(nav: BrowserNav): ThunderAssetDetectedPayload[] {
   const { url, webContentsId } = nav
   const [assets, setAssets] = useState<ThunderAssetDetectedPayload[]>([])
+  const [trackedUrl, setTrackedUrl] = useState(url)
+  if (url !== trackedUrl) {
+    setTrackedUrl(url)
+    setAssets([])
+  }
 
   useEffect(() => {
+    if (webContentsId === null) return
+    const browser = window.thunder?.browser
+    if (!browser) return
     let cancelled = false
-    const seed = async (): Promise<void> => {
-      // Clear inside the async path rather than synchronously up-front:
-      // the `react-hooks/set-state-in-effect` lint flags a sync setState
-      // here, and the user-visible difference (one extra microtask) is
-      // immaterial — the list is empty between navigation and the next
-      // detection event regardless.
-      if (cancelled) return
-      if (webContentsId === null) {
-        setAssets([])
-        return
-      }
+    void (async (): Promise<void> => {
       let current: ThunderAssetDetectedPayload[] | undefined
       try {
-        current = await window.thunder?.browser.getCurrentAssets(webContentsId)
+        current = await browser.getCurrentAssets(webContentsId)
       } catch {
         // Snapshot failure isn't fatal — push events will still populate
         // the list as new responses land.
@@ -52,23 +53,27 @@ export function useDetectedAssets(nav: BrowserNav): ThunderAssetDetectedPayload[
       if (cancelled) return
       // Newest at top — main returns insertion order, so reverse.
       setAssets(current ? [...current].reverse() : [])
-    }
-    void seed()
+    })()
     return () => {
       cancelled = true
     }
   }, [url, webContentsId])
 
   useEffect(() => {
-    const unsubscribe = window.thunder?.browser.onAssetDetected((payload) => {
+    // TD-024: subscription is partition-wide, not scoped to this
+    // webview's `webContentsId`. Single-webview today so it's fine, but
+    // when the download manager lands and routing needs to know which
+    // webview originated an asset, the IPC payload will need to carry
+    // `webContentsId` and this filter against `nav.webContentsId`.
+    const browser = window.thunder?.browser
+    if (!browser) return
+    const unsubscribe = browser.onAssetDetected((payload) => {
       setAssets((prev) => {
         if (prev.some((a) => a.id === payload.id)) return prev
         return [payload, ...prev]
       })
     })
-    return () => {
-      unsubscribe?.()
-    }
+    return unsubscribe
   }, [])
 
   return assets

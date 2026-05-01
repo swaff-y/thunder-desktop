@@ -2,24 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoListOutline, IoCloseCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
-import { useImage } from "../../hooks/useImage";
-import { buildImageCacheKey } from "../../utils/imageCacheKey";
 import type { RecordImage } from "../../types";
 
-// Always-on cache path. Mounted only when a stable cache key exists.
-function CachedThumbImage({ cacheKey, url }: { cacheKey: string; url: string }) {
-  const src = useImage(cacheKey, url);
-  if (!src) return <div className="cart-item-thumb-loading" aria-hidden="true" />;
-  return <img src={src} alt="" />;
-}
-
-// Picks between cached and direct rendering. Falls through to a plain <img>
-// when imageKey is missing.
 function ThumbImage({ image }: { image: RecordImage }) {
-  const cacheKey = buildImageCacheKey(image);
-  if (cacheKey) {
-    return <CachedThumbImage cacheKey={cacheKey} url={image.url} />;
-  }
   return <img src={image.url} alt="" />;
 }
 

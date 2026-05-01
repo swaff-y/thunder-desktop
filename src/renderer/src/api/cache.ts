@@ -7,10 +7,11 @@ const TEN_MINUTES = 10 * 60 * 1000
 
 // Halo presigned S3 URLs embedded in BE responses (record/category image
 // `url`s) expire after 15 min. Persisted queries can otherwise outlive
-// their URLs — on hydrate the cached response renders, useImage fetches
-// the URL, S3 returns 403 "Request has expired" (TD-034). Keeping
-// gcTime safely under 15 min rolls the in-memory cache over before URLs
-// go stale; the persister's maxAge below enforces the same on rehydrate.
+// their URLs — on hydrate the cached response renders, the <img>
+// requests the URL, S3 returns 403 "Request has expired" (TD-034).
+// Keeping gcTime safely under 15 min rolls the in-memory cache over
+// before URLs go stale; the persister's maxAge below enforces the same
+// on rehydrate.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

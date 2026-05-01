@@ -3,8 +3,6 @@ import { Card } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { IoAddCircleOutline, IoRemoveCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
-import { useImage } from "../../hooks/useImage";
-import { buildImageCacheKey } from "../../utils/imageCacheKey";
 import type { ContentRecord, RecordImage } from "../../types";
 
 interface DesktopCardProps {
@@ -19,44 +17,7 @@ interface CardImageProps {
   isActive: boolean;
 }
 
-// Always-on cache path. Only mounted when we have a stable cache key,
-// so the hook is never invoked with an empty id.
-function CachedCardImage({
-  cacheKey,
-  url,
-  alt,
-  isActive,
-}: {
-  cacheKey: string;
-  url: string;
-  alt: string;
-  isActive: boolean;
-}) {
-  const src = useImage(cacheKey, url);
-  const className = `carousel-img ${isActive ? "active" : ""}`;
-  // While the blob is loading, render an empty div in the same absolute slot
-  // so we don't get a broken-image icon. The parent already has the placeholder
-  // background (var(--color-bg-alt)) so there's no layout shift.
-  if (!src) return <div className={className} aria-hidden="true" />;
-  return <img src={src} alt={alt} className={className} />;
-}
-
-// Picks between the cached path and a direct presigned-URL fallback.
-// Fallback is used when the BE response did not include imageKey — keeps the
-// component working against pre-HALO-124 responses or any endpoint that hasn't
-// been updated yet.
 function CardImage({ image, alt, isActive }: CardImageProps) {
-  const cacheKey = buildImageCacheKey(image);
-  if (cacheKey) {
-    return (
-      <CachedCardImage
-        cacheKey={cacheKey}
-        url={image.url}
-        alt={alt}
-        isActive={isActive}
-      />
-    );
-  }
   return (
     <img
       src={image.url}

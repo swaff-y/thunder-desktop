@@ -10,12 +10,29 @@
  */
 
 /**
- * Default Halo dev URL. Single source of truth — main writes it into
- * the settings file on first launch, renderer falls back to it when
- * IPC is unavailable (vitest, dev tools harness, etc.). Keeping this
- * literal in two places used to drift; do not duplicate it.
+ * Default Halo prod URL (TD-029 cutover). Single source of truth —
+ * main writes it into the settings file on first launch, renderer
+ * falls back to it when IPC is unavailable (vitest, dev tools
+ * harness, etc.). Keeping this literal in two places used to drift;
+ * do not duplicate it.
  */
 export const DEFAULT_API_URL =
+  'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
+
+/**
+ * TD-029: pre-cutover dev URL, retained only so the one-time
+ * settings migration can identify untouched defaults from prior
+ * versions and rewrite them to the prod URL. Users who explicitly
+ * set their `apiUrl` to anything else (including a custom override
+ * that happens to equal this string) keep their choice — but
+ * matching this exact literal is overwhelmingly likely to be a
+ * never-customised default rather than an intentional override.
+ *
+ * Do not reference this constant from runtime code paths beyond
+ * the migration helper. Once a release or two passes (most users
+ * upgraded), it can be removed.
+ */
+export const LEGACY_DEV_API_URL =
   'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
 
 /**

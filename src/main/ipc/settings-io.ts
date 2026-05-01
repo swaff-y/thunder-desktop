@@ -85,6 +85,34 @@ export function ensureSettingsFile(filePath: string, defaults: ThunderSettings):
   }
 }
 
+/**
+ * TD-029: one-time migration. If the stored `apiUrl` exactly matches
+ * any value in `legacyApiUrls`, rewrite it to `defaults.apiUrl`. Any
+ * other stored value (including custom overrides set via the
+ * Settings modal) is left alone.
+ *
+ * Idempotent: a second run is a no-op because the rewritten value no
+ * longer matches the legacy list. Safe to call on every launch.
+ *
+ * No-ops cleanly when the file is missing or unparseable —
+ * `ensureSettingsFile` handles those cases on the same call site.
+ */
+export function migrateApiUrl(
+  filePath: string,
+  defaults: ThunderSettings,
+  legacyApiUrls: ReadonlyArray<string>
+): void {
+  const parsed = parseFile(filePath)
+  if (!parsed) return
+  if (typeof parsed.apiUrl !== 'string') return
+  if (!legacyApiUrls.includes(parsed.apiUrl)) return
+  // Re-coerce to fill in any other missing fields with current
+  // defaults — a partial file from an older schema version shouldn't
+  // be left half-populated by the rewrite.
+  const next = coerce({ ...parsed, apiUrl: defaults.apiUrl }, defaults)
+  writeSettingsFile(filePath, next)
+}
+
 export function writeSettings(
   filePath: string,
   defaults: ThunderSettings,

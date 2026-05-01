@@ -1,6 +1,6 @@
 {
   "name": "thunder-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desktop view layer for the Halo REST API. Mirrors web-thunder, plus an embedded Browser tab.",
   "main": "./out/main/index.js",
   "author": "swaff-y",

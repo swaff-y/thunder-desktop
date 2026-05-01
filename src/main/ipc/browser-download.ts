@@ -156,6 +156,23 @@ export function registerBrowserDownloadHandlers(): void {
 
     item.once('done', (_e, state) => {
       const savePath = item.getSavePath()
+      // For a successful completion, push one final progress event
+      // with the actual byte counts before the complete fan-out.
+      // The 250ms throttle suppresses `updated` events that arrive
+      // close together — for fast/cached downloads, that means the
+      // first `updated` (typically `receivedBytes=0`, headers-only)
+      // is the only one the renderer ever sees, and `done` arrives
+      // before the next throttle window opens. Without this final
+      // emit, the renderer's progress bar is pinned at 0%.
+      if (state === 'completed') {
+        const finalProgress: DownloadProgressPayload = {
+          id,
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          state: 'progressing'
+        }
+        sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadProgress, finalProgress)
+      }
       // `cancel()` and most interruptions leave a partial file behind;
       // the AC mandates we clean it up so a half-downloaded mp4 doesn't
       // masquerade as a completed asset on disk.

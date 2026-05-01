@@ -5,7 +5,8 @@
       "Bash(npm run *)",
       "Bash(npm test *)",
       "Read(//Users/kyleswaffield/ruby_sei/web-thunder/src/**)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Read(//Users/kyleswaffield/ruby_sei/halo/**)"
     ]
   }
 }

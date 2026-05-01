@@ -3,15 +3,19 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 import { del, get, set } from 'idb-keyval'
 
 const FIVE_MINUTES = 5 * 60 * 1000
-const FIFTEEN_MINUTES = 15 * 60 * 1000
+const TEN_MINUTES = 10 * 60 * 1000
 
-// React Query client with the same defaults web-thunder uses so query
-// behavior is byte-identical across web and desktop.
+// Halo presigned S3 URLs embedded in BE responses (record/category image
+// `url`s) expire after 15 min. Persisted queries can otherwise outlive
+// their URLs — on hydrate the cached response renders, useImage fetches
+// the URL, S3 returns 403 "Request has expired" (TD-034). Keeping
+// gcTime safely under 15 min rolls the in-memory cache over before URLs
+// go stale; the persister's maxAge below enforces the same on rehydrate.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: FIVE_MINUTES,
-      gcTime: FIFTEEN_MINUTES,
+      gcTime: TEN_MINUTES,
       refetchOnWindowFocus: true
     }
   }
@@ -42,6 +46,8 @@ export function createPersister(
 }
 
 export const cacheBuster = __APP_VERSION__
-// Aligns with `gcTime` per TD-008: a hydrated entry past its gc window
-// is functionally stale and would be discarded on observe anyway.
-export const cacheMaxAge = FIFTEEN_MINUTES
+// Aligns with `gcTime`: a hydrated entry past its gc window is
+// functionally stale and would be discarded on observe anyway.
+// Must stay below the 15-min Halo presigned-URL TTL so hydrated
+// responses don't surface expired image URLs (TD-034).
+export const cacheMaxAge = TEN_MINUTES

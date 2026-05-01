@@ -29,6 +29,13 @@ export interface BrowserNav {
   validationError: string | null
   canGoBack: boolean
   canGoForward: boolean
+  /**
+   * `webContents.id` of the guest, available once the webview's
+   * `did-attach` event has fired. `null` before then — TD-023's
+   * detected-assets panel keys its IPC reads on this value, so it must
+   * defer the initial fetch until it's set.
+   */
+  webContentsId: number | null
   goBack: () => void
   goForward: () => void
   reload: () => void
@@ -57,6 +64,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
   const [validationError, setValidationError] = useState<string | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [webContentsId, setWebContentsId] = useState<number | null>(null)
 
   const webviewRef = useRef<WebviewTag | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
@@ -80,7 +88,10 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
         cleanupRef.current = null
       }
       webviewRef.current = el
-      if (!el) return
+      if (!el) {
+        setWebContentsId(null)
+        return
+      }
 
       const onDidStartLoading = (): void => {
         setLoading(true)
@@ -117,6 +128,14 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
         }
         refreshHistoryFlags()
       }
+      const onDidAttach = (): void => {
+        try {
+          setWebContentsId(el.getWebContentsId())
+        } catch {
+          // `getWebContentsId` throws if the guest hasn't attached yet;
+          // `did-attach` is the signal that it has, so this is defensive.
+        }
+      }
       const onNewWindow = (event: Event): void => {
         const e = event as NewWindowEvent
         const target = e.url
@@ -144,6 +163,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
       el.addEventListener('did-finish-load', onDidFinishLoad)
       el.addEventListener('did-navigate', onDidNavigate)
       el.addEventListener('did-navigate-in-page', onDidNavigateInPage)
+      el.addEventListener('did-attach', onDidAttach)
       el.addEventListener('new-window', onNewWindow)
 
       cleanupRef.current = (): void => {
@@ -153,6 +173,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
         el.removeEventListener('did-finish-load', onDidFinishLoad)
         el.removeEventListener('did-navigate', onDidNavigate)
         el.removeEventListener('did-navigate-in-page', onDidNavigateInPage)
+        el.removeEventListener('did-attach', onDidAttach)
         el.removeEventListener('new-window', onNewWindow)
       }
     },
@@ -234,6 +255,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
     validationError,
     canGoBack,
     canGoForward,
+    webContentsId,
     goBack,
     goForward,
     reload,

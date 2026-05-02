@@ -166,10 +166,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    try {
-      await window.thunder?.auth.clear();
-    } catch (error) {
-      console.error("[useAuth] logout failed to clear credentials", error);
+    // TD-035: clear the embedded browser's partition (cookies / storage)
+    // alongside the keychain so the next user can't see the previous
+    // session's data. The webview itself resets on its own — flipping
+    // isAuthenticated unmounts ProtectedDesktopOutlet → DesktopLayout →
+    // BrowserPage → webview, so React state and history are dropped.
+    const results = await Promise.allSettled([
+      window.thunder?.auth.clear(),
+      window.thunder?.browser?.clearSession(),
+    ]);
+    for (const r of results) {
+      if (r.status === "rejected") {
+        console.error("[useAuth] logout cleanup failed", r.reason);
+      }
     }
     setCachedCreds(null);
     resetClientGuards();

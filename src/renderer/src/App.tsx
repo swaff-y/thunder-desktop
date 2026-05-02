@@ -1,6 +1,6 @@
 // HashRouter is used (not BrowserRouter) because the packaged Electron renderer
 // loads from file:// in production, which does not support history-API routing.
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import DesktopLayout from './layouts/DesktopLayout'
 import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
@@ -12,7 +12,6 @@ import CategoryDetail from './pages/CategoryDetail'
 import Watch from './pages/Watch'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
-import Browser from './pages/Browser'
 import LoadingSpinner from './components/shared/LoadingSpinner'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -20,6 +19,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.
   if (isLoading) return <LoadingSpinner fullScreen />
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return <>{children}</>
+}
+
+// TD-035: a single shared DesktopLayout across protected routes keeps
+// the persistent <BrowserPage> mounted on tab switches, which is what
+// preserves the embedded webview's URL, history, and DOM state.
+function ProtectedDesktopOutlet(): React.JSX.Element {
+  return (
+    <ProtectedRoute>
+      <DesktopLayout>
+        <Outlet />
+      </DesktopLayout>
+    </ProtectedRoute>
+  )
 }
 
 function AppRoutes(): React.JSX.Element {
@@ -33,71 +45,21 @@ function AppRoutes(): React.JSX.Element {
           </DesktopLayout>
         }
       />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <Home />
-            </DesktopLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/stats"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <Stats />
-            </DesktopLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/browser"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <Browser />
-            </DesktopLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/watch/:id"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <Watch />
-            </DesktopLayout>
-          </ProtectedRoute>
-        }
-      />
+      <Route element={<ProtectedDesktopOutlet />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/stats" element={<Stats />} />
+        {/* TD-035: BrowserPage is rendered persistently in DesktopLayout;
+            the route exists only so /browser links and sidebar match. */}
+        <Route path="/browser" element={null} />
+        <Route path="/watch/:id" element={<Watch />} />
+        <Route path="/:category" element={<CategoryList />} />
+        <Route path="/:category/:id" element={<CategoryDetail />} />
+      </Route>
       <Route
         path="/multi-watch"
         element={
           <ProtectedRoute>
             <MultiWatch />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/:category"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <CategoryList />
-            </DesktopLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/:category/:id"
-        element={
-          <ProtectedRoute>
-            <DesktopLayout>
-              <CategoryDetail />
-            </DesktopLayout>
           </ProtectedRoute>
         }
       />

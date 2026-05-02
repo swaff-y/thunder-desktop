@@ -1,15 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/kyleswaffield/ruby_sei/halo-desktop/**)",
-      "Bash(npm run *)",
+      "Bash(git mv *)",
+      "Read(//Users/kyleswaffield/ruby_sei/**)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(grep *)",
       "Bash(npm test *)",
-      "Read(//Users/kyleswaffield/ruby_sei/web-thunder/src/**)",
-      "Bash(npm install *)",
-      "Read(//Users/kyleswaffield/ruby_sei/halo/**)",
-      "Bash(awk *)",
-      "Bash(head *)",
-      "Bash(grep *)"
+      "Bash(cp \"/Users/kyleswaffield/transmission/uploads/Screenshot 2026-04-20 at 10.29.49 pm.png\" /tmp/abyss.png)",
+      "Bash(cp \"/Users/kyleswaffield/transmission/uploads/Screenshot 2026-04-20 at 10.25.35 pm.png\" /tmp/dark.png)",
+      "Bash(cp \"/Users/kyleswaffield/transmission/uploads/Screenshot 2026-04-20 at 10.27.59 pm.png\" /tmp/light.png)",
+      "Read(//tmp/**)",
+      "Read(//Users/kyleswaffield/transmission/uploads/**)",
+      "Bash(cp Screenshot*10.29.49*.png /tmp/abyss.png)",
+      "Bash(cp Screenshot*10.25.35*.png /tmp/dark.png)",
+      "Bash(cp Screenshot*10.27.59*.png /tmp/light.png)"
+    ],
+    "additionalDirectories": [
+      "/Users/kyleswaffield/ruby_sei/business-call-api/docs/tickets"
     ]
   }
 }

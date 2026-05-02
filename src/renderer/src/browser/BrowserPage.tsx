@@ -7,12 +7,16 @@ import DownloadsDrawer from './DownloadsDrawer'
 
 const INITIAL_URL = 'about:blank'
 
-export default function BrowserPage(): React.JSX.Element {
+interface BrowserPageProps {
+  visible: boolean
+}
+
+export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.Element {
   const nav = useBrowserNav(INITIAL_URL)
   const downloads = useDownloads()
 
   return (
-    <div className="browser-page">
+    <div className="browser-page" style={{ display: visible ? 'flex' : 'none' }}>
       <BrowserChrome nav={nav} />
       <div className="browser-page-body">
         <EmbeddedWebview nav={nav} initialUrl={INITIAL_URL} />
@@ -22,10 +26,9 @@ export default function BrowserPage(): React.JSX.Element {
 
       <style>{`
         .browser-page {
-          display: flex;
+          flex: 1;
           flex-direction: column;
-          height: 100%;
-          margin: calc(var(--space-lg) * -1);
+          min-height: 0;
         }
         .browser-page-body {
           flex: 1;

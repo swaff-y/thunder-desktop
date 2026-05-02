@@ -74,6 +74,15 @@ export const THUNDER_IPC_CHANNELS = {
   browserDownloadComplete: 'thunder:browser:download:complete',
 
   /**
+   * TD-035: wipe the embedded browser's partition (cookies,
+   * localStorage, session storage, cache) and the in-memory detection
+   * state on logout so a different user's login session can't see the
+   * previous one's pages, sessions, or detections. Handler in
+   * `main/ipc/browser-detect.ts`.
+   */
+  browserSessionClear: 'thunder:browser:session:clear',
+
+  /**
    * TD-026: native dialog bridge. `openDirectory` drives the folder
    * picker behind Settings' "Choose…" button and probes the chosen
    * folder for writability before returning. `showItemInFolder`
@@ -108,6 +117,7 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.browserDownloadStart,
   THUNDER_IPC_CHANNELS.browserDownloadCancel,
   THUNDER_IPC_CHANNELS.browserDownloadShowInFolder,
+  THUNDER_IPC_CHANNELS.browserSessionClear,
   THUNDER_IPC_CHANNELS.dialogOpenDirectory,
   THUNDER_IPC_CHANNELS.dialogShowItemInFolder
 ]
@@ -234,6 +244,13 @@ export interface ThunderApi {
       onProgress: (callback: (payload: ThunderDownloadProgressPayload) => void) => () => void
       onComplete: (callback: (payload: ThunderDownloadCompletePayload) => void) => () => void
     }
+    /**
+     * TD-035: wipe the persistent webview partition (cookies,
+     * localStorage, session storage, cache) and reset in-memory
+     * detection state. Called from `useAuth.logout` so the next user
+     * session can't see the previous session's data.
+     */
+    clearSession: () => Promise<void>
   }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
@@ -298,7 +315,8 @@ export const thunderApi: ThunderApi = {
           ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.browserDownloadComplete, handler)
         }
       }
-    }
+    },
+    clearSession: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserSessionClear)
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

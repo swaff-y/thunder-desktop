@@ -168,4 +168,16 @@ export function registerBrowserDetectHandlers(): void {
       return state ? [...state.assets] : []
     }
   )
+
+  // TD-035: wipe partition storage (cookies, localStorage, cache) and
+  // the in-memory detection map so the next login session can't see
+  // the previous one's pages or assets. Called from `useAuth.logout`
+  // before `setState(EMPTY_STATE)` triggers the webview unmount, so the
+  // partition is cleared while the `<webview>` is still attached —
+  // page JS could in theory write to localStorage in the gap, but the
+  // unmount cancels any further activity within the same render cycle.
+  ipcMain.handle(THUNDER_IPC_CHANNELS.browserSessionClear, async () => {
+    states.clear()
+    await sess.clearStorageData()
+  })
 }

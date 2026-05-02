@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git stash list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run typecheck:node:*)",
+      "Bash(npm run typecheck:web:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run format:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prettier:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(echo:*)",
+      "Edit(**)",
+      "Write(**)",
+      "MultiEdit(**)",
+      "Read(//Users/kyleswaffield/.rqp/reviews/**)",
+      "Bash(npm install *)",
+      "Bash(ls:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/kyleswaffield/ruby_sei/artemis-desktop"
+    ]
+  },
+  "defaultMode": "acceptEdits"
+}

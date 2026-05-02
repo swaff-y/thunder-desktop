@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import Sidebar from "../components/desktop/Sidebar";
 import TopBar from "../components/desktop/TopBar";
+import BrowserPage from "../browser/BrowserPage";
 
 interface DesktopLayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
   const { logout } = useAuth();
   const location = useLocation();
   const isLogin = location.pathname === "/login";
+  const isBrowser = location.pathname === "/browser";
 
   if (isLogin) {
     return <div className="desktop-login-wrapper">{children}</div>;
@@ -21,7 +23,12 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
       <Sidebar />
       <div className="desktop-main">
         <TopBar onLogout={logout} />
-        <div className="desktop-content">{children}</div>
+        {/* TD-035: BrowserPage stays mounted across tab switches; only
+            one of it and .desktop-content fills the column at a time. */}
+        <div className="desktop-content" style={{ display: isBrowser ? "none" : "block" }}>
+          {children}
+        </div>
+        <BrowserPage visible={isBrowser} />
       </div>
 
       <style>{`

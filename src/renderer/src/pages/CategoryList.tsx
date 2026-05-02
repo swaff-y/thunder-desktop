@@ -1,6 +1,6 @@
 // Desktop-only port — web-thunder's mobile branch is intentionally dropped (TD-012).
 import { useEffect, useRef, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Row, Col } from "react-bootstrap";
 import { useCategoryList } from "../hooks/useCategories";
 import { useListFilter } from "../hooks/useListFilter";
@@ -13,6 +13,7 @@ import ErrorState from "../components/shared/ErrorState";
 
 export default function CategoryList() {
   const { category } = useParams<{ category: string }>();
+  const navigate = useNavigate();
   const config = getCategoryConfig(category);
 
   const {
@@ -92,7 +93,7 @@ export default function CategoryList() {
               className="desktop-list-card"
               onClick={() => {
                 trackEntityClick(config!.apiPath, item.id);
-                window.location.href = `/${category}/${item.id}`;
+                navigate(`/${category}/${item.id}`);
               }}
             >
               <div className="dlc-image">

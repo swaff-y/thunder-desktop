@@ -62,3 +62,4 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-033](TD-033-settings-url-trim.md) — Settings: trim whitespace from API URL
 - [TD-034](TD-034-actor-card-images.md) — Fix missing images on actor cards
 - [TD-035](TD-035-browser-tab-persist-session.md) — Browser tab: preserve session across tab switches
+- [TD-036](TD-036-category-card-navigation.md) — Fix category card clicks (freeze in prod, redirect to Home in dev)

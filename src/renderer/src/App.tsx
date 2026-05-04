@@ -10,7 +10,6 @@ import Login from './pages/Login'
 import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
 import CategoryDetail from './pages/CategoryDetail'
-import Watch from './pages/Watch'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import LoadingSpinner from './components/shared/LoadingSpinner'
@@ -52,7 +51,10 @@ function AppRoutes(): React.JSX.Element {
         {/* TD-035: BrowserPage is rendered persistently in DesktopLayout;
             the route exists only so /browser links and sidebar match. */}
         <Route path="/browser" element={null} />
-        <Route path="/watch/:id" element={<Watch />} />
+        {/* TD-038 follow-up: Watch is rendered persistently in DesktopLayout
+            so the <video> element survives tab switches; the route exists
+            only so /watch links match the protected outlet. */}
+        <Route path="/watch/:id" element={null} />
         <Route path="/:category" element={<CategoryList />} />
         <Route path="/:category/:id" element={<CategoryDetail />} />
       </Route>

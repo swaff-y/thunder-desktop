@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { IoHeartOutline, IoHeart } from "react-icons/io5";
 import { useRecord } from "../hooks/useRecord";
@@ -17,11 +17,14 @@ import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
 import BackButton from "../components/shared/BackButton";
 
-export default function Watch() {
-  const { id } = useParams<{ id: string }>();
+interface WatchProps {
+  id: string;
+}
+
+export default function Watch({ id }: WatchProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: record, isLoading, isError, error, refetch } = useRecord(id!);
+  const { data: record, isLoading, isError, error, refetch } = useRecord(id);
   const { resolveWatchBackTarget } = useTabHistory();
   const [liked, setLiked] = useState(false);
   const watchedRef = useRef(false);
@@ -29,7 +32,7 @@ export default function Watch() {
   const handleFirstPlay = useCallback(() => {
     if (watchedRef.current) return;
     watchedRef.current = true;
-    watchRecord(id!).catch(() => {});
+    watchRecord(id).catch(() => {});
   }, [id]);
 
   function handleBack() {
@@ -48,16 +51,16 @@ export default function Watch() {
       </div>
     );
 
-  const authUrl = buildAuthProxyUrl(id!);
+  const authUrl = buildAuthProxyUrl(id);
 
   const handleLike = () => {
     if (liked) return;
     setLiked(true);
-    likeRecord(id!).catch(() => setLiked(false));
+    likeRecord(id).catch(() => setLiked(false));
   };
 
   const handleUpdate = async (body: RecordPatchBody) => {
-    await updateRecord(id!, body);
+    await updateRecord(id, body);
     queryClient.invalidateQueries({ queryKey: ["record", id] });
   };
 

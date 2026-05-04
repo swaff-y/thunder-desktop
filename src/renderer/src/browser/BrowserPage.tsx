@@ -19,7 +19,7 @@ export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.El
     <div className="browser-page" style={{ display: visible ? 'flex' : 'none' }}>
       <BrowserChrome nav={nav} />
       <div className="browser-page-body">
-        <EmbeddedWebview nav={nav} initialUrl={INITIAL_URL} />
+        <EmbeddedWebview nav={nav} initialUrl={INITIAL_URL} visible={visible} />
         <DetectedAssetsPanel nav={nav} onDownload={downloads.start} />
       </div>
       <DownloadsDrawer downloads={downloads} />

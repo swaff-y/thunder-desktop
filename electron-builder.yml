@@ -11,6 +11,11 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # TD-037: ffmpeg-static ships a platform binary that must live on
+  # the real filesystem (not inside app.asar) so child_process.spawn
+  # can exec it. The wrapper rewrites the reported path from
+  # `app.asar/...` to `app.asar.unpacked/...` at runtime.
+  - node_modules/ffmpeg-static/**
 win:
   executableName: thunder-desktop
 nsis:

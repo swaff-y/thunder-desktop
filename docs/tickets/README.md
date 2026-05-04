@@ -63,3 +63,4 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-034](TD-034-actor-card-images.md) — Fix missing images on actor cards
 - [TD-035](TD-035-browser-tab-persist-session.md) — Browser tab: preserve session across tab switches
 - [TD-036](TD-036-category-card-navigation.md) — Fix category card clicks (freeze in prod, redirect to Home in dev)
+- [TD-037](TD-037-hls-download-as-mp4.md) — Browser tab: download HLS (.m3u8) as a single mp4

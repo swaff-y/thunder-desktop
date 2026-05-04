@@ -29,6 +29,16 @@ import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
 import { DEFAULT_API_URL, type ThunderSettings } from '../../shared/settings'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { resolveCollisionSafePath } from './browser-download-path'
+import {
+  buildFfmpegHeadersString,
+  isHlsManifest,
+  rewriteM3u8ToMp4
+} from './browser-download-hls-helpers'
+import {
+  resolveBundledFfmpegPath,
+  startHlsDownload,
+  type HlsDownloadHandle
+} from './browser-download-hls'
 import { getSetting } from './settings-io'
 
 // Throttle progress events: at most one per item per window. The `done`
@@ -109,6 +119,11 @@ export function registerBrowserDownloadHandlers(): void {
   // DownloadItem; show-in-folder reads from `savePathById` instead so
   // it keeps working after completion (when the item is gone).
   const itemsById = new Map<string, DownloadItem>()
+  // TD-037: in-flight HLS remuxes — same lifetime semantics as
+  // `itemsById` but the cancel surface is the `HlsDownloadHandle`.
+  // `savePathById` is shared across both, so show-in-folder doesn't
+  // need to know which transport produced the file.
+  const hlsHandlesById = new Map<string, HlsDownloadHandle>()
   // Retained past completion so `show-in-folder` can resolve a
   // completed download by id. Bounded in practice by the renderer's
   // download-history surface; no eviction in v1.
@@ -127,6 +142,28 @@ export function registerBrowserDownloadHandlers(): void {
     }
   }
 
+  function sendProgress(payload: DownloadProgressPayload, opts: { throttle: boolean }): void {
+    if (opts.throttle) {
+      const now = Date.now()
+      const prev = lastProgressAt.get(payload.id) ?? 0
+      if (now - prev < PROGRESS_THROTTLE_MS) return
+      lastProgressAt.set(payload.id, now)
+    }
+    sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadProgress, payload)
+  }
+
+  function sendComplete(
+    id: string,
+    state: DownloadCompletePayload['state'],
+    savePath: string
+  ): void {
+    // No file on disk → no point keeping its path around for show-in-folder.
+    if (state !== 'completed') savePathById.delete(id)
+    const payload: DownloadCompletePayload = { id, state, savePath }
+    sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadComplete, payload)
+    lastProgressAt.delete(id)
+  }
+
   sess.on('will-download', (_event: Event, item: DownloadItem) => {
     const url = item.getURL()
     const queue = pendingByUrl.get(url)
@@ -141,17 +178,15 @@ export function registerBrowserDownloadHandlers(): void {
     rememberSavePath(id, targetPath)
 
     item.on('updated', (_e, state) => {
-      const now = Date.now()
-      const prev = lastProgressAt.get(id) ?? 0
-      if (now - prev < PROGRESS_THROTTLE_MS) return
-      lastProgressAt.set(id, now)
-      const payload: DownloadProgressPayload = {
-        id,
-        receivedBytes: item.getReceivedBytes(),
-        totalBytes: item.getTotalBytes(),
-        state
-      }
-      sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadProgress, payload)
+      sendProgress(
+        {
+          id,
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          state
+        },
+        { throttle: true }
+      )
     })
 
     item.once('done', (_e, state) => {
@@ -165,13 +200,15 @@ export function registerBrowserDownloadHandlers(): void {
       // before the next throttle window opens. Without this final
       // emit, the renderer's progress bar is pinned at 0%.
       if (state === 'completed') {
-        const finalProgress: DownloadProgressPayload = {
-          id,
-          receivedBytes: item.getReceivedBytes(),
-          totalBytes: item.getTotalBytes(),
-          state: 'progressing'
-        }
-        sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadProgress, finalProgress)
+        sendProgress(
+          {
+            id,
+            receivedBytes: item.getReceivedBytes(),
+            totalBytes: item.getTotalBytes(),
+            state: 'progressing'
+          },
+          { throttle: false }
+        )
       }
       // `cancel()` and most interruptions leave a partial file behind;
       // the AC mandates we clean it up so a half-downloaded mp4 doesn't
@@ -184,14 +221,9 @@ export function registerBrowserDownloadHandlers(): void {
           // landed) or permission-denied — neither is worth surfacing
           // since the user's intent was "stop this download".
         }
-        // No file on disk → no point keeping its path around for
-        // show-in-folder.
-        savePathById.delete(id)
       }
-      const payload: DownloadCompletePayload = { id, state, savePath }
-      sendToFocused(THUNDER_IPC_CHANNELS.browserDownloadComplete, payload)
+      sendComplete(id, state, savePath)
       itemsById.delete(id)
-      lastProgressAt.delete(id)
     })
   })
 
@@ -201,16 +233,36 @@ export function registerBrowserDownloadHandlers(): void {
       if (!args || typeof args !== 'object') {
         throw new Error('[browser-download] start requires { assetUrl, suggestedFilename }')
       }
-      const { assetUrl, suggestedFilename } = args as {
+      const { assetUrl, suggestedFilename, mimeType, referer } = args as {
         assetUrl?: unknown
         suggestedFilename?: unknown
+        mimeType?: unknown
+        referer?: unknown
       }
       if (typeof assetUrl !== 'string' || assetUrl.length === 0) {
         throw new Error('[browser-download] assetUrl must be a non-empty string')
       }
+      // Restrict to web protocols. The URL flows into ffmpeg's `-i`
+      // argument for the HLS branch, where `file://` or `pipe:` would
+      // turn a renderer-provided string into a local-FS read or a
+      // protocol injection vector. The non-HLS path uses Electron's
+      // network stack which already gates protocols, but applying
+      // the same check up front keeps the trust boundary uniform.
+      let parsedAssetUrl: URL
+      try {
+        parsedAssetUrl = new URL(assetUrl)
+      } catch {
+        throw new Error('[browser-download] assetUrl is not a valid URL')
+      }
+      if (parsedAssetUrl.protocol !== 'http:' && parsedAssetUrl.protocol !== 'https:') {
+        throw new Error('[browser-download] assetUrl protocol must be http or https')
+      }
       if (typeof suggestedFilename !== 'string' || suggestedFilename.length === 0) {
         throw new Error('[browser-download] suggestedFilename must be a non-empty string')
       }
+      const optionalMimeType = typeof mimeType === 'string' ? mimeType : undefined
+      const optionalReferer =
+        typeof referer === 'string' && referer.length > 0 ? referer : undefined
 
       // `path.join` doesn't block traversal: a malicious or buggy
       // renderer could send `../../evil.sh` and write outside the
@@ -224,9 +276,76 @@ export function registerBrowserDownloadHandlers(): void {
 
       const folder = getSetting(settingsPath(), defaults(), 'downloadFolder')
       mkdirSync(folder, { recursive: true })
-      const targetPath = resolveCollisionSafePath(folder, safeFilename)
+
+      // TD-037: HLS manifests can't be saved as-is — ffmpeg remuxes
+      // the segments into a single .mp4. Force the extension before
+      // collision resolution so `clip.m3u8` and an existing
+      // `clip.mp4` get suffixed correctly (`clip (2).mp4`).
+      const hls = isHlsManifest({ url: assetUrl, mimeType: optionalMimeType })
+      const effectiveFilename = hls ? rewriteM3u8ToMp4(safeFilename) : safeFilename
+      const targetPath = resolveCollisionSafePath(folder, effectiveFilename)
 
       const id = randomUUID()
+
+      if (hls) {
+        // Cookies are scoped to the manifest URL and forwarded via
+        // ffmpeg's `-headers` so a session-gated stream still
+        // downloads. The User-Agent override (if set) matches what
+        // the embedded webview already sends, in case the CDN
+        // varies its 403 policy by UA.
+        const cookies = await sess.cookies.get({ url: assetUrl })
+        const userAgent = getSetting(settingsPath(), defaults(), 'userAgent')
+        const headers = buildFfmpegHeadersString(cookies, userAgent, optionalReferer)
+
+        rememberSavePath(id, targetPath)
+        // Track the last progress pair so we can emit one final
+        // unthrottled event on completion. Without this, a fast
+        // HLS download whose only `total_size` line was suppressed
+        // by the throttle leaves the drawer pinned at 0 bytes
+        // before flipping to "Completed" — same pattern as the
+        // TD-024 fix in the `done(completed)` branch above.
+        // On completion the wrapper has emitted at least one
+        // progress with totalBytes ≈ receivedBytes (duration-scaled
+        // estimate converges), so re-using the latched values lands
+        // the bar at 100%.
+        let lastReceivedBytes = 0
+        let lastTotalBytes = 0
+        const handle = startHlsDownload({
+          ffmpegPath: resolveBundledFfmpegPath(),
+          assetUrl,
+          targetPath,
+          headers,
+          onProgress: (receivedBytes, totalBytes) => {
+            lastReceivedBytes = receivedBytes
+            lastTotalBytes = totalBytes
+            sendProgress(
+              { id, receivedBytes, totalBytes, state: 'progressing' },
+              { throttle: true }
+            )
+          },
+          onDone: (state) => {
+            if (state === 'completed') {
+              // Snap the final emit to receivedBytes=totalBytes so
+              // the bar fills to 100% even when ffmpeg stopped
+              // emitting progress before reaching 100% of duration.
+              sendProgress(
+                {
+                  id,
+                  receivedBytes: lastReceivedBytes,
+                  totalBytes: Math.max(lastReceivedBytes, lastTotalBytes),
+                  state: 'progressing'
+                },
+                { throttle: false }
+              )
+            }
+            sendComplete(id, state, targetPath)
+            hlsHandlesById.delete(id)
+          }
+        })
+        hlsHandlesById.set(id, handle)
+        return { id }
+      }
+
       const queue = pendingByUrl.get(assetUrl) ?? []
       // Bound the leak if `will-download` never fires (network failed
       // before headers): drop our queue entry after a timeout so the
@@ -256,6 +375,13 @@ export function registerBrowserDownloadHandlers(): void {
       if (!args || typeof args !== 'object') return
       const { id } = args as { id?: unknown }
       if (typeof id !== 'string') return
+      const hlsHandle = hlsHandlesById.get(id)
+      if (hlsHandle) {
+        // HLS branch: `cancel()` SIGTERMs ffmpeg, the wrapper's
+        // `onDone` callback handles the fan-out and map cleanup.
+        hlsHandle.cancel()
+        return
+      }
       const item = itemsById.get(id)
       if (!item) return
       // `cancel()` triggers `done` with state `cancelled`; the cleanup

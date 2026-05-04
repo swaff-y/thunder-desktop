@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFfmpegHeadersString,
+  estimateHlsTotalBytes,
   isHlsManifest,
+  parseFfmpegDurationLine,
   parseFfmpegProgressLine,
   rewriteAsarPathToUnpacked,
   rewriteM3u8ToMp4
@@ -184,6 +186,72 @@ describe('buildFfmpegHeadersString', () => {
 
   it('returns an empty string when nothing is forwardable', () => {
     expect(buildFfmpegHeadersString([])).toBe('')
+  })
+})
+
+describe('parseFfmpegDurationLine', () => {
+  it('parses "  Duration: 00:01:23.45, start: ..."', () => {
+    expect(parseFfmpegDurationLine('  Duration: 00:01:23.45, start: 0.000000, bitrate: 1024')).toBe(
+      Math.round((0 * 3600 + 1 * 60 + 23.45) * 1_000_000)
+    )
+  })
+
+  it('parses Duration without a leading hour component using HH=00', () => {
+    expect(parseFfmpegDurationLine('  Duration: 00:00:05.500')).toBe(5_500_000)
+  })
+
+  it('parses Duration with a multi-hour component', () => {
+    expect(parseFfmpegDurationLine('  Duration: 02:30:00.000')).toBe(
+      (2 * 3600 + 30 * 60) * 1_000_000
+    )
+  })
+
+  it('returns null for a line without a Duration field', () => {
+    expect(parseFfmpegDurationLine('  Stream #0:0: Video: h264, yuv420p')).toBeNull()
+  })
+
+  it('returns null for a line with Duration: N/A', () => {
+    expect(parseFfmpegDurationLine('  Duration: N/A, start: 0.000000')).toBeNull()
+  })
+
+  it('returns a positive integer (rounded microseconds)', () => {
+    const result = parseFfmpegDurationLine('  Duration: 00:00:00.123456')
+    expect(result).toBe(123_456)
+  })
+})
+
+describe('estimateHlsTotalBytes', () => {
+  it('returns receivedBytes / progressFraction', () => {
+    // 30% through (3s of 10s), 1MB written → estimated total ~ 3.33MB
+    expect(estimateHlsTotalBytes(1_048_576, 3_000_000, 10_000_000)).toBe(
+      Math.round((1_048_576 * 10_000_000) / 3_000_000)
+    )
+  })
+
+  it('returns receivedBytes when elapsed has reached duration', () => {
+    expect(estimateHlsTotalBytes(5000, 10_000_000, 10_000_000)).toBe(5000)
+  })
+
+  it('caps at receivedBytes when elapsed exceeds duration (clock drift)', () => {
+    expect(estimateHlsTotalBytes(5000, 11_000_000, 10_000_000)).toBe(5000)
+  })
+
+  it('returns 0 when elapsed is zero (avoids divide-by-zero)', () => {
+    expect(estimateHlsTotalBytes(5000, 0, 10_000_000)).toBe(0)
+  })
+
+  it('returns 0 when duration is zero or unknown', () => {
+    expect(estimateHlsTotalBytes(5000, 1_000_000, 0)).toBe(0)
+  })
+
+  it('returns 0 when receivedBytes is zero (no usable estimate yet)', () => {
+    expect(estimateHlsTotalBytes(0, 1_000_000, 10_000_000)).toBe(0)
+  })
+
+  it('returns 0 for non-finite inputs', () => {
+    expect(estimateHlsTotalBytes(Number.NaN, 1_000_000, 10_000_000)).toBe(0)
+    expect(estimateHlsTotalBytes(5000, Number.NaN, 10_000_000)).toBe(0)
+    expect(estimateHlsTotalBytes(5000, 1_000_000, Number.NaN)).toBe(0)
   })
 })
 

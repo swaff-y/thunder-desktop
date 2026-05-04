@@ -113,7 +113,7 @@ describe('startHlsDownload', () => {
     expect(lastSpawnArgs?.args).not.toContain('-headers')
   })
 
-  it('emits onProgress with bytes parsed from total_size lines', () => {
+  it('emits onProgress per progress block, with totalBytes=0 when duration is unknown', () => {
     const onProgress = vi.fn()
     startHlsDownload({
       ffmpegPath: '/bin/ffmpeg',
@@ -125,7 +125,7 @@ describe('startHlsDownload', () => {
     })
     lastChild?.stdout.emit(
       'data',
-      'frame=10\nout_time_ms=100000\ntotal_size=4096\nprogress=continue\n'
+      'frame=10\nout_time_us=1000000\ntotal_size=4096\nprogress=continue\n'
     )
     expect(onProgress).toHaveBeenLastCalledWith(4096, 0)
     lastChild?.stdout.emit('data', 'total_size=8192\nprogress=continue\n')
@@ -146,6 +146,61 @@ describe('startHlsDownload', () => {
     expect(onProgress).not.toHaveBeenCalled()
     lastChild?.stdout.emit('data', 'ze=2048\nprogress=continue\n')
     expect(onProgress).toHaveBeenCalledWith(2048, 0)
+  })
+
+  it('emits a duration-scaled totalBytes once the Duration line has been seen', () => {
+    const onProgress = vi.fn()
+    startHlsDownload({
+      ffmpegPath: '/bin/ffmpeg',
+      assetUrl: 'https://x/v.m3u8',
+      targetPath: freshTargetPath(),
+      headers: '',
+      onProgress,
+      onDone: vi.fn()
+    })
+    // Duration arrives on stderr first (ffmpeg prints it during input probing).
+    lastChild?.stderr.emit('data', '  Duration: 00:00:10.00, start: 0.000000\n')
+    // 30% through (3s of 10s), 1MB written → estimated total = 1MB * 10/3 ≈ 3.33MB.
+    lastChild?.stdout.emit(
+      'data',
+      'total_size=1048576\nout_time_us=3000000\nprogress=continue\n'
+    )
+    expect(onProgress).toHaveBeenLastCalledWith(
+      1048576,
+      Math.round((1048576 * 10_000_000) / 3_000_000)
+    )
+  })
+
+  it('falls back to totalBytes=0 when no Duration was parsed', () => {
+    const onProgress = vi.fn()
+    startHlsDownload({
+      ffmpegPath: '/bin/ffmpeg',
+      assetUrl: 'https://x/v.m3u8',
+      targetPath: freshTargetPath(),
+      headers: '',
+      onProgress,
+      onDone: vi.fn()
+    })
+    lastChild?.stderr.emit('data', '  Duration: N/A, start: 0.000000\n')
+    lastChild?.stdout.emit('data', 'total_size=1024\nout_time_us=500000\nprogress=continue\n')
+    expect(onProgress).toHaveBeenLastCalledWith(1024, 0)
+  })
+
+  it('latches the first Duration line and ignores subsequent ones', () => {
+    const onProgress = vi.fn()
+    startHlsDownload({
+      ffmpegPath: '/bin/ffmpeg',
+      assetUrl: 'https://x/v.m3u8',
+      targetPath: freshTargetPath(),
+      headers: '',
+      onProgress,
+      onDone: vi.fn()
+    })
+    lastChild?.stderr.emit('data', '  Duration: 00:00:10.00\n')
+    lastChild?.stderr.emit('data', '  Duration: 00:01:00.00\n')
+    lastChild?.stdout.emit('data', 'total_size=1024\nout_time_us=5000000\nprogress=continue\n')
+    // 50% of 10s, not of 60s → estimate = 1024 * 10/5 = 2048
+    expect(onProgress).toHaveBeenLastCalledWith(1024, 2048)
   })
 
   it('calls onDone(completed) on a clean exit (code 0)', () => {

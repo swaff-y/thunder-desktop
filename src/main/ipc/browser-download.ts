@@ -298,18 +298,46 @@ export function registerBrowserDownloadHandlers(): void {
         const headers = buildFfmpegHeadersString(cookies, userAgent, optionalReferer)
 
         rememberSavePath(id, targetPath)
+        // Track the last progress pair so we can emit one final
+        // unthrottled event on completion. Without this, a fast
+        // HLS download whose only `total_size` line was suppressed
+        // by the throttle leaves the drawer pinned at 0 bytes
+        // before flipping to "Completed" — same pattern as the
+        // TD-024 fix in the `done(completed)` branch above.
+        // On completion the wrapper has emitted at least one
+        // progress with totalBytes ≈ receivedBytes (duration-scaled
+        // estimate converges), so re-using the latched values lands
+        // the bar at 100%.
+        let lastReceivedBytes = 0
+        let lastTotalBytes = 0
         const handle = startHlsDownload({
           ffmpegPath: resolveBundledFfmpegPath(),
           assetUrl,
           targetPath,
           headers,
           onProgress: (receivedBytes, totalBytes) => {
+            lastReceivedBytes = receivedBytes
+            lastTotalBytes = totalBytes
             sendProgress(
               { id, receivedBytes, totalBytes, state: 'progressing' },
               { throttle: true }
             )
           },
           onDone: (state) => {
+            if (state === 'completed') {
+              // Snap the final emit to receivedBytes=totalBytes so
+              // the bar fills to 100% even when ffmpeg stopped
+              // emitting progress before reaching 100% of duration.
+              sendProgress(
+                {
+                  id,
+                  receivedBytes: lastReceivedBytes,
+                  totalBytes: Math.max(lastReceivedBytes, lastTotalBytes),
+                  state: 'progressing'
+                },
+                { throttle: false }
+              )
+            }
             sendComplete(id, state, targetPath)
             hlsHandlesById.delete(id)
           }

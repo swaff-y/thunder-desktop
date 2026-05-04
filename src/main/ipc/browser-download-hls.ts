@@ -14,7 +14,12 @@ import { spawn } from 'node:child_process'
 import { unlinkSync } from 'node:fs'
 import { app } from 'electron'
 import ffmpegStaticPath from 'ffmpeg-static'
-import { parseFfmpegProgressLine, rewriteAsarPathToUnpacked } from './browser-download-hls-helpers'
+import {
+  estimateHlsTotalBytes,
+  parseFfmpegDurationLine,
+  parseFfmpegProgressLine,
+  rewriteAsarPathToUnpacked
+} from './browser-download-hls-helpers'
 
 const CANCEL_GRACE_MS = 2000
 const STDERR_TAIL_LINES = 20
@@ -91,6 +96,19 @@ export function startHlsDownload(opts: HlsDownloadOptions): HlsDownloadHandle {
   let settled = false
   let killTimer: NodeJS.Timeout | null = null
   let stdoutBuf = ''
+  let stderrBuf = ''
+  // Manifest duration in microseconds, latched on the first
+  // parseable `Duration:` line ffmpeg prints. Stays null when
+  // ffmpeg can't determine the duration up front (live streams,
+  // some malformed manifests) — callers fall back to indeterminate.
+  let durationUs: number | null = null
+  // Per-`-progress` block accumulators. ffmpeg flushes a block
+  // every ~1s terminated by `progress=continue` (or `=end`); we
+  // emit one onProgress per block boundary using the latched
+  // values so the receivedBytes/totalBytes pair stays consistent
+  // within a single tick.
+  let blockTotalSize: number | null = null
+  let blockOutTimeUs: number | null = null
   const stderrTail: string[] = []
 
   // The `stdio: ['ignore', 'pipe', 'pipe']` contract guarantees
@@ -113,19 +131,43 @@ export function startHlsDownload(opts: HlsDownloadOptions): HlsDownloadHandle {
       if (kv === null) continue
       if (kv.key === 'total_size') {
         const n = Number.parseInt(kv.value, 10)
-        if (Number.isFinite(n) && n >= 0) {
-          // ffmpeg has no upfront target size for HLS (each segment
-          // arrives at fetch time), so totalBytes is left at 0 — the
-          // renderer treats that as indeterminate.
-          opts.onProgress(n, 0)
+        if (Number.isFinite(n) && n >= 0) blockTotalSize = n
+      } else if (kv.key === 'out_time_us') {
+        const n = Number.parseInt(kv.value, 10)
+        if (Number.isFinite(n) && n >= 0) blockOutTimeUs = n
+      } else if (kv.key === 'progress') {
+        // End of a progress block — emit one event with whatever we
+        // saw this tick. When duration is known, totalBytes is a
+        // duration-scaled estimate (bar fills left-to-right and
+        // converges to the true size); otherwise 0 keeps the
+        // renderer in indeterminate-shimmer mode.
+        if (blockTotalSize !== null) {
+          const totalBytes =
+            blockOutTimeUs !== null && durationUs !== null
+              ? estimateHlsTotalBytes(blockTotalSize, blockOutTimeUs, durationUs)
+              : 0
+          opts.onProgress(blockTotalSize, totalBytes)
         }
+        blockTotalSize = null
+        blockOutTimeUs = null
       }
     }
   })
 
   proc.stderr.setEncoding('utf-8')
   proc.stderr.on('data', (chunk: string) => {
-    for (const line of chunk.split('\n')) {
+    stderrBuf += chunk
+    let nl: number
+    while ((nl = stderrBuf.indexOf('\n')) !== -1) {
+      const line = stderrBuf.slice(0, nl)
+      stderrBuf = stderrBuf.slice(nl + 1)
+      // Latch the first parseable Duration line. ffmpeg prints it
+      // once per input near startup; subsequent lines never carry
+      // a corrected value, so re-parsing wastes work.
+      if (durationUs === null) {
+        const parsed = parseFfmpegDurationLine(line)
+        if (parsed !== null && parsed > 0) durationUs = parsed
+      }
       if (line.length === 0) continue
       stderrTail.push(
         line.length > STDERR_LINE_MAX_CHARS ? line.slice(0, STDERR_LINE_MAX_CHARS) : line

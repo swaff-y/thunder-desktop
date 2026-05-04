@@ -523,6 +523,52 @@ describe('browser-download IPC (TD-024)', () => {
     expect(showItemInFolderSpy).toHaveBeenCalledWith(targetPath)
   })
 
+  it('HLS onDone(completed) emits a final unthrottled progress with the last byte count', async () => {
+    let now = 1_000_000
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      const { id } = await callStart({
+        assetUrl: 'https://x/v.m3u8',
+        suggestedFilename: 'clip.m3u8'
+      })
+      const { onProgress, onDone } = hlsCalls[0]
+      // First progress event lands within the throttle window — and
+      // is the only one before completion. Without the final-emit
+      // fix, the drawer would never see the byte count.
+      onProgress(2048, 0)
+      now += 50
+      onProgress(8192, 0) // suppressed by 250ms throttle
+      onDone('completed')
+
+      const progressCalls = sendSpy.mock.calls.filter(
+        (c) => c[0] === THUNDER_IPC_CHANNELS.browserDownloadProgress
+      )
+      // First throttled emit (2048) + final unthrottled emit on done (8192).
+      expect(progressCalls).toHaveLength(2)
+      // Final emit snaps totalBytes to receivedBytes so the bar lands at 100%
+      // even when the duration estimate hadn't yet caught up.
+      expect(progressCalls[1][1]).toMatchObject({
+        id,
+        receivedBytes: 8192,
+        totalBytes: 8192,
+        state: 'progressing'
+      })
+      // And the final progress lands BEFORE the complete fan-out.
+      const channelOrder = sendSpy.mock.calls.map((c) => c[0])
+      const lastProgressIdx =
+        channelOrder.length -
+        1 -
+        [...channelOrder]
+          .reverse()
+          .findIndex((c) => c === THUNDER_IPC_CHANNELS.browserDownloadProgress)
+      expect(lastProgressIdx).toBeLessThan(
+        channelOrder.indexOf(THUNDER_IPC_CHANNELS.browserDownloadComplete)
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('HLS onDone(cancelled) drops the savePath cache so show-in-folder no-ops', async () => {
     const { id } = await callStart({
       assetUrl: 'https://x/v.m3u8',

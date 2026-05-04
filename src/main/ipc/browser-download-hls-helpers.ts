@@ -64,6 +64,57 @@ export function parseFfmpegProgressLine(line: string): FfmpegProgressKv | null {
   }
 }
 
+/**
+ * Extracts the manifest duration in microseconds from a stderr line
+ * like `  Duration: 00:01:23.45, start: 0.000000, bitrate: …`.
+ * Returns `null` for any line that doesn't carry a Duration field.
+ *
+ * ffmpeg prints this line near the start of the run (after probing
+ * the input), so callers should latch the first non-null result and
+ * stop parsing once a value is captured.
+ */
+export function parseFfmpegDurationLine(line: string): number | null {
+  const match = line.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i)
+  if (match === null) return null
+  const hours = Number.parseInt(match[1], 10)
+  const minutes = Number.parseInt(match[2], 10)
+  const seconds = Number.parseFloat(match[3])
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+    return null
+  }
+  return Math.round((hours * 3600 + minutes * 60 + seconds) * 1_000_000)
+}
+
+/**
+ * Synthesises a `totalBytes` estimate for a duration-based progress
+ * bar: `receivedBytes / progressFraction` where progress is
+ * `elapsedUs / durationUs`. As the download nears completion the
+ * estimate converges to the true file size, so the renderer's
+ * "X MB / Y MB" label remains roughly honest while the bar fills
+ * left-to-right.
+ *
+ * Returns `0` (indeterminate sentinel) when any input is missing or
+ * non-positive, so the renderer falls back to the shimmer animation.
+ */
+export function estimateHlsTotalBytes(
+  receivedBytes: number,
+  elapsedUs: number,
+  durationUs: number
+): number {
+  if (
+    !Number.isFinite(receivedBytes) ||
+    receivedBytes <= 0 ||
+    !Number.isFinite(elapsedUs) ||
+    elapsedUs <= 0 ||
+    !Number.isFinite(durationUs) ||
+    durationUs <= 0
+  ) {
+    return 0
+  }
+  if (elapsedUs >= durationUs) return receivedBytes
+  return Math.round((receivedBytes * durationUs) / elapsedUs)
+}
+
 export interface HeaderCookie {
   name: string
   value: string

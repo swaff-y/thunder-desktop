@@ -5,6 +5,7 @@ import DesktopLayout from './layouts/DesktopLayout'
 import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
+import { TabHistoryProvider } from './hooks/useTabHistory'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
@@ -72,11 +73,13 @@ function App(): React.JSX.Element {
   return (
     <QueryProvider>
       <HashRouter>
-        <AuthProvider>
-          <CartProvider>
-            <AppRoutes />
-          </CartProvider>
-        </AuthProvider>
+        <TabHistoryProvider>
+          <AuthProvider>
+            <CartProvider>
+              <AppRoutes />
+            </CartProvider>
+          </AuthProvider>
+        </TabHistoryProvider>
       </HashRouter>
     </QueryProvider>
   )

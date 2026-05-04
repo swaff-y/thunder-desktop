@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { IoHeartOutline, IoHeart } from "react-icons/io5";
 import { useRecord } from "../hooks/useRecord";
+import { useTabHistory } from "../hooks/useTabHistory";
 import {
   buildAuthProxyUrl,
   watchRecord,
@@ -14,11 +15,14 @@ import VideoPlayer from "../components/shared/VideoPlayer";
 import ContentTable from "../components/shared/ContentTable";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
+import BackButton from "../components/shared/BackButton";
 
 export default function Watch() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, error, refetch } = useRecord(id!);
+  const { resolveWatchBackTarget } = useTabHistory();
   const [liked, setLiked] = useState(false);
   const watchedRef = useRef(false);
 
@@ -28,13 +32,20 @@ export default function Watch() {
     watchRecord(id!).catch(() => {});
   }, [id]);
 
+  function handleBack() {
+    navigate(resolveWatchBackTarget(record));
+  }
+
   if (isLoading) return <LoadingSpinner fullScreen message="Loading..." />;
   if (isError || !record)
     return (
-      <ErrorState
-        message={error?.message || "Failed to load record"}
-        onRetry={() => refetch()}
-      />
+      <div>
+        <BackButton onClick={handleBack} />
+        <ErrorState
+          message={error?.message || "Failed to load record"}
+          onRetry={() => refetch()}
+        />
+      </div>
     );
 
   const authUrl = buildAuthProxyUrl(id!);
@@ -52,6 +63,7 @@ export default function Watch() {
 
   return (
     <div className="watch-desktop">
+      <BackButton onClick={handleBack} />
       <div className="watch-player-container">
         <VideoPlayer
           src={authUrl}

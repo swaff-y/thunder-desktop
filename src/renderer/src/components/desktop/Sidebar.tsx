@@ -8,13 +8,22 @@ import {
   IoGlobeOutline,
   IoStatsChartOutline
 } from 'react-icons/io5'
+import type { IconType } from 'react-icons'
+import { useTabHistory, type TabKey } from '../../hooks/useTabHistory'
 
-const NAV_ITEMS = [
+interface NavItem {
+  path: string
+  label: string
+  icon: IconType
+  tabKey?: TabKey
+}
+
+const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Home', icon: IoHomeOutline },
-  { path: '/actors', label: 'Actors', icon: IoPeopleOutline },
-  { path: '/series', label: 'Series', icon: IoFilmOutline },
-  { path: '/movies', label: 'Movies', icon: IoVideocamOutline },
-  { path: '/tags', label: 'Tags', icon: IoPricetagOutline },
+  { path: '/actors', label: 'Actors', icon: IoPeopleOutline, tabKey: 'actors' },
+  { path: '/series', label: 'Series', icon: IoFilmOutline, tabKey: 'series' },
+  { path: '/movies', label: 'Movies', icon: IoVideocamOutline, tabKey: 'movies' },
+  { path: '/tags', label: 'Tags', icon: IoPricetagOutline, tabKey: 'tags' },
   { path: '/browser', label: 'Browser', icon: IoGlobeOutline },
   { path: '/stats', label: 'Stats', icon: IoStatsChartOutline }
 ]
@@ -22,23 +31,35 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { activeTab, resolveTabClick } = useTabHistory()
+
+  function handleBrandClick() {
+    navigate('/')
+  }
 
   return (
     <aside className="desktop-sidebar">
-      <div className="sidebar-brand" onClick={() => navigate('/')}>
+      <div className="sidebar-brand" onClick={handleBrandClick}>
         <h1 className="sidebar-title">Thunder</h1>
       </div>
 
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
-          const isActive =
-            path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
+        {NAV_ITEMS.map(({ path, label, icon: Icon, tabKey }) => {
+          const isActive = isItemActive(path, tabKey, location.pathname, activeTab)
+
+          function handleClick() {
+            if (tabKey) {
+              navigate(resolveTabClick(tabKey))
+            } else {
+              navigate(path)
+            }
+          }
 
           return (
             <button
               key={path}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
-              onClick={() => navigate(path)}
+              onClick={handleClick}
             >
               <Icon size={20} />
               <span>{label}</span>
@@ -102,4 +123,15 @@ export default function Sidebar() {
       `}</style>
     </aside>
   )
+}
+
+function isItemActive(
+  path: string,
+  tabKey: TabKey | undefined,
+  pathname: string,
+  activeTab: TabKey | null
+): boolean {
+  if (path === '/') return pathname === '/'
+  if (tabKey && pathname.startsWith('/watch/')) return activeTab === tabKey
+  return pathname.startsWith(path)
 }

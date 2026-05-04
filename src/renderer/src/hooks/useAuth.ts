@@ -10,6 +10,7 @@ import { jwtDecode } from "jwt-decode";
 import { login as apiLogin } from "../api/halo";
 import { reauthenticate } from "../api/auth";
 import { setCachedCreds, resetClientGuards } from "../api/client";
+import { useTabHistory } from "./useTabHistory";
 import React from "react";
 
 interface JwtPayload {
@@ -79,6 +80,7 @@ async function migrateFromLocalStorage(): Promise<{
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(EMPTY_STATE);
   const [isLoading, setIsLoading] = useState(true);
+  const { clearHistory: clearTabHistory } = useTabHistory();
 
   const isAuthenticated = !!state.token && isTokenValid(state.token);
 
@@ -182,8 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setCachedCreds(null);
     resetClientGuards();
+    clearTabHistory();
     setState(EMPTY_STATE);
-  }, []);
+  }, [clearTabHistory]);
 
   // Re-check token validity on window focus. If the JWT has expired,
   // try silent reauth first — only fall through to logout (which clears

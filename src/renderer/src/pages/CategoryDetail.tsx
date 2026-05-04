@@ -1,15 +1,21 @@
 import { useEffect, useRef, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useCategoryRecords } from "../hooks/useRecords";
 import { getCategoryConfig } from "../types";
 import VirtualRecordList from "../components/shared/VirtualRecordList";
 import LoadMore from "../components/shared/LoadMore";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
+import BackButton from "../components/shared/BackButton";
 
 export default function CategoryDetail() {
   const { category, id } = useParams<{ category: string; id: string }>();
+  const navigate = useNavigate();
   const config = getCategoryConfig(category);
+
+  function handleBack() {
+    if (category) navigate(`/${category}`);
+  }
 
   const {
     data,
@@ -58,6 +64,7 @@ export default function CategoryDetail() {
 
   return (
     <div style={{ minWidth: 0 }}>
+      <BackButton onClick={handleBack} label={`Back to ${config.label}`} />
       <h1 className="detail-page-title">{config.label} Detail</h1>
       {data && allRecords.length === 0 && !isFetchingNextPage ? (
         <div

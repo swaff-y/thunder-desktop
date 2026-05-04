@@ -41,6 +41,14 @@ export interface BrowserNav {
   reload: () => void
   loadURL: (raw: string) => void
   attachWebview: (el: WebviewTag | null) => void
+  /**
+   * TD-039: when the host (Browser tab) becomes hidden, cancel any
+   * in-flight requests and mute audio so the embedded page doesn't
+   * starve the renderer's socket pool while the user watches a video
+   * on `/watch/:id`. The webview element stays attached so TD-035's
+   * session/history preservation is unaffected.
+   */
+  setVisible: (visible: boolean) => void
 }
 
 interface NewWindowEvent extends Event {
@@ -68,6 +76,9 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
 
   const webviewRef = useRef<WebviewTag | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  // TD-039: snapshot of the page state captured on hide so it can be
+  // restored on show. Null when the webview is currently visible.
+  const suspendedStateRef = useRef<{ url: string; muted: boolean } | null>(null)
 
   const refreshHistoryFlags = useCallback(() => {
     const el = webviewRef.current
@@ -220,6 +231,42 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
     }
   }, [url])
 
+  const setVisible = useCallback(
+    (visible: boolean) => {
+      const el = webviewRef.current
+      if (!el || webContentsId === null) return
+      try {
+        if (visible) {
+          const snapshot = suspendedStateRef.current
+          if (snapshot) {
+            if (snapshot.url !== 'about:blank') el.loadURL(snapshot.url)
+            el.setAudioMuted(snapshot.muted)
+          } else {
+            el.setAudioMuted(false)
+          }
+          suspendedStateRef.current = null
+        } else if (suspendedStateRef.current === null) {
+          const url = el.getURL()
+          const muted = el.isAudioMuted()
+          el.stop()
+          el.setAudioMuted(true)
+          // about:blank swap is what actually halts the page's own JS;
+          // stop() only cancels the current navigation. Without this,
+          // timers / XHR polling / lazy-loaders on a video listing page
+          // keep saturating the renderer's socket pool while the user
+          // is on /watch/:id. Scroll preservation is the trade-off.
+          el.loadURL('about:blank')
+          suspendedStateRef.current = { url, muted }
+        }
+      } catch {
+        // webContents not ready — setVisible's identity changes when
+        // webContentsId flips from null to set, which re-fires the
+        // caller's effect.
+      }
+    },
+    [webContentsId]
+  )
+
   const loadURL = useCallback((raw: string) => {
     const trimmed = raw.trim()
     if (trimmed.length === 0) {
@@ -260,6 +307,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
     goForward,
     reload,
     loadURL,
-    attachWebview
+    attachWebview,
+    setVisible
   }
 }

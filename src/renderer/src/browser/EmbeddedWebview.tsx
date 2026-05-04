@@ -23,17 +23,23 @@ const FALLBACK_USER_AGENT =
 interface EmbeddedWebviewProps {
   nav: BrowserNav
   initialUrl: string
+  visible: boolean
 }
 
 export default function EmbeddedWebview({
   nav,
-  initialUrl
+  initialUrl,
+  visible
 }: EmbeddedWebviewProps): React.JSX.Element {
   // Destructured up front so the React Compiler eslint pass doesn't
   // pessimistically taint the whole `nav` object as ref-derived after
   // we hand `attachWebview` to a JSX `ref` prop below.
-  const { attachWebview, loadError, reload } = nav
+  const { attachWebview, loadError, reload, setVisible } = nav
   const [userAgent, setUserAgent] = useState<string | null>(null)
+
+  useEffect(() => {
+    setVisible(visible)
+  }, [visible, setVisible])
 
   useEffect(() => {
     let cancelled = false

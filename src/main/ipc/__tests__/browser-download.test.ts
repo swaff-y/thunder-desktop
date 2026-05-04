@@ -25,8 +25,17 @@ let mockSession: EventEmitter & { downloadURL: ReturnType<typeof vi.fn> }
 let tempUserData = ''
 let tempDownloads = ''
 
+// TD-037: cookies for the HLS branch are read from the partitioned
+// session; tests can pre-seed this list and the mock session's
+// `cookies.get` returns it verbatim. Cleared in beforeEach.
+let mockCookies: Array<{ name: string; value: string }> = []
+
 vi.mock('electron', () => {
-  const sess = Object.assign(new EventEmitter(), { downloadURL: vi.fn() })
+  const cookies = { get: vi.fn(async () => mockCookies) }
+  const sess = Object.assign(new EventEmitter(), {
+    downloadURL: vi.fn(),
+    cookies
+  })
   mockSession = sess as typeof mockSession
   return {
     app: {
@@ -34,7 +43,8 @@ vi.mock('electron', () => {
         if (key === 'userData') return tempUserData
         if (key === 'downloads') return tempDownloads
         return tmpdir()
-      }
+      },
+      isPackaged: false
     },
     BrowserWindow: {
       getFocusedWindow: () => ({
@@ -62,6 +72,29 @@ vi.mock('electron', () => {
     }
   }
 })
+
+// TD-037: stub the HLS spawn wrapper so the integration test exercises
+// only the branching / wiring in `browser-download.ts`. The wrapper's
+// own behavior (ffmpeg args, progress parsing, cancel timing) is
+// covered by `browser-download-hls.test.ts`.
+interface CapturedHlsCall {
+  ffmpegPath: string
+  assetUrl: string
+  targetPath: string
+  headers: string
+  onProgress: (received: number, total: number) => void
+  onDone: (state: 'completed' | 'cancelled' | 'interrupted', error?: string) => void
+  cancel: ReturnType<typeof vi.fn>
+}
+const hlsCalls: CapturedHlsCall[] = []
+vi.mock('../browser-download-hls', () => ({
+  resolveBundledFfmpegPath: () => '/fake/ffmpeg',
+  startHlsDownload: (opts: Omit<CapturedHlsCall, 'cancel'>) => {
+    const cancel = vi.fn()
+    hlsCalls.push({ ...opts, cancel })
+    return { cancel }
+  }
+}))
 
 // Channel constants are pure — import once.
 const { THUNDER_IPC_CHANNELS } = await import('../../../preload/thunder-api')
@@ -106,9 +139,12 @@ function downloadFolder(): string {
   return join(tempDownloads, 'Thunder')
 }
 
-async function callStart(args: { assetUrl: string; suggestedFilename: string }): Promise<{
-  id: string
-}> {
+async function callStart(args: {
+  assetUrl: string
+  suggestedFilename: string
+  mimeType?: string
+  referer?: string
+}): Promise<{ id: string }> {
   const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.browserDownloadStart)
   if (!handler) throw new Error('start handler not registered')
   return (await handler({}, args)) as { id: string }
@@ -133,6 +169,8 @@ describe('browser-download IPC (TD-024)', () => {
     sendSpy.mockReset()
     showItemInFolderSpy.mockReset()
     ipcHandlers.clear()
+    hlsCalls.length = 0
+    mockCookies = []
     // Reset module state — including the path/defaults memoisation.
     // The vi.mock factory is shared across resetModules in vitest, so
     // `mockSession` persists; clear its listeners before the handler
@@ -432,5 +470,174 @@ describe('browser-download IPC (TD-024)', () => {
     // Most recent id is still resolvable.
     await callShowInFolder({ id: ids[ids.length - 1] })
     expect(showItemInFolderSpy).toHaveBeenCalledTimes(1)
+  })
+
+  // ─── TD-037: HLS branch ───────────────────────────────────────────
+
+  it('routes a .m3u8 URL through the HLS spawn wrapper instead of session.downloadURL', async () => {
+    mockCookies = [{ name: 'sid', value: 'abc' }]
+    const { id } = await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+    expect(typeof id).toBe('string')
+    expect(mockSession.downloadURL).not.toHaveBeenCalled()
+    expect(hlsCalls).toHaveLength(1)
+    expect(hlsCalls[0].assetUrl).toBe('https://x/v.m3u8')
+    // Filename rewritten to .mp4 before the collision-safe path resolves.
+    expect(hlsCalls[0].targetPath).toBe(join(downloadFolder(), 'clip.mp4'))
+    expect(hlsCalls[0].headers).toContain('Cookie: sid=abc')
+  })
+
+  it('forces .mp4 collision suffixing for HLS downloads when target already exists', async () => {
+    mkdirSync(downloadFolder(), { recursive: true })
+    writeFileSync(join(downloadFolder(), 'clip.mp4'), '')
+    await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+    expect(hlsCalls[0].targetPath).toBe(join(downloadFolder(), 'clip (2).mp4'))
+  })
+
+  it('cancel routes to the HLS handle, not to itemsById', async () => {
+    const { id } = await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+    await callCancel({ id })
+    expect(hlsCalls[0].cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('HLS onDone fans out a complete event with the .mp4 savePath, and show-in-folder resolves it', async () => {
+    const { id } = await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+    const { targetPath, onDone } = hlsCalls[0]
+    onDone('completed')
+    expect(sendSpy).toHaveBeenCalledWith(
+      THUNDER_IPC_CHANNELS.browserDownloadComplete,
+      expect.objectContaining({ id, state: 'completed', savePath: targetPath })
+    )
+    await callShowInFolder({ id })
+    expect(showItemInFolderSpy).toHaveBeenCalledWith(targetPath)
+  })
+
+  it('HLS onDone(completed) emits a final unthrottled progress with the last byte count', async () => {
+    let now = 1_000_000
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      const { id } = await callStart({
+        assetUrl: 'https://x/v.m3u8',
+        suggestedFilename: 'clip.m3u8'
+      })
+      const { onProgress, onDone } = hlsCalls[0]
+      // First progress event lands within the throttle window — and
+      // is the only one before completion. Without the final-emit
+      // fix, the drawer would never see the byte count.
+      onProgress(2048, 0)
+      now += 50
+      onProgress(8192, 0) // suppressed by 250ms throttle
+      onDone('completed')
+
+      const progressCalls = sendSpy.mock.calls.filter(
+        (c) => c[0] === THUNDER_IPC_CHANNELS.browserDownloadProgress
+      )
+      // First throttled emit (2048) + final unthrottled emit on done (8192).
+      expect(progressCalls).toHaveLength(2)
+      // Final emit snaps totalBytes to receivedBytes so the bar lands at 100%
+      // even when the duration estimate hadn't yet caught up.
+      expect(progressCalls[1][1]).toMatchObject({
+        id,
+        receivedBytes: 8192,
+        totalBytes: 8192,
+        state: 'progressing'
+      })
+      // And the final progress lands BEFORE the complete fan-out.
+      const channelOrder = sendSpy.mock.calls.map((c) => c[0])
+      const lastProgressIdx =
+        channelOrder.length -
+        1 -
+        [...channelOrder]
+          .reverse()
+          .findIndex((c) => c === THUNDER_IPC_CHANNELS.browserDownloadProgress)
+      expect(lastProgressIdx).toBeLessThan(
+        channelOrder.indexOf(THUNDER_IPC_CHANNELS.browserDownloadComplete)
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('HLS onDone(cancelled) drops the savePath cache so show-in-folder no-ops', async () => {
+    const { id } = await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+    hlsCalls[0].onDone('cancelled')
+    showItemInFolderSpy.mockReset()
+    await callShowInFolder({ id })
+    expect(showItemInFolderSpy).not.toHaveBeenCalled()
+  })
+
+  it('routes via mimeType when the URL path does not end in .m3u8', async () => {
+    await callStart({
+      assetUrl: 'https://x/playlist?t=1',
+      suggestedFilename: 'stream.bin',
+      mimeType: 'application/vnd.apple.mpegurl'
+    })
+    expect(mockSession.downloadURL).not.toHaveBeenCalled()
+    expect(hlsCalls).toHaveLength(1)
+    // Non-.m3u8 filenames get ".mp4" appended (rewriteM3u8ToMp4
+    // doesn't strip non-m3u8 extensions; the helper appends .mp4
+    // unconditionally for the HLS branch).
+    expect(hlsCalls[0].targetPath).toBe(join(downloadFolder(), 'stream.bin.mp4'))
+  })
+
+  it('forwards an optional referer through to the ffmpeg headers string', async () => {
+    await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8',
+      referer: 'https://example.com/page'
+    })
+    expect(hlsCalls[0].headers).toContain('Referer: https://example.com/page')
+  })
+
+  it('rejects an assetUrl with a non-http(s) protocol', async () => {
+    await expect(
+      callStart({ assetUrl: 'file:///etc/passwd', suggestedFilename: 'pw.mp4' })
+    ).rejects.toThrow(/protocol must be http or https/)
+  })
+
+  it('rejects an assetUrl that is not a valid URL', async () => {
+    await expect(callStart({ assetUrl: 'not-a-url', suggestedFilename: 'x.mp4' })).rejects.toThrow(
+      /not a valid URL/
+    )
+  })
+
+  it('HLS onProgress fans out throttled progress events with totalBytes=0', async () => {
+    const now = 1_000_000
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      await callStart({
+        assetUrl: 'https://x/v.m3u8',
+        suggestedFilename: 'clip.m3u8'
+      })
+      const { onProgress } = hlsCalls[0]
+      // Five rapid progress events at the same instant — only the
+      // first should fan out (250ms throttle, same as TD-024 path).
+      for (let i = 0; i < 5; i++) onProgress(1024 * (i + 1), 0)
+      const progressCalls = sendSpy.mock.calls.filter(
+        (c) => c[0] === THUNDER_IPC_CHANNELS.browserDownloadProgress
+      )
+      expect(progressCalls).toHaveLength(1)
+      expect(progressCalls[0][1]).toMatchObject({
+        receivedBytes: 1024,
+        totalBytes: 0,
+        state: 'progressing'
+      })
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

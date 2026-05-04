@@ -18,5 +18,12 @@
     <!-- Default download destination is ~/Downloads/Thunder. -->
     <key>com.apple.security.files.downloads.read-write</key>
     <true/>
+
+    <!-- TD-037: spawn the bundled ffmpeg-static binary for HLS-to-MP4
+         remux. Hardened Runtime blocks loading dylibs that aren't
+         signed by the same team unless this entitlement is granted;
+         the ffmpeg binary loads several. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
   </dict>
 </plist>

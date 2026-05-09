@@ -68,12 +68,17 @@ export default function EmbeddedWebview({
           webpreferences="contextIsolation=yes,sandbox=yes,nodeIntegration=no"
           useragent={userAgent}
           allowpopups={false}
-          style={{
-            display: loadError ? 'none' : 'flex',
-            flex: 1,
-            width: '100%',
-            height: '100%'
-          }}
+          style={
+            loadError
+              ? { display: 'none' }
+              : {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%'
+                }
+          }
         />
       )}
 

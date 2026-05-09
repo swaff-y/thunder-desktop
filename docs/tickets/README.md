@@ -66,3 +66,4 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-037](TD-037-hls-download-as-mp4.md) — Browser tab: download HLS (.m3u8) as a single mp4
 - [TD-038](TD-038-preserve-tab-navigation-state.md) — Preserve sidebar tab navigation state and add Back navigation
 - [TD-039](TD-039-suspend-hidden-webview.md) — Suspend embedded webview when Browser tab is hidden (videos hang on Watch since TD-035)
+- [TD-040](TD-040-browser-clicks-fail-after-scroll.md) — Browser tab: clickable links stop working past a scroll point (likely webview hit-test offset)

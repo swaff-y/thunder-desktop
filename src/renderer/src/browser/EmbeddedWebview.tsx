@@ -20,6 +20,21 @@ import type { BrowserNav } from './useBrowserNav'
 const FALLBACK_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
+// Module-level so the `style` prop keeps a stable identity across host
+// re-renders. useBrowserNav state churns during every page load and
+// link navigation (loading / url / history flags), re-rendering this
+// component; a fresh style object each render would re-assign the
+// webview's style attribute and force Electron's BrowserPlugin to
+// recompute geometry mid-input, intermittently swallowing clicks.
+const WEBVIEW_STYLE_HIDDEN: React.CSSProperties = { display: 'none' }
+const WEBVIEW_STYLE_VISIBLE: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  width: '100%',
+  height: '100%'
+}
+
 interface EmbeddedWebviewProps {
   nav: BrowserNav
   initialUrl: string
@@ -68,17 +83,7 @@ export default function EmbeddedWebview({
           webpreferences="contextIsolation=yes,sandbox=yes,nodeIntegration=no"
           useragent={userAgent}
           allowpopups={false}
-          style={
-            loadError
-              ? { display: 'none' }
-              : {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%'
-                }
-          }
+          style={loadError ? WEBVIEW_STYLE_HIDDEN : WEBVIEW_STYLE_VISIBLE}
         />
       )}
 

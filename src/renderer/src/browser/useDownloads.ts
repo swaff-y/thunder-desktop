@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
+import React from 'react'
 import type {
   ThunderDownloadCompletePayload,
   ThunderDownloadProgressPayload
@@ -22,10 +31,13 @@ import type {
  *     long enough that single throttled progress events don't make
  *     the number jitter wildly.
  *
- * Lifecycle: subscriptions live for the hook's lifetime; the BrowserPage
- * mounts a single instance and shares it between the assets panel
- * (Download button → `start`) and the drawer (entries + cancel/retry/
- * showInFolder/dismiss). Unmounting tears the listeners down.
+ * TD-042: state lives in `DownloadsProvider` above the route tree, not
+ * inside `BrowserPage`. `/multi-watch` is outside `ProtectedDesktopOutlet`
+ * so navigating there unmounts `DesktopLayout` + `BrowserPage`; if the
+ * hook lived in `BrowserPage` the IPC subscription would tear down and
+ * the entries Map would reset, even though the main-process download
+ * keeps writing to disk. Hoisting keeps the listener live across the
+ * route swap so progress / complete / failure events still land.
  */
 
 const RATE_WINDOW_MS = 3000
@@ -59,7 +71,7 @@ interface RateSample {
   receivedBytes: number
 }
 
-export function useDownloads(): UseDownloads {
+function useDownloadsState(): UseDownloads {
   const [entries, setEntries] = useState<Map<string, DownloadEntry>>(() => new Map())
   // Mirror of `entries` for synchronous reads inside callbacks (e.g.
   // `retry`) without having to add `entries` to their dep arrays. The
@@ -223,4 +235,17 @@ export function useDownloads(): UseDownloads {
     retry,
     dismiss
   }
+}
+
+const DownloadsContext = createContext<UseDownloads | null>(null)
+
+export function DownloadsProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const value = useDownloadsState()
+  return React.createElement(DownloadsContext.Provider, { value }, children)
+}
+
+export function useDownloads(): UseDownloads {
+  const value = useContext(DownloadsContext)
+  if (!value) throw new Error('useDownloads must be used within a DownloadsProvider')
+  return value
 }

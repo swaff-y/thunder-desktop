@@ -10,10 +10,10 @@ import type { BrowserNav } from './useBrowserNav'
  * presentational.
  *
  * TD-025: the Download button is a fire-and-forget call into the
- * shared {@link useDownloads} hook owned by `BrowserPage`. All
- * per-download state (progress, completion, retry, show-in-folder)
- * lives in the bottom drawer — the assets panel does not track it
- * locally any more.
+ * shared {@link useDownloads} hook (owned by `DownloadsProvider`
+ * above the route tree since TD-042). All per-download state
+ * (progress, completion, retry, show-in-folder) lives in the bottom
+ * drawer — the assets panel does not track it locally any more.
  *
  * Drawer behaviour: the panel is collapsible to a narrow rail so the
  * embedded webview gets the full window width when the user doesn't

@@ -67,3 +67,5 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-038](TD-038-preserve-tab-navigation-state.md) — Preserve sidebar tab navigation state and add Back navigation
 - [TD-039](TD-039-suspend-hidden-webview.md) — Suspend embedded webview when Browser tab is hidden (videos hang on Watch since TD-035)
 - [TD-040](TD-040-browser-clicks-fail-after-scroll.md) — Browser tab: clickable links stop working past a scroll point (likely webview hit-test offset)
+- [TD-041](TD-041-expose-entity-id-for-copy.md) — Detail view: expose entity ID for copying (info button)
+- [TD-042](TD-042-download-survives-multiwatch-nav.md) — Browser download discarded when navigating to MultiWatch (must continue; bar hidden off-tab)

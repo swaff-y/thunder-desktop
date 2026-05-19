@@ -6,6 +6,7 @@ import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import { TabHistoryProvider } from './hooks/useTabHistory'
+import { DownloadsProvider } from './browser/useDownloads'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import CategoryList from './pages/CategoryList'
@@ -78,7 +79,9 @@ function App(): React.JSX.Element {
         <TabHistoryProvider>
           <AuthProvider>
             <CartProvider>
-              <AppRoutes />
+              <DownloadsProvider>
+                <AppRoutes />
+              </DownloadsProvider>
             </CartProvider>
           </AuthProvider>
         </TabHistoryProvider>

@@ -11,7 +11,7 @@ import {
   updateRecord,
 } from "../api/halo";
 import type { RecordPatchBody } from "../types";
-import VideoPlayer from "../components/shared/VideoPlayer";
+import VideoPlayer, { type VideoPlayerHandle } from "../components/shared/VideoPlayer";
 import ContentTable from "../components/shared/ContentTable";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
@@ -19,15 +19,17 @@ import BackButton from "../components/shared/BackButton";
 
 interface WatchProps {
   id: string;
+  onBack?: () => void;
 }
 
-export default function Watch({ id }: WatchProps) {
+export default function Watch({ id, onBack }: WatchProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, error, refetch } = useRecord(id);
   const { resolveWatchBackTarget } = useTabHistory();
   const [liked, setLiked] = useState(false);
   const watchedRef = useRef(false);
+  const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   const handleFirstPlay = useCallback(() => {
     if (watchedRef.current) return;
@@ -36,6 +38,8 @@ export default function Watch({ id }: WatchProps) {
   }, [id]);
 
   function handleBack() {
+    playerRef.current?.stop();
+    onBack?.();
     navigate(resolveWatchBackTarget(record));
   }
 
@@ -69,6 +73,7 @@ export default function Watch({ id }: WatchProps) {
       <BackButton onClick={handleBack} />
       <div className="watch-player-container">
         <VideoPlayer
+          ref={playerRef}
           src={authUrl}
           title={record.name}
           className="watch-player-desktop"

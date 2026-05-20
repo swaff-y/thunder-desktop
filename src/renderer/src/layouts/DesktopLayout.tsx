@@ -29,6 +29,10 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
     if (id) setActiveWatchId(id);
   }, [watchMatch?.params.id]);
 
+  function clearActiveWatch() {
+    setActiveWatchId(null);
+  }
+
   if (isLogin) {
     return <div className="desktop-login-wrapper">{children}</div>;
   }
@@ -50,7 +54,7 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
         <BrowserPage visible={isBrowser} />
         {activeWatchId && (
           <div className="desktop-content" style={{ display: isWatch ? "block" : "none" }}>
-            <Watch key={activeWatchId} id={activeWatchId} />
+            <Watch key={activeWatchId} id={activeWatchId} onBack={clearActiveWatch} />
           </div>
         )}
       </div>

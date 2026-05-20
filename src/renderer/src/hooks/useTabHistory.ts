@@ -47,9 +47,20 @@ export function TabHistoryProvider({ children }: { children: ReactNode }) {
   // freshly-entered /watch/:id to the tab the user just left, before that
   // path has been written into tabPaths by the effect below.
   const [lastDirectTab, setLastDirectTab] = useState<TabKey | null>(null);
+  // The most recent non-/watch pathname (updated on every non-watch route,
+  // including category pages). Used by resolveWatchBackTarget as the Back
+  // target when no category tab owns the current watch — i.e. when the watch
+  // was opened from a neutral surface like Home, Stats, or Browser. Category-
+  // originated watches short-circuit on the `activeTab` guard before this is
+  // consulted, so the broader recording is harmless.
+  const [lastNonWatchPath, setLastNonWatchPath] = useState<string | null>(null);
 
   useEffect(() => {
     const pathname = location.pathname;
+    const isWatch = pathname.startsWith("/watch/");
+    if (!isWatch) {
+      setLastNonWatchPath((prev) => (prev === pathname ? prev : pathname));
+    }
     const directTab = findDirectTab(pathname);
 
     if (directTab) {
@@ -68,7 +79,7 @@ export function TabHistoryProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (pathname.startsWith("/watch/")) {
+    if (isWatch) {
       setTabPaths((prev) => {
         let originating: TabKey | null = null;
         for (const tab of TAB_KEYS) {
@@ -83,7 +94,13 @@ export function TabHistoryProvider({ children }: { children: ReactNode }) {
           ? prev
           : { ...prev, [originating]: pathname };
       });
+      return;
     }
+
+    // Navigated to a neutral surface (Home, Stats, MultiWatch, Browser). Drop
+    // any stale tab attribution so the next /watch/:id is treated as
+    // originating from here, not from the previously-visited category tab.
+    if (lastDirectTab !== null) setLastDirectTab(null);
   }, [location.pathname, lastDirectTab]);
 
   const activeTab = useMemo<TabKey | null>(() => {
@@ -121,6 +138,7 @@ export function TabHistoryProvider({ children }: { children: ReactNode }) {
   const resolveWatchBackTarget = useCallback(
     (record: ContentRecord | undefined): string => {
       if (activeTab) return lastDetailPath[activeTab] ?? `/${activeTab}`;
+      if (lastNonWatchPath) return lastNonWatchPath;
       if (!record) return "/";
       if (record.actors.length > 0) return "/actors";
       if (record.series) return "/series";
@@ -128,13 +146,14 @@ export function TabHistoryProvider({ children }: { children: ReactNode }) {
       if (record.tags.length > 0) return "/tags";
       return "/";
     },
-    [activeTab, lastDetailPath]
+    [activeTab, lastDetailPath, lastNonWatchPath]
   );
 
   const clearHistory = useCallback(() => {
     setTabPaths(INITIAL_TAB_PATHS);
     setLastDetailPath(INITIAL_DETAIL_PATHS);
     setLastDirectTab(null);
+    setLastNonWatchPath(null);
   }, []);
 
   return React.createElement(

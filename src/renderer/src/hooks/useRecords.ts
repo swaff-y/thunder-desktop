@@ -36,14 +36,18 @@ export function useUserRecords() {
   });
 }
 
+const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+export const RANDOM_RECORDS_KEY = ["randomRecords"] as const;
+
 export function useRandomRecords() {
   const { isAuthenticated } = useAuth();
 
   return useQuery({
-    queryKey: ["randomRecords"],
+    queryKey: RANDOM_RECORDS_KEY,
     queryFn: fetchRandomRecords,
     enabled: isAuthenticated,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: FIFTEEN_MINUTES,
+    gcTime: FIFTEEN_MINUTES,
   });
 }

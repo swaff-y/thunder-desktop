@@ -10,6 +10,8 @@ import { jwtDecode } from "jwt-decode";
 import { login as apiLogin } from "../api/halo";
 import { reauthenticate } from "../api/auth";
 import { setCachedCreds, resetClientGuards } from "../api/client";
+import { queryClient } from "../api/cache";
+import { RANDOM_RECORDS_KEY } from "./useRecords";
 import { useTabHistory } from "./useTabHistory";
 import React from "react";
 
@@ -158,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setCachedCreds({ token: access_token, apiKey: api_key });
       resetClientGuards();
+      queryClient.invalidateQueries({ queryKey: RANDOM_RECORDS_KEY });
       setState({
         token: access_token,
         apiKey: api_key,

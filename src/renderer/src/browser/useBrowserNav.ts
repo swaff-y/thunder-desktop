@@ -79,6 +79,10 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
   // TD-039: snapshot of the page state captured on hide so it can be
   // restored on show. Null when the webview is currently visible.
   const suspendedStateRef = useRef<{ url: string; muted: boolean } | null>(null)
+  // TD-040: id of the resume-path loadURL RAF, so a rapid
+  // visible→invisible flip can cancel it before it fires against a
+  // newly-suspended webview.
+  const resumeRafRef = useRef<number | null>(null)
 
   const refreshHistoryFlags = useCallback(() => {
     const el = webviewRef.current
@@ -195,6 +199,10 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
     return () => {
       cleanupRef.current?.()
       cleanupRef.current = null
+      if (resumeRafRef.current !== null) {
+        cancelAnimationFrame(resumeRafRef.current)
+        resumeRafRef.current = null
+      }
     }
   }, [])
 
@@ -239,13 +247,32 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
         if (visible) {
           const snapshot = suspendedStateRef.current
           if (snapshot) {
-            if (snapshot.url !== 'about:blank') el.loadURL(snapshot.url)
             el.setAudioMuted(snapshot.muted)
+            if (snapshot.url !== 'about:blank') {
+              // TD-040: defer one frame so Electron's BrowserPlugin
+              // re-measures the webview's hit-test rect after the parent
+              // goes from `display: none` to `display: flex`. Calling
+              // loadURL synchronously here leaves the rect stale and
+              // clicks on the restored page get mapped outside the
+              // viewport.
+              resumeRafRef.current = requestAnimationFrame(() => {
+                resumeRafRef.current = null
+                try {
+                  webviewRef.current?.loadURL(snapshot.url)
+                } catch {
+                  // webContents not ready
+                }
+              })
+            }
           } else {
             el.setAudioMuted(false)
           }
           suspendedStateRef.current = null
         } else if (suspendedStateRef.current === null) {
+          if (resumeRafRef.current !== null) {
+            cancelAnimationFrame(resumeRafRef.current)
+            resumeRafRef.current = null
+          }
           const url = el.getURL()
           const muted = el.isAudioMuted()
           el.stop()

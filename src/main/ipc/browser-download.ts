@@ -93,6 +93,26 @@ interface DownloadCompletePayload {
   savePath: string
 }
 
+export interface BrowserDownloadStartArgs {
+  assetUrl: string
+  suggestedFilename: string
+  mimeType?: string
+  referer?: string
+}
+
+export interface BrowserDownloadHandlers {
+  /**
+   * TD-047: same dispatch surface as the `browserDownloadStart` IPC
+   * channel, callable from inside main so other features (the image
+   * context menu) can enqueue downloads without round-tripping through
+   * the renderer. Args are already trusted at this point — the caller
+   * is in-process — but http(s)-only / basename-only validations still
+   * run so the trust boundary against `assetUrl` is uniform whether it
+   * came from the renderer or a sibling main-process module.
+   */
+  startBrowserDownload: (args: BrowserDownloadStartArgs) => Promise<{ id: string; queued: boolean }>
+}
+
 let cachedSettingsPath: string | null = null
 let cachedDefaults: ThunderSettings | null = null
 
@@ -123,7 +143,7 @@ function sendToFocused(channel: string, payload: unknown): void {
   }
 }
 
-export function registerBrowserDownloadHandlers(): void {
+export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {
   const sess: Session = session.fromPartition(THUNDER_BROWSER_PARTITION)
 
   // URL → FIFO queue of starts awaiting their `will-download` event.
@@ -261,7 +281,12 @@ export function registerBrowserDownloadHandlers(): void {
     })
   })
 
-  function startPlainDispatch(id: string, assetUrl: string, targetPath: string): void {
+  function startPlainDispatch(
+    id: string,
+    assetUrl: string,
+    targetPath: string,
+    optionalReferer: string | undefined
+  ): void {
     const queue = pendingByUrl.get(assetUrl) ?? []
     // Bound the leak if `will-download` never fires (network failed
     // before headers): drop our queue entry after a timeout so the
@@ -284,7 +309,15 @@ export function registerBrowserDownloadHandlers(): void {
     queue.push({ id, targetPath, timeoutHandle })
     pendingByUrl.set(assetUrl, queue)
 
-    sess.downloadURL(assetUrl)
+    // TD-047: forward the page URL as a Referer header so hotlink-
+    // protected CDNs (which already accept the page's own image
+    // requests) accept the download. Detected-asset downloads that
+    // don't supply a referer keep the prior no-header behaviour.
+    if (optionalReferer !== undefined) {
+      sess.downloadURL(assetUrl, { headers: { Referer: optionalReferer } })
+    } else {
+      sess.downloadURL(assetUrl)
+    }
   }
 
   async function startHlsDispatch(
@@ -355,6 +388,79 @@ export function registerBrowserDownloadHandlers(): void {
     }
   }
 
+  async function startBrowserDownload(
+    args: BrowserDownloadStartArgs
+  ): Promise<{ id: string; queued: boolean }> {
+    const { assetUrl, suggestedFilename, mimeType: optionalMimeType, referer: optionalReferer } =
+      args
+
+    // Restrict to web protocols. The URL flows into ffmpeg's `-i`
+    // argument for the HLS branch, where `file://` or `pipe:` would
+    // turn a renderer-provided string into a local-FS read or a
+    // protocol injection vector. The non-HLS path uses Electron's
+    // network stack which already gates protocols, but applying
+    // the same check up front keeps the trust boundary uniform.
+    let parsedAssetUrl: URL
+    try {
+      parsedAssetUrl = new URL(assetUrl)
+    } catch {
+      throw new Error('[browser-download] assetUrl is not a valid URL')
+    }
+    if (parsedAssetUrl.protocol !== 'http:' && parsedAssetUrl.protocol !== 'https:') {
+      throw new Error('[browser-download] assetUrl protocol must be http or https')
+    }
+
+    // `path.join` doesn't block traversal: a malicious or buggy
+    // renderer could send `../../evil.sh` and write outside the
+    // download folder. `basename` strips every path component, so
+    // the resolved file always lands inside `folder`. Reject if the
+    // result is empty (e.g., `/`) — there's nothing safe to write.
+    const safeFilename = basename(suggestedFilename)
+    if (safeFilename.length === 0 || safeFilename === '.' || safeFilename === '..') {
+      throw new Error('[browser-download] suggestedFilename has no usable basename')
+    }
+
+    const folder = getSetting(settingsPath(), defaults(), 'downloadFolder')
+    mkdirSync(folder, { recursive: true })
+
+    // TD-037: HLS manifests can't be saved as-is — ffmpeg remuxes
+    // the segments into a single .mp4. Force the extension before
+    // collision resolution so `clip.m3u8` and an existing
+    // `clip.mp4` get suffixed correctly (`clip (2).mp4`).
+    const hls = isHlsManifest({ url: assetUrl, mimeType: optionalMimeType })
+    const effectiveFilename = hls ? rewriteM3u8ToMp4(safeFilename) : safeFilename
+    const targetPath = resolveCollisionSafePath(folder, effectiveFilename)
+
+    const id = randomUUID()
+
+    // Save path is remembered up front for HLS so show-in-folder
+    // resolves the future .mp4 even if the entry is still queued.
+    // Plain downloads register their save path inside `will-download`.
+    if (hls) rememberSavePath(id, targetPath)
+
+    // TD-046: if the cap is reached, defer the physical dispatch
+    // until a slot opens. Renderer learns it was queued from the
+    // `queued: true` flag and labels the row "Queued" until the
+    // first progress event flips it to "Downloading".
+    if (activeCount < CONCURRENCY_CAP) {
+      activeCount++
+      if (hls) {
+        await startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
+      } else {
+        startPlainDispatch(id, assetUrl, targetPath, optionalReferer)
+      }
+      return { id, queued: false }
+    }
+
+    downloadQueue.push({
+      id,
+      start: hls
+        ? (): void => void startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
+        : (): void => startPlainDispatch(id, assetUrl, targetPath, optionalReferer)
+    })
+    return { id, queued: true }
+  }
+
   ipcMain.handle(
     THUNDER_IPC_CHANNELS.browserDownloadStart,
     async (_event, args: unknown): Promise<{ id: string; queued: boolean }> => {
@@ -370,77 +476,19 @@ export function registerBrowserDownloadHandlers(): void {
       if (typeof assetUrl !== 'string' || assetUrl.length === 0) {
         throw new Error('[browser-download] assetUrl must be a non-empty string')
       }
-      // Restrict to web protocols. The URL flows into ffmpeg's `-i`
-      // argument for the HLS branch, where `file://` or `pipe:` would
-      // turn a renderer-provided string into a local-FS read or a
-      // protocol injection vector. The non-HLS path uses Electron's
-      // network stack which already gates protocols, but applying
-      // the same check up front keeps the trust boundary uniform.
-      let parsedAssetUrl: URL
-      try {
-        parsedAssetUrl = new URL(assetUrl)
-      } catch {
-        throw new Error('[browser-download] assetUrl is not a valid URL')
-      }
-      if (parsedAssetUrl.protocol !== 'http:' && parsedAssetUrl.protocol !== 'https:') {
-        throw new Error('[browser-download] assetUrl protocol must be http or https')
-      }
       if (typeof suggestedFilename !== 'string' || suggestedFilename.length === 0) {
         throw new Error('[browser-download] suggestedFilename must be a non-empty string')
       }
-      const optionalMimeType = typeof mimeType === 'string' ? mimeType : undefined
-      const optionalReferer =
-        typeof referer === 'string' && referer.length > 0 ? referer : undefined
-
-      // `path.join` doesn't block traversal: a malicious or buggy
-      // renderer could send `../../evil.sh` and write outside the
-      // download folder. `basename` strips every path component, so
-      // the resolved file always lands inside `folder`. Reject if the
-      // result is empty (e.g., `/`) — there's nothing safe to write.
-      const safeFilename = basename(suggestedFilename)
-      if (safeFilename.length === 0 || safeFilename === '.' || safeFilename === '..') {
-        throw new Error('[browser-download] suggestedFilename has no usable basename')
-      }
-
-      const folder = getSetting(settingsPath(), defaults(), 'downloadFolder')
-      mkdirSync(folder, { recursive: true })
-
-      // TD-037: HLS manifests can't be saved as-is — ffmpeg remuxes
-      // the segments into a single .mp4. Force the extension before
-      // collision resolution so `clip.m3u8` and an existing
-      // `clip.mp4` get suffixed correctly (`clip (2).mp4`).
-      const hls = isHlsManifest({ url: assetUrl, mimeType: optionalMimeType })
-      const effectiveFilename = hls ? rewriteM3u8ToMp4(safeFilename) : safeFilename
-      const targetPath = resolveCollisionSafePath(folder, effectiveFilename)
-
-      const id = randomUUID()
-
-      // Save path is remembered up front for HLS so show-in-folder
-      // resolves the future .mp4 even if the entry is still queued.
-      // Plain downloads register their save path inside `will-download`.
-      if (hls) rememberSavePath(id, targetPath)
-
-      // TD-046: if the cap is reached, defer the physical dispatch
-      // until a slot opens. Renderer learns it was queued from the
-      // `queued: true` flag and labels the row "Queued" until the
-      // first progress event flips it to "Downloading".
-      if (activeCount < CONCURRENCY_CAP) {
-        activeCount++
-        if (hls) {
-          await startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
-        } else {
-          startPlainDispatch(id, assetUrl, targetPath)
-        }
-        return { id, queued: false }
-      }
-
-      downloadQueue.push({
-        id,
-        start: hls
-          ? (): void => void startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
-          : (): void => startPlainDispatch(id, assetUrl, targetPath)
+      // Protocol + basename sanitisation runs inside `startBrowserDownload`
+      // — both call sites (this IPC handler and the in-process context-menu
+      // dispatcher) share the same validation, so an untrusted assetUrl is
+      // never forwarded to the network or to ffmpeg without it.
+      return startBrowserDownload({
+        assetUrl,
+        suggestedFilename,
+        mimeType: typeof mimeType === 'string' ? mimeType : undefined,
+        referer: typeof referer === 'string' && referer.length > 0 ? referer : undefined
       })
-      return { id, queued: true }
     }
   )
 
@@ -488,4 +536,6 @@ export function registerBrowserDownloadHandlers(): void {
       shell.showItemInFolder(savePath)
     }
   )
+
+  return { startBrowserDownload }
 }

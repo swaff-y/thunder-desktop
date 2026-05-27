@@ -3,6 +3,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
+import { registerBrowserContextMenuHandlers } from './ipc/browser-context-menu'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
 import { registerBrowserDownloadHandlers } from './ipc/browser-download'
 import { registerDialogHandlers } from './ipc/dialog'
@@ -29,7 +30,8 @@ app.whenReady().then(() => {
   registerShellHandlers()
   registerDialogHandlers()
   registerBrowserDetectHandlers()
-  registerBrowserDownloadHandlers()
+  const browserDownload = registerBrowserDownloadHandlers()
+  registerBrowserContextMenuHandlers(browserDownload)
   createMainWindow()
 
   app.on('activate', () => {

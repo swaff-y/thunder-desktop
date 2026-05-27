@@ -103,7 +103,7 @@ const { THUNDER_IPC_CHANNELS } = await import('../../../preload/thunder-api')
 // at module scope (legitimate in production, tied to `app.getPath`).
 // Re-imported per test so each test gets fresh module state pointing
 // at its own temp dirs.
-let registerBrowserDownloadHandlers: () => void
+let registerBrowserDownloadHandlers: () => unknown
 
 interface FakeItem extends EventEmitter {
   getURL: () => string
@@ -244,6 +244,21 @@ describe('browser-download IPC (TD-024)', () => {
     const item = makeFakeItem('https://x/clip.mp4')
     mockSession.emit('will-download', {}, item)
     expect(item.getSavePath()).toBe(join(downloadFolder(), 'clip (2).mp4'))
+  })
+
+  // TD-047: plain-download referer plumbing — image-context-menu
+  // downloads need the page URL forwarded as a Referer header so a
+  // hotlink-protected CDN that already accepts the page's own image
+  // requests will accept the download too.
+  it('forwards an optional referer as a Referer header on plain downloads', async () => {
+    await callStart({
+      assetUrl: 'https://x/photo.jpg',
+      suggestedFilename: 'photo.jpg',
+      referer: 'https://example.com/page'
+    })
+    expect(mockSession.downloadURL).toHaveBeenCalledWith('https://x/photo.jpg', {
+      headers: { Referer: 'https://example.com/page' }
+    })
   })
 
   // ─── will-download: correlation ───────────────────────────────────

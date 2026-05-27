@@ -83,6 +83,16 @@ export const THUNDER_IPC_CHANNELS = {
   browserSessionClear: 'thunder:browser:session:clear',
 
   /**
+   * TD-047: native "Save image" context menu for the embedded Browser
+   * tab. Renderer forwards the webview's `context-menu` params; main
+   * gates on partition, builds an Electron `Menu` and pops it. The
+   * click handler reuses the TD-024 download pipeline so the image
+   * lands in the same downloads drawer as a detected asset. Handler in
+   * `main/ipc/browser-context-menu.ts`.
+   */
+  browserContextMenuShow: 'thunder:browser:context-menu:show',
+
+  /**
    * TD-026: native dialog bridge. `openDirectory` drives the folder
    * picker behind Settings' "Choose…" button and probes the chosen
    * folder for writability before returning. `showItemInFolder`
@@ -118,6 +128,7 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.browserDownloadCancel,
   THUNDER_IPC_CHANNELS.browserDownloadShowInFolder,
   THUNDER_IPC_CHANNELS.browserSessionClear,
+  THUNDER_IPC_CHANNELS.browserContextMenuShow,
   THUNDER_IPC_CHANNELS.dialogOpenDirectory,
   THUNDER_IPC_CHANNELS.dialogShowItemInFolder
 ]
@@ -177,6 +188,35 @@ export interface ThunderDownloadCompletePayload {
   id: string
   state: 'completed' | 'cancelled' | 'interrupted'
   savePath: string
+}
+
+/**
+ * TD-047: shape the renderer forwards from the webview's `context-menu`
+ * event. Only the fields the main-process handler needs are carried —
+ * notably NOT `params.frame`, which is a live `WebFrameMain` and can't
+ * survive IPC serialisation. `webContentsId` is the webview guest's id
+ * (renderer obtains it via `webview.getWebContentsId()`); main uses it
+ * to gate the menu to the Browser-tab partition.
+ *
+ * `mediaType` mirrors Electron's `ContextMenuParams.mediaType` union so
+ * the type is self-documenting at every consumer — main's handler
+ * narrows it with `=== 'image'` rather than treating it as an opaque
+ * string.
+ */
+export type ThunderContextMenuMediaType =
+  | 'none'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'canvas'
+  | 'file'
+  | 'plugin'
+
+export interface ThunderBrowserContextMenuRequest {
+  webContentsId: number
+  mediaType: ThunderContextMenuMediaType
+  srcURL: string
+  pageURL: string
 }
 
 /**
@@ -260,6 +300,15 @@ export interface ThunderApi {
      * session can't see the previous session's data.
      */
     clearSession: () => Promise<void>
+    /**
+     * TD-047: ask main to pop the native "Save image" context menu for
+     * the embedded Browser tab. Main validates the request (partition,
+     * mediaType, srcURL scheme) and silently no-ops anything it doesn't
+     * recognise — there is no error surface back to the renderer.
+     */
+    contextMenu: {
+      show: (request: ThunderBrowserContextMenuRequest) => Promise<void>
+    }
   }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
@@ -325,7 +374,10 @@ export const thunderApi: ThunderApi = {
         }
       }
     },
-    clearSession: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserSessionClear)
+    clearSession: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserSessionClear),
+    contextMenu: {
+      show: (request) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserContextMenuShow, request)
+    }
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

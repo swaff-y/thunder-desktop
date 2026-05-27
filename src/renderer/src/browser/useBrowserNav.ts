@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { WebviewTag, DidFailLoadEvent } from 'electron'
+import type { ContextMenuEvent, DidFailLoadEvent, WebviewTag } from 'electron'
 
 /**
  * TD-021: state + actions for the embedded browser.
@@ -171,6 +171,30 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
           // Unparseable URL — drop silently; nothing safe to do with it.
         }
       }
+      // TD-047: forward image right-clicks to main so it can pop a
+      // native "Save image" menu. Main applies the partition gate,
+      // mediaType / scheme checks, and the actual menu construction —
+      // the renderer just relays params (no `electron` import needed).
+      const onContextMenu = (event: ContextMenuEvent): void => {
+        let id: number
+        try {
+          id = el.getWebContentsId()
+        } catch {
+          return
+        }
+        window.thunder?.browser.contextMenu
+          .show({
+            webContentsId: id,
+            mediaType: event.params.mediaType,
+            srcURL: event.params.srcURL,
+            pageURL: event.params.pageURL
+          })
+          .catch(() => {
+            // Menu construction errors are non-actionable for the user;
+            // silently drop so a transient IPC failure doesn't surface
+            // as a renderer-level crash.
+          })
+      }
 
       el.addEventListener('did-start-loading', onDidStartLoading)
       el.addEventListener('did-stop-loading', onDidStopLoading)
@@ -180,6 +204,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
       el.addEventListener('did-navigate-in-page', onDidNavigateInPage)
       el.addEventListener('did-attach', onDidAttach)
       el.addEventListener('new-window', onNewWindow)
+      el.addEventListener('context-menu', onContextMenu)
 
       cleanupRef.current = (): void => {
         el.removeEventListener('did-start-loading', onDidStartLoading)
@@ -190,6 +215,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
         el.removeEventListener('did-navigate-in-page', onDidNavigateInPage)
         el.removeEventListener('did-attach', onDidAttach)
         el.removeEventListener('new-window', onNewWindow)
+        el.removeEventListener('context-menu', onContextMenu)
       }
     },
     [refreshHistoryFlags]

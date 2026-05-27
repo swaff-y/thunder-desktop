@@ -27,14 +27,19 @@ export default function DownloadsDrawer({
   const activeCount = entries.filter(
     (e) => e.state === 'started' || e.state === 'progressing'
   ).length
+  const queuedCount = entries.filter((e) => e.state === 'queued').length
   const completedCount = entries.filter((e) => e.state === 'completed').length
 
   const summary =
-    activeCount > 0
-      ? `${activeCount} downloading`
-      : completedCount > 0
-        ? `${completedCount} complete`
-        : `${entries.length} download${entries.length === 1 ? '' : 's'}`
+    activeCount > 0 && queuedCount > 0
+      ? `${activeCount} downloading, ${queuedCount} queued`
+      : activeCount > 0
+        ? `${activeCount} downloading`
+        : queuedCount > 0
+          ? `${queuedCount} queued`
+          : completedCount > 0
+            ? `${completedCount} complete`
+            : `${entries.length} download${entries.length === 1 ? '' : 's'}`
 
   return (
     <section
@@ -90,7 +95,8 @@ function DownloadRow({
   onRetry,
   onDismiss
 }: DownloadRowProps): React.JSX.Element {
-  const isActive = entry.state === 'started' || entry.state === 'progressing'
+  const isActive =
+    entry.state === 'started' || entry.state === 'progressing' || entry.state === 'queued'
   const isCompleted = entry.state === 'completed'
   const isFailed = entry.state === 'cancelled' || entry.state === 'interrupted'
 
@@ -190,6 +196,8 @@ function DownloadRow({
 
 function stateLabel(entry: DownloadEntry): string {
   switch (entry.state) {
+    case 'queued':
+      return 'Queued'
     case 'started':
       return 'Starting…'
     case 'progressing':

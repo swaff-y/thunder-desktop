@@ -144,10 +144,10 @@ async function callStart(args: {
   suggestedFilename: string
   mimeType?: string
   referer?: string
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; queued: boolean }> {
   const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.browserDownloadStart)
   if (!handler) throw new Error('start handler not registered')
-  return (await handler({}, args)) as { id: string }
+  return (await handler({}, args)) as { id: string; queued: boolean }
 }
 
 async function callCancel(args: { id: string }): Promise<void> {
@@ -613,6 +613,140 @@ describe('browser-download IPC (TD-024)', () => {
     await expect(callStart({ assetUrl: 'not-a-url', suggestedFilename: 'x.mp4' })).rejects.toThrow(
       /not a valid URL/
     )
+  })
+
+  // ─── TD-046: concurrency cap ──────────────────────────────────────
+
+  it('dispatches the first CONCURRENCY_CAP plain starts immediately and queues the rest', async () => {
+    // CONCURRENCY_CAP is 2 in the impl. The 3rd plain start should
+    // not call downloadURL until a slot opens.
+    const r1 = await callStart({ assetUrl: 'https://x/1.mp4', suggestedFilename: '1.mp4' })
+    const r2 = await callStart({ assetUrl: 'https://x/2.mp4', suggestedFilename: '2.mp4' })
+    const r3 = await callStart({ assetUrl: 'https://x/3.mp4', suggestedFilename: '3.mp4' })
+
+    expect(r1.queued).toBe(false)
+    expect(r2.queued).toBe(false)
+    expect(r3.queued).toBe(true)
+    expect(mockSession.downloadURL).toHaveBeenCalledTimes(2)
+    expect(mockSession.downloadURL.mock.calls.map((c) => c[0])).toEqual([
+      'https://x/1.mp4',
+      'https://x/2.mp4'
+    ])
+  })
+
+  it('dequeues the next entry when an active download completes', async () => {
+    await callStart({ assetUrl: 'https://x/1.mp4', suggestedFilename: '1.mp4' })
+    await callStart({ assetUrl: 'https://x/2.mp4', suggestedFilename: '2.mp4' })
+    const queued = await callStart({ assetUrl: 'https://x/3.mp4', suggestedFilename: '3.mp4' })
+    expect(queued.queued).toBe(true)
+    expect(mockSession.downloadURL).toHaveBeenCalledTimes(2)
+
+    // Complete the first download — the queued entry should now dispatch.
+    const item1 = makeFakeItem('https://x/1.mp4')
+    mockSession.emit('will-download', {}, item1)
+    item1.emit('done', {}, 'completed')
+
+    expect(mockSession.downloadURL).toHaveBeenCalledTimes(3)
+    expect(mockSession.downloadURL.mock.calls[2][0]).toBe('https://x/3.mp4')
+  })
+
+  it('cancel of a queued entry fans out cancelled without dispatching it', async () => {
+    await callStart({ assetUrl: 'https://x/1.mp4', suggestedFilename: '1.mp4' })
+    await callStart({ assetUrl: 'https://x/2.mp4', suggestedFilename: '2.mp4' })
+    const queued = await callStart({ assetUrl: 'https://x/3.mp4', suggestedFilename: '3.mp4' })
+
+    await callCancel({ id: queued.id })
+
+    expect(mockSession.downloadURL).toHaveBeenCalledTimes(2) // queued never dispatched
+    expect(sendSpy).toHaveBeenCalledWith(
+      THUNDER_IPC_CHANNELS.browserDownloadComplete,
+      expect.objectContaining({ id: queued.id, state: 'cancelled' })
+    )
+
+    // No slot was reserved for the queued entry, so completing an
+    // active one must still dispatch any *other* queued entries — not
+    // double-release a slot we never took.
+    const extra = await callStart({ assetUrl: 'https://x/4.mp4', suggestedFilename: '4.mp4' })
+    expect(extra.queued).toBe(true)
+  })
+
+  it('counts HLS starts against the same concurrency cap as plain starts', async () => {
+    // Two HLS starts saturate the cap; a subsequent plain start queues.
+    const h1 = await callStart({ assetUrl: 'https://x/a.m3u8', suggestedFilename: 'a.m3u8' })
+    const h2 = await callStart({ assetUrl: 'https://x/b.m3u8', suggestedFilename: 'b.m3u8' })
+    const p3 = await callStart({ assetUrl: 'https://x/c.mp4', suggestedFilename: 'c.mp4' })
+
+    expect(h1.queued).toBe(false)
+    expect(h2.queued).toBe(false)
+    expect(p3.queued).toBe(true)
+    expect(hlsCalls).toHaveLength(2)
+    expect(mockSession.downloadURL).not.toHaveBeenCalled()
+
+    // Completing an HLS download frees a slot for the queued plain entry.
+    hlsCalls[0].onDone('completed')
+    expect(mockSession.downloadURL).toHaveBeenCalledTimes(1)
+    expect(mockSession.downloadURL.mock.calls[0][0]).toBe('https://x/c.mp4')
+  })
+
+  it('releases the slot when will-download never fires (orphan timeout)', async () => {
+    vi.useFakeTimers()
+    try {
+      // Saturate the cap with two starts whose will-download never
+      // fires, then enqueue a third. The orphan timeout must release
+      // a slot so the queued entry can dispatch.
+      await callStart({ assetUrl: 'https://x/orphan-a.mp4', suggestedFilename: 'a.mp4' })
+      await callStart({ assetUrl: 'https://x/orphan-b.mp4', suggestedFilename: 'b.mp4' })
+      const queued = await callStart({
+        assetUrl: 'https://x/next.mp4',
+        suggestedFilename: 'n.mp4'
+      })
+      expect(queued.queued).toBe(true)
+
+      vi.advanceTimersByTime(31_000)
+
+      // Exactly one dequeue: orphan-a's timeout dispatches next.mp4
+      // (and re-fills the slot), so orphan-b's timeout finds an empty
+      // queue. A stray double-dequeue would show as 4 calls.
+      expect(mockSession.downloadURL).toHaveBeenCalledTimes(3)
+      expect(mockSession.downloadURL).toHaveBeenCalledWith('https://x/next.mp4')
+      // The orphaned entries must fan out as interrupted so the
+      // renderer's drawer doesn't show them stuck at "Starting…".
+      expect(sendSpy).toHaveBeenCalledWith(
+        THUNDER_IPC_CHANNELS.browserDownloadComplete,
+        expect.objectContaining({ state: 'interrupted' })
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('releases the slot when HLS dispatch fails (cookies.get throws)', async () => {
+    // The HLS dispatch path is the only new slot-release path that
+    // runs in the async catch — if it ever stops calling releaseSlot,
+    // the cap leaks permanently for the rest of the session.
+    const cookiesGet = (
+      mockSession as unknown as { cookies: { get: ReturnType<typeof vi.fn> } }
+    ).cookies.get
+    cookiesGet.mockRejectedValueOnce(new Error('cookie store unavailable'))
+
+    const failed = await callStart({
+      assetUrl: 'https://x/v.m3u8',
+      suggestedFilename: 'clip.m3u8'
+    })
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      THUNDER_IPC_CHANNELS.browserDownloadComplete,
+      expect.objectContaining({ id: failed.id, state: 'interrupted' })
+    )
+    expect(hlsCalls).toHaveLength(0) // never reached the spawn wrapper
+
+    // Slot was released — a subsequent start dispatches immediately, not queued.
+    const next = await callStart({
+      assetUrl: 'https://x/v2.m3u8',
+      suggestedFilename: 'clip2.m3u8'
+    })
+    expect(next.queued).toBe(false)
+    expect(hlsCalls).toHaveLength(1)
   })
 
   it('HLS onProgress fans out throttled progress events with totalBytes=0', async () => {

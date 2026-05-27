@@ -43,7 +43,13 @@ import type {
 const RATE_WINDOW_MS = 3000
 const RATE_MAX_SAMPLES = 20
 
-export type DownloadState = 'started' | 'progressing' | 'completed' | 'cancelled' | 'interrupted'
+export type DownloadState =
+  | 'queued'
+  | 'started'
+  | 'progressing'
+  | 'completed'
+  | 'cancelled'
+  | 'interrupted'
 
 export interface DownloadEntry {
   id: string
@@ -157,7 +163,7 @@ function useDownloadsState(): UseDownloads {
 
   const start = useCallback(async (assetUrl: string, suggestedFilename: string): Promise<void> => {
     try {
-      const { id } = await window.thunder.browser.download.start({
+      const { id, queued } = await window.thunder.browser.download.start({
         assetUrl,
         suggestedFilename
       })
@@ -167,7 +173,7 @@ function useDownloadsState(): UseDownloads {
           id,
           assetUrl,
           filename: suggestedFilename,
-          state: 'started',
+          state: queued ? 'queued' : 'started',
           receivedBytes: 0,
           totalBytes: 0
         })

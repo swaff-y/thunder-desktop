@@ -69,3 +69,5 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-040](TD-040-browser-clicks-fail-after-scroll.md) — Browser tab: clickable links stop working past a scroll point (likely webview hit-test offset)
 - [TD-041](TD-041-expose-entity-id-for-copy.md) — Detail view: expose entity ID for copying (info button)
 - [TD-042](TD-042-download-survives-multiwatch-nav.md) — Browser download discarded when navigating to MultiWatch (must continue; bar hidden off-tab)
+- [TD-046](TD-046-watch-hangs-during-downloads.md) — Watch / MultiWatch video hangs while downloads are in progress (socket-saturation, needs reload to recover)
+- [TD-047](TD-047-browser-save-image-context-menu.md) — Browser tab: right-click image → "Save image" context menu

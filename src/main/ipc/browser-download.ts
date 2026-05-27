@@ -61,10 +61,23 @@ const WILL_DOWNLOAD_TIMEOUT_MS = 30_000
 // renderer's UI list anyway.
 const SAVE_PATH_CACHE_MAX = 256
 
+// TD-046: cap on concurrent in-flight downloads (plain + HLS combined).
+// Chromium's per-host socket pool is 6; downloads, the video proxy, and
+// HLS segment fetches all hit the same API origin. With downloads
+// allowed to saturate the pool, the renderer's `<video>` request for
+// `v1/proxy/:id` stalls (pending) until one finishes. Cap = 2 leaves
+// at least 4 sockets free for the renderer (Watch + MultiWatch cells).
+const CONCURRENCY_CAP = 2
+
 interface PendingStart {
   id: string
   targetPath: string
   timeoutHandle: NodeJS.Timeout
+}
+
+interface QueuedDownload {
+  id: string
+  start: () => void
 }
 
 interface DownloadProgressPayload {
@@ -129,6 +142,26 @@ export function registerBrowserDownloadHandlers(): void {
   // download-history surface; no eviction in v1.
   const savePathById = new Map<string, string>()
   const lastProgressAt = new Map<string, number>()
+  // TD-046: FIFO queue of starts held back by CONCURRENCY_CAP. Each
+  // entry's `start()` performs the physical dispatch (sess.downloadURL
+  // for plain, startHlsDownload for HLS) and assumes activeCount was
+  // already incremented before the call.
+  const downloadQueue: QueuedDownload[] = []
+  let activeCount = 0
+
+  function tryDequeue(): void {
+    while (activeCount < CONCURRENCY_CAP) {
+      const entry = downloadQueue.shift()
+      if (!entry) return
+      activeCount++
+      entry.start()
+    }
+  }
+
+  function releaseSlot(): void {
+    activeCount--
+    tryDequeue()
+  }
 
   function rememberSavePath(id: string, path: string): void {
     // Insertion-order Map: re-setting an existing key keeps its
@@ -224,12 +257,107 @@ export function registerBrowserDownloadHandlers(): void {
       }
       sendComplete(id, state, savePath)
       itemsById.delete(id)
+      releaseSlot()
     })
   })
 
+  function startPlainDispatch(id: string, assetUrl: string, targetPath: string): void {
+    const queue = pendingByUrl.get(assetUrl) ?? []
+    // Bound the leak if `will-download` never fires (network failed
+    // before headers): drop our queue entry after a timeout so the
+    // map doesn't grow per orphaned start. The slot we reserved when
+    // dispatching also needs releasing — otherwise an orphaned start
+    // leaks one CONCURRENCY_CAP slot permanently.
+    const timeoutHandle = setTimeout(() => {
+      const q = pendingByUrl.get(assetUrl)
+      if (!q) return
+      const idx = q.findIndex((p) => p.id === id)
+      if (idx === -1) return
+      q.splice(idx, 1)
+      if (q.length === 0) pendingByUrl.delete(assetUrl)
+      sendComplete(id, 'interrupted', '')
+      releaseSlot()
+    }, WILL_DOWNLOAD_TIMEOUT_MS)
+    // Don't keep the event loop alive solely for this cleanup —
+    // app shutdown should still proceed cleanly.
+    timeoutHandle.unref?.()
+    queue.push({ id, targetPath, timeoutHandle })
+    pendingByUrl.set(assetUrl, queue)
+
+    sess.downloadURL(assetUrl)
+  }
+
+  async function startHlsDispatch(
+    id: string,
+    assetUrl: string,
+    targetPath: string,
+    optionalReferer: string | undefined
+  ): Promise<void> {
+    try {
+      // Cookies are scoped to the manifest URL and forwarded via
+      // ffmpeg's `-headers` so a session-gated stream still
+      // downloads. The User-Agent override (if set) matches what
+      // the embedded webview already sends, in case the CDN
+      // varies its 403 policy by UA. Fetched at dispatch time (not
+      // enqueue) so a credential rotation while the entry sat in
+      // the queue doesn't ship stale cookies to ffmpeg.
+      const cookies = await sess.cookies.get({ url: assetUrl })
+      const userAgent = getSetting(settingsPath(), defaults(), 'userAgent')
+      const headers = buildFfmpegHeadersString(cookies, userAgent, optionalReferer)
+
+      // Track the last progress pair so we can emit one final
+      // unthrottled event on completion. Without this, a fast
+      // HLS download whose only `total_size` line was suppressed
+      // by the throttle leaves the drawer pinned at 0 bytes
+      // before flipping to "Completed" — same pattern as the
+      // TD-024 fix in the `done(completed)` branch above.
+      let lastReceivedBytes = 0
+      let lastTotalBytes = 0
+      const handle = startHlsDownload({
+        ffmpegPath: resolveBundledFfmpegPath(),
+        assetUrl,
+        targetPath,
+        headers,
+        onProgress: (receivedBytes, totalBytes) => {
+          lastReceivedBytes = receivedBytes
+          lastTotalBytes = totalBytes
+          sendProgress(
+            { id, receivedBytes, totalBytes, state: 'progressing' },
+            { throttle: true }
+          )
+        },
+        onDone: (state) => {
+          if (state === 'completed') {
+            // Snap the final emit to receivedBytes=totalBytes so
+            // the bar fills to 100% even when ffmpeg stopped
+            // emitting progress before reaching 100% of duration.
+            sendProgress(
+              {
+                id,
+                receivedBytes: lastReceivedBytes,
+                totalBytes: Math.max(lastReceivedBytes, lastTotalBytes),
+                state: 'progressing'
+              },
+              { throttle: false }
+            )
+          }
+          sendComplete(id, state, targetPath)
+          hlsHandlesById.delete(id)
+          releaseSlot()
+        }
+      })
+      hlsHandlesById.set(id, handle)
+    } catch {
+      // Cookie fetch or spawn failed — surface as an interrupted
+      // download and free the slot so the next queued entry can run.
+      sendComplete(id, 'interrupted', '')
+      releaseSlot()
+    }
+  }
+
   ipcMain.handle(
     THUNDER_IPC_CHANNELS.browserDownloadStart,
-    async (_event, args: unknown): Promise<{ id: string }> => {
+    async (_event, args: unknown): Promise<{ id: string; queued: boolean }> => {
       if (!args || typeof args !== 'object') {
         throw new Error('[browser-download] start requires { assetUrl, suggestedFilename }')
       }
@@ -287,85 +415,32 @@ export function registerBrowserDownloadHandlers(): void {
 
       const id = randomUUID()
 
-      if (hls) {
-        // Cookies are scoped to the manifest URL and forwarded via
-        // ffmpeg's `-headers` so a session-gated stream still
-        // downloads. The User-Agent override (if set) matches what
-        // the embedded webview already sends, in case the CDN
-        // varies its 403 policy by UA.
-        const cookies = await sess.cookies.get({ url: assetUrl })
-        const userAgent = getSetting(settingsPath(), defaults(), 'userAgent')
-        const headers = buildFfmpegHeadersString(cookies, userAgent, optionalReferer)
+      // Save path is remembered up front for HLS so show-in-folder
+      // resolves the future .mp4 even if the entry is still queued.
+      // Plain downloads register their save path inside `will-download`.
+      if (hls) rememberSavePath(id, targetPath)
 
-        rememberSavePath(id, targetPath)
-        // Track the last progress pair so we can emit one final
-        // unthrottled event on completion. Without this, a fast
-        // HLS download whose only `total_size` line was suppressed
-        // by the throttle leaves the drawer pinned at 0 bytes
-        // before flipping to "Completed" — same pattern as the
-        // TD-024 fix in the `done(completed)` branch above.
-        // On completion the wrapper has emitted at least one
-        // progress with totalBytes ≈ receivedBytes (duration-scaled
-        // estimate converges), so re-using the latched values lands
-        // the bar at 100%.
-        let lastReceivedBytes = 0
-        let lastTotalBytes = 0
-        const handle = startHlsDownload({
-          ffmpegPath: resolveBundledFfmpegPath(),
-          assetUrl,
-          targetPath,
-          headers,
-          onProgress: (receivedBytes, totalBytes) => {
-            lastReceivedBytes = receivedBytes
-            lastTotalBytes = totalBytes
-            sendProgress(
-              { id, receivedBytes, totalBytes, state: 'progressing' },
-              { throttle: true }
-            )
-          },
-          onDone: (state) => {
-            if (state === 'completed') {
-              // Snap the final emit to receivedBytes=totalBytes so
-              // the bar fills to 100% even when ffmpeg stopped
-              // emitting progress before reaching 100% of duration.
-              sendProgress(
-                {
-                  id,
-                  receivedBytes: lastReceivedBytes,
-                  totalBytes: Math.max(lastReceivedBytes, lastTotalBytes),
-                  state: 'progressing'
-                },
-                { throttle: false }
-              )
-            }
-            sendComplete(id, state, targetPath)
-            hlsHandlesById.delete(id)
-          }
-        })
-        hlsHandlesById.set(id, handle)
-        return { id }
+      // TD-046: if the cap is reached, defer the physical dispatch
+      // until a slot opens. Renderer learns it was queued from the
+      // `queued: true` flag and labels the row "Queued" until the
+      // first progress event flips it to "Downloading".
+      if (activeCount < CONCURRENCY_CAP) {
+        activeCount++
+        if (hls) {
+          await startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
+        } else {
+          startPlainDispatch(id, assetUrl, targetPath)
+        }
+        return { id, queued: false }
       }
 
-      const queue = pendingByUrl.get(assetUrl) ?? []
-      // Bound the leak if `will-download` never fires (network failed
-      // before headers): drop our queue entry after a timeout so the
-      // map doesn't grow per orphaned start.
-      const timeoutHandle = setTimeout(() => {
-        const q = pendingByUrl.get(assetUrl)
-        if (!q) return
-        const idx = q.findIndex((p) => p.id === id)
-        if (idx === -1) return
-        q.splice(idx, 1)
-        if (q.length === 0) pendingByUrl.delete(assetUrl)
-      }, WILL_DOWNLOAD_TIMEOUT_MS)
-      // Don't keep the event loop alive solely for this cleanup —
-      // app shutdown should still proceed cleanly.
-      timeoutHandle.unref?.()
-      queue.push({ id, targetPath, timeoutHandle })
-      pendingByUrl.set(assetUrl, queue)
-
-      sess.downloadURL(assetUrl)
-      return { id }
+      downloadQueue.push({
+        id,
+        start: hls
+          ? (): void => void startHlsDispatch(id, assetUrl, targetPath, optionalReferer)
+          : (): void => startPlainDispatch(id, assetUrl, targetPath)
+      })
+      return { id, queued: true }
     }
   )
 
@@ -375,6 +450,15 @@ export function registerBrowserDownloadHandlers(): void {
       if (!args || typeof args !== 'object') return
       const { id } = args as { id?: unknown }
       if (typeof id !== 'string') return
+      // TD-046: a cancel for a still-queued entry never touched ffmpeg
+      // or the network — splice it out, fan out `cancelled`, and leave
+      // activeCount alone (no slot was ever reserved for it).
+      const queuedIdx = downloadQueue.findIndex((e) => e.id === id)
+      if (queuedIdx !== -1) {
+        downloadQueue.splice(queuedIdx, 1)
+        sendComplete(id, 'cancelled', '')
+        return
+      }
       const hlsHandle = hlsHandlesById.get(id)
       if (hlsHandle) {
         // HLS branch: `cancel()` SIGTERMs ffmpeg, the wrapper's

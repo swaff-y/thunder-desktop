@@ -238,7 +238,16 @@ export interface ThunderApi {
      * subscriptions, both of which return an unsubscribe function.
      */
     download: {
-      start: (args: { assetUrl: string; suggestedFilename: string }) => Promise<{ id: string }>
+      /**
+       * TD-046: `queued: true` means the main-process concurrency cap
+       * deferred the dispatch. Renderer should label the row "Queued"
+       * until the first progress event arrives (at which point the
+       * existing progress handler transitions to "Downloading").
+       */
+      start: (args: {
+        assetUrl: string
+        suggestedFilename: string
+      }) => Promise<{ id: string; queued: boolean }>
       cancel: (args: { id: string }) => Promise<void>
       showInFolder: (args: { id: string }) => Promise<void>
       onProgress: (callback: (payload: ThunderDownloadProgressPayload) => void) => () => void

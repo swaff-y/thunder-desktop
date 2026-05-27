@@ -1,4 +1,4 @@
-import { useRef, useCallback, useImperativeHandle, type Ref } from "react";
+import { useRef, useCallback, useImperativeHandle, useEffect, type Ref } from "react";
 
 export interface VideoPlayerHandle {
   stop: () => void;
@@ -11,6 +11,18 @@ interface VideoPlayerProps {
   onFirstPlay?: () => void;
   ref?: Ref<VideoPlayerHandle>;
 }
+
+// TD-046: if the initial fetch to v1/proxy/:id stalls (Chromium's
+// per-host socket pool saturated by concurrent downloads), the
+// `<video>` element never auto-retries even after sockets free up —
+// a manual reload is the only recovery today. Watch the stall/wait
+// events and call `load()` to restart the fetch once the stall
+// outlasts this debounce. Five seconds is long enough to ignore
+// normal buffering pauses on healthy connections.
+const STALL_TIMEOUT_MS = 5000;
+// Bound retries so a genuinely broken source (404, auth expired)
+// doesn't loop forever. The user can still manually reload past this.
+const STALL_MAX_RETRIES = 5;
 
 export default function VideoPlayer({
   src,
@@ -28,6 +40,51 @@ export default function VideoPlayer({
       onFirstPlay();
     }
   }, [onFirstPlay]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let retries = 0;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearStallTimer = (): void => {
+      if (stallTimer !== null) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+    };
+
+    const handleStall = (): void => {
+      if (stallTimer !== null || retries >= STALL_MAX_RETRIES) return;
+      stallTimer = setTimeout(() => {
+        stallTimer = null;
+        retries++;
+        // load() reinitializes the media element's resource selection
+        // and restarts the fetch — same effect as the user pressing
+        // reload. Leaving src unchanged keeps the visible frame.
+        video.load();
+      }, STALL_TIMEOUT_MS);
+    };
+
+    const handleResume = (): void => {
+      clearStallTimer();
+      retries = 0;
+    };
+
+    video.addEventListener("stalled", handleStall);
+    video.addEventListener("waiting", handleStall);
+    video.addEventListener("playing", handleResume);
+    video.addEventListener("loadeddata", handleResume);
+
+    return (): void => {
+      clearStallTimer();
+      video.removeEventListener("stalled", handleStall);
+      video.removeEventListener("waiting", handleStall);
+      video.removeEventListener("playing", handleResume);
+      video.removeEventListener("loadeddata", handleResume);
+    };
+  }, [src]);
 
   useImperativeHandle(ref, () => ({
     stop() {

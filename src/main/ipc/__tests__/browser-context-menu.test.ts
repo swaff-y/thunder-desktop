@@ -3,7 +3,7 @@
  * Electron `Menu` / `webContents` / `session` surfaces are mocked so
  * we can observe what template would be built, whether `popup` is
  * called, and which arguments make it through to the download
- * pipeline.
+ * pipeline (streamed http(s)) or the raw-bytes path (data:/blob:).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const browserSession = { __tag: 'browser' as const }
 const otherSession = { __tag: 'other' as const }
 
-let mockGuest: { isDestroyed: () => boolean; session: object } | undefined
+interface MockGuest {
+  isDestroyed: () => boolean
+  session: object
+  executeJavaScript: ReturnType<typeof vi.fn>
+}
+let mockGuest: MockGuest | undefined
 let focusedWindow: { isDestroyed: () => boolean } | null = {
   isDestroyed: (): boolean => false
 }
@@ -64,7 +69,13 @@ type StartBrowserDownload = (args: {
   referer?: string
 }) => Promise<{ id: string; queued: boolean }>
 
+type SaveImageBytes = (args: {
+  bytes: Buffer
+  suggestedFilename: string
+}) => Promise<{ id: string }>
+
 let startBrowserDownload: ReturnType<typeof vi.fn<StartBrowserDownload>>
+let saveImageBytes: ReturnType<typeof vi.fn<SaveImageBytes>>
 let registerBrowserContextMenuHandlers: typeof import('../browser-context-menu').registerBrowserContextMenuHandlers
 let deriveImageFilename: typeof import('../browser-context-menu').deriveImageFilename
 
@@ -74,26 +85,45 @@ async function callShow(args: unknown): Promise<void> {
   await handler({}, args)
 }
 
+// Click handlers kick off async work (saveImage) via `void ...catch`.
+// Flush the microtask/timer queue so the dispatch has run before we
+// assert against it.
+async function clickAndFlush(): Promise<void> {
+  lastTemplate[0]?.click?.()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 describe('browser-context-menu (TD-047)', () => {
   beforeEach(async () => {
     popupSpy.mockReset()
     buildFromTemplateSpy.mockReset()
     lastTemplate = []
     ipcHandlers.clear()
-    mockGuest = { isDestroyed: (): boolean => false, session: browserSession }
+    mockGuest = {
+      isDestroyed: (): boolean => false,
+      session: browserSession,
+      executeJavaScript: vi.fn()
+    }
     focusedWindow = { isDestroyed: (): boolean => false }
     startBrowserDownload = vi.fn<StartBrowserDownload>(async () => ({
       id: 'fake-id',
       queued: false
     }))
+    saveImageBytes = vi.fn<SaveImageBytes>(async () => ({ id: 'bytes-id' }))
     vi.resetModules()
     const mod = await import('../browser-context-menu')
     registerBrowserContextMenuHandlers = mod.registerBrowserContextMenuHandlers
     deriveImageFilename = mod.deriveImageFilename
-    registerBrowserContextMenuHandlers({ startBrowserDownload })
+    registerBrowserContextMenuHandlers({ startBrowserDownload, saveImageBytes })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // The menu "click" handler is fire-and-forget (`void saveImage(...)`),
+    // so its async chain (decode / blob fetch → saveImageBytes) can still
+    // be in flight when the test body finishes. Drain the microtask +
+    // macrotask queues before the next test resets the shared spies, so a
+    // straggler from one test can't land against the next test's mocks.
+    await new Promise((resolve) => setTimeout(resolve, 0))
     mockGuest = undefined
   })
 
@@ -124,7 +154,11 @@ describe('browser-context-menu (TD-047)', () => {
   // ─── partition gate (AC5 / AC6) ───────────────────────────────────
 
   it('does nothing when the webContentsId resolves to a non-browser session', async () => {
-    mockGuest = { isDestroyed: (): boolean => false, session: otherSession }
+    mockGuest = {
+      isDestroyed: (): boolean => false,
+      session: otherSession,
+      executeJavaScript: vi.fn()
+    }
     await callShow({
       webContentsId: 42,
       mediaType: 'image',
@@ -150,7 +184,11 @@ describe('browser-context-menu (TD-047)', () => {
   it('does nothing when the resolved webContents is destroyed', async () => {
     // TOCTOU: guest tore down between the right-click and the IPC
     // landing. Don't try to interact with a dead webContents.
-    mockGuest = { isDestroyed: (): boolean => true, session: browserSession }
+    mockGuest = {
+      isDestroyed: (): boolean => true,
+      session: browserSession,
+      executeJavaScript: vi.fn()
+    }
     await callShow({
       webContentsId: 42,
       mediaType: 'image',
@@ -190,23 +228,11 @@ describe('browser-context-menu (TD-047)', () => {
     expect(startBrowserDownload).not.toHaveBeenCalled()
   })
 
-  // ─── AC4: data: / blob: schemes ───────────────────────────────────
-
-  it('does nothing for data: image URLs', async () => {
+  it('does nothing for an unsupported scheme (e.g. file:)', async () => {
     await callShow({
       webContentsId: 42,
       mediaType: 'image',
-      srcURL: 'data:image/png;base64,iVBORw0KGgo=',
-      pageURL: 'https://example.com/'
-    })
-    expect(buildFromTemplateSpy).not.toHaveBeenCalled()
-  })
-
-  it('does nothing for blob: image URLs', async () => {
-    await callShow({
-      webContentsId: 42,
-      mediaType: 'image',
-      srcURL: 'blob:https://example.com/abc-123',
+      srcURL: 'file:///etc/passwd',
       pageURL: 'https://example.com/'
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
@@ -249,7 +275,7 @@ describe('browser-context-menu (TD-047)', () => {
     expect(popupSpy).not.toHaveBeenCalled()
   })
 
-  // ─── AC2 + AC5: click triggers download with referer ──────────────
+  // ─── AC2 + AC5: http(s) click triggers streamed download ──────────
 
   it('click invokes startBrowserDownload with derived filename + referer', async () => {
     await callShow({
@@ -258,12 +284,13 @@ describe('browser-context-menu (TD-047)', () => {
       srcURL: 'https://cdn.example.com/photo.jpg',
       pageURL: 'https://example.com/page'
     })
-    lastTemplate[0]?.click?.()
+    await clickAndFlush()
     expect(startBrowserDownload).toHaveBeenCalledWith({
       assetUrl: 'https://cdn.example.com/photo.jpg',
       suggestedFilename: 'photo.jpg',
       referer: 'https://example.com/page'
     })
+    expect(saveImageBytes).not.toHaveBeenCalled()
   })
 
   it('drops the referer when pageURL is not http(s)', async () => {
@@ -273,7 +300,7 @@ describe('browser-context-menu (TD-047)', () => {
       srcURL: 'https://cdn.example.com/photo.jpg',
       pageURL: 'about:blank'
     })
-    lastTemplate[0]?.click?.()
+    await clickAndFlush()
     expect(startBrowserDownload).toHaveBeenCalledWith({
       assetUrl: 'https://cdn.example.com/photo.jpg',
       suggestedFilename: 'photo.jpg',
@@ -281,7 +308,7 @@ describe('browser-context-menu (TD-047)', () => {
     })
   })
 
-  it('logs and swallows rejections from startBrowserDownload so a failed dispatch does not crash main', async () => {
+  it('swallows rejections from the dispatch so a failed save does not crash main', async () => {
     startBrowserDownload.mockRejectedValueOnce(new Error('disk full'))
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -291,15 +318,121 @@ describe('browser-context-menu (TD-047)', () => {
         srcURL: 'https://cdn.example.com/photo.jpg',
         pageURL: 'https://example.com/'
       })
-      expect(() => lastTemplate[0]?.click?.()).not.toThrow()
-      // Click fires startBrowserDownload synchronously, but the
-      // rejection lands on the next microtask — flush it.
-      await Promise.resolve()
-      await Promise.resolve()
+      await clickAndFlush()
       expect(errorSpy).toHaveBeenCalledWith(
         '[browser-context-menu] save image failed:',
         expect.any(Error)
       )
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  // ─── AC4: data: images save via decoded bytes ─────────────────────
+
+  it('shows the menu for a data: image and saves the decoded bytes', async () => {
+    const original = Buffer.from([0x47, 0x49, 0x46, 0x38]) // "GIF8"
+    await callShow({
+      webContentsId: 42,
+      mediaType: 'image',
+      srcURL: `data:image/gif;base64,${original.toString('base64')}`,
+      pageURL: 'https://example.com/'
+    })
+    expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
+    await clickAndFlush()
+    expect(startBrowserDownload).not.toHaveBeenCalled()
+    expect(saveImageBytes).toHaveBeenCalledTimes(1)
+    const arg = saveImageBytes.mock.calls[0]?.[0]
+    expect(arg?.suggestedFilename).toBe('image.gif')
+    expect(Buffer.isBuffer(arg?.bytes)).toBe(true)
+    expect(arg?.bytes.equals(original)).toBe(true)
+  })
+
+  it('does not save a data: URL with a non-image MIME (fail closed)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await callShow({
+        webContentsId: 42,
+        mediaType: 'image',
+        srcURL: 'data:text/plain;base64,aGVsbG8=',
+        pageURL: 'https://example.com/'
+      })
+      // The menu still shows (scheme is data:), but the click writes
+      // nothing because decode returns null.
+      expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
+      await clickAndFlush()
+      expect(saveImageBytes).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  // ─── AC4: blob: images save via webview fetch ─────────────────────
+
+  it('shows the menu for a blob: image and saves bytes fetched from the webview', async () => {
+    const original = Buffer.from([0x89, 0x50, 0x4e, 0x47]) // PNG magic
+    mockGuest = {
+      isDestroyed: (): boolean => false,
+      session: browserSession,
+      executeJavaScript: vi.fn(async () => ({
+        base64: original.toString('base64'),
+        mime: 'image/png'
+      }))
+    }
+    await callShow({
+      webContentsId: 42,
+      mediaType: 'image',
+      srcURL: 'blob:https://example.com/abc-123',
+      pageURL: 'https://example.com/'
+    })
+    expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
+    await clickAndFlush()
+    expect(mockGuest.executeJavaScript).toHaveBeenCalledTimes(1)
+    expect(saveImageBytes).toHaveBeenCalledTimes(1)
+    const arg = saveImageBytes.mock.calls[0]?.[0]
+    expect(arg?.suggestedFilename).toBe('image.png')
+    expect(arg?.bytes.equals(original)).toBe(true)
+  })
+
+  it('does not save a blob: image when the webview fetch yields a non-image type', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGuest = {
+      isDestroyed: (): boolean => false,
+      session: browserSession,
+      executeJavaScript: vi.fn(async () => ({ base64: 'AAAA', mime: 'application/json' }))
+    }
+    try {
+      await callShow({
+        webContentsId: 42,
+        mediaType: 'image',
+        srcURL: 'blob:https://example.com/abc-123',
+        pageURL: 'https://example.com/'
+      })
+      await clickAndFlush()
+      expect(saveImageBytes).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('does not save a blob: image when the webview fetch throws', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGuest = {
+      isDestroyed: (): boolean => false,
+      session: browserSession,
+      executeJavaScript: vi.fn(async () => {
+        throw new Error('CSP blocked')
+      })
+    }
+    try {
+      await callShow({
+        webContentsId: 42,
+        mediaType: 'image',
+        srcURL: 'blob:https://example.com/abc-123',
+        pageURL: 'https://example.com/'
+      })
+      await clickAndFlush()
+      expect(saveImageBytes).not.toHaveBeenCalled()
     } finally {
       errorSpy.mockRestore()
     }

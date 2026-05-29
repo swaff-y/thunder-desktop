@@ -23,6 +23,7 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import type { DownloadItem, Event, Session } from 'electron'
 import { mkdirSync, unlinkSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
@@ -111,6 +112,14 @@ export interface BrowserDownloadHandlers {
    * came from the renderer or a sibling main-process module.
    */
   startBrowserDownload: (args: BrowserDownloadStartArgs) => Promise<{ id: string; queued: boolean }>
+  /**
+   * TD-047: write already-resolved bytes (a decoded `data:` image or a
+   * blob fetched from the webview) straight to the download folder,
+   * reusing the collision-safe path resolver and the drawer
+   * `complete` fan-out. There is no network transfer, so it emits a
+   * single `completed` event rather than a progress stream.
+   */
+  saveImageBytes: (args: { bytes: Buffer; suggestedFilename: string }) => Promise<{ id: string }>
 }
 
 let cachedSettingsPath: string | null = null
@@ -354,10 +363,7 @@ export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {
         onProgress: (receivedBytes, totalBytes) => {
           lastReceivedBytes = receivedBytes
           lastTotalBytes = totalBytes
-          sendProgress(
-            { id, receivedBytes, totalBytes, state: 'progressing' },
-            { throttle: true }
-          )
+          sendProgress({ id, receivedBytes, totalBytes, state: 'progressing' }, { throttle: true })
         },
         onDone: (state) => {
           if (state === 'completed') {
@@ -391,8 +397,12 @@ export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {
   async function startBrowserDownload(
     args: BrowserDownloadStartArgs
   ): Promise<{ id: string; queued: boolean }> {
-    const { assetUrl, suggestedFilename, mimeType: optionalMimeType, referer: optionalReferer } =
-      args
+    const {
+      assetUrl,
+      suggestedFilename,
+      mimeType: optionalMimeType,
+      referer: optionalReferer
+    } = args
 
     // Restrict to web protocols. The URL flows into ffmpeg's `-i`
     // argument for the HLS branch, where `file://` or `pipe:` would
@@ -459,6 +469,35 @@ export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {
         : (): void => startPlainDispatch(id, assetUrl, targetPath, optionalReferer)
     })
     return { id, queued: true }
+  }
+
+  async function saveImageBytes(args: {
+    bytes: Buffer
+    suggestedFilename: string
+  }): Promise<{ id: string }> {
+    // Same basename hardening as the streamed path: strip every path
+    // component so a MIME-derived name can never escape the folder.
+    const safeFilename = basename(args.suggestedFilename)
+    if (safeFilename.length === 0 || safeFilename === '.' || safeFilename === '..') {
+      throw new Error('[browser-download] suggestedFilename has no usable basename')
+    }
+    const folder = getSetting(settingsPath(), defaults(), 'downloadFolder')
+    mkdirSync(folder, { recursive: true })
+    const targetPath = resolveCollisionSafePath(folder, safeFilename)
+    const id = randomUUID()
+    rememberSavePath(id, targetPath)
+    try {
+      await writeFile(targetPath, args.bytes)
+    } catch (error) {
+      // Surface the failure in the drawer (interrupted) and rethrow so
+      // the caller can log — mirrors a failed network download, minus
+      // the partial file (writeFile either wrote nothing or we don't
+      // claim success).
+      sendComplete(id, 'interrupted', '')
+      throw error
+    }
+    sendComplete(id, 'completed', targetPath)
+    return { id }
   }
 
   ipcMain.handle(
@@ -537,5 +576,5 @@ export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {
     }
   )
 
-  return { startBrowserDownload }
+  return { startBrowserDownload, saveImageBytes }
 }

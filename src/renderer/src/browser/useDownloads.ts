@@ -42,6 +42,18 @@ import type {
 
 const RATE_WINDOW_MS = 3000
 const RATE_MAX_SAMPLES = 20
+const FALLBACK_FILENAME = 'download'
+
+// TD-047: context-menu / data: / blob: saves are initiated in main, so
+// the renderer never called `start` and has no row for them. The
+// progress/complete handlers reconstruct a row from the payload; the
+// complete event's `savePath` gives the real on-disk name (with any
+// collision suffix). Renderer can't import `node:path`, so split on
+// either separator.
+function basenameOf(path: string): string {
+  const segment = path.split(/[\\/]/).pop()
+  return segment && segment.length > 0 ? segment : FALLBACK_FILENAME
+}
 
 export type DownloadState =
   | 'queued'
@@ -126,10 +138,20 @@ function useDownloadsState(): UseDownloads {
 
       setEntries((prev) => {
         const existing = prev.get(payload.id)
-        if (!existing) return prev
+        // TD-047: a progress event for an id we never `start`ed is a
+        // main-initiated download (context menu). Seed a row so it's
+        // visible; the real name arrives with the complete event.
+        const base: DownloadEntry = existing ?? {
+          id: payload.id,
+          assetUrl: '',
+          filename: FALLBACK_FILENAME,
+          state: 'progressing',
+          receivedBytes: 0,
+          totalBytes: 0
+        }
         const next = new Map(prev)
         next.set(payload.id, {
-          ...existing,
+          ...base,
           state: payload.state === 'progressing' ? 'progressing' : 'interrupted',
           receivedBytes: payload.receivedBytes,
           totalBytes: payload.totalBytes,
@@ -143,11 +165,28 @@ function useDownloadsState(): UseDownloads {
       rateSamplesRef.current.delete(payload.id)
       setEntries((prev) => {
         const existing = prev.get(payload.id)
-        if (!existing) return prev
+        // TD-047: the complete event's savePath is the authoritative
+        // on-disk name. Use it to (a) create a row for a main-initiated
+        // download the renderer never registered, and (b) replace the
+        // placeholder name on a row that only ever knew the fallback.
+        // Rows that came through `start` keep their real filename.
+        const resolvedName =
+          payload.savePath && (!existing || existing.filename === FALLBACK_FILENAME)
+            ? basenameOf(payload.savePath)
+            : (existing?.filename ?? FALLBACK_FILENAME)
+        const base: DownloadEntry = existing ?? {
+          id: payload.id,
+          assetUrl: '',
+          filename: resolvedName,
+          state: payload.state,
+          receivedBytes: 0,
+          totalBytes: 0
+        }
         const next = new Map(prev)
         next.set(payload.id, {
-          ...existing,
+          ...base,
           state: payload.state,
+          filename: resolvedName,
           savePath: payload.savePath,
           rateBytesPerSec: undefined
         })

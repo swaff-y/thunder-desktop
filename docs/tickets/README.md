@@ -71,3 +71,4 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-042](TD-042-download-survives-multiwatch-nav.md) — Browser download discarded when navigating to MultiWatch (must continue; bar hidden off-tab)
 - [TD-046](TD-046-watch-hangs-during-downloads.md) — Watch / MultiWatch video hangs while downloads are in progress (socket-saturation, needs reload to recover)
 - [TD-047](TD-047-browser-save-image-context-menu.md) — Browser tab: right-click image → "Save image" context menu
+- [TD-048](TD-048-browser-default-url-google.md) — Browser tab: default URL of google.com

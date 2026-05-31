@@ -83,6 +83,13 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
   // visible→invisible flip can cancel it before it fires against a
   // newly-suspended webview.
   const resumeRafRef = useRef<number | null>(null)
+  // TD-048: the Browser tab mounts hidden (DesktopLayout keeps it
+  // persistent), so the first setVisible(false) fires before the user
+  // has ever opened the tab. Suspending then would swap the still-
+  // loading initial page for about:blank and snapshot nothing real,
+  // leaving about:blank on first open. Only suspend a tab that's been
+  // shown at least once.
+  const wasShownRef = useRef(false)
 
   const refreshHistoryFlags = useCallback(() => {
     const el = webviewRef.current
@@ -271,6 +278,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
       if (!el || webContentsId === null) return
       try {
         if (visible) {
+          wasShownRef.current = true
           const snapshot = suspendedStateRef.current
           if (snapshot) {
             el.setAudioMuted(snapshot.muted)
@@ -294,7 +302,7 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
             el.setAudioMuted(false)
           }
           suspendedStateRef.current = null
-        } else if (suspendedStateRef.current === null) {
+        } else if (suspendedStateRef.current === null && wasShownRef.current) {
           if (resumeRafRef.current !== null) {
             cancelAnimationFrame(resumeRafRef.current)
             resumeRafRef.current = null

@@ -5,7 +5,7 @@ import EmbeddedWebview from './EmbeddedWebview'
 import DetectedAssetsPanel from './DetectedAssetsPanel'
 import DownloadsDrawer from './DownloadsDrawer'
 
-const INITIAL_URL = 'about:blank'
+const INITIAL_URL = 'https://www.google.com'
 
 interface BrowserPageProps {
   visible: boolean

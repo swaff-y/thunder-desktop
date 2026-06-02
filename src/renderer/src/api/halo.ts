@@ -20,14 +20,17 @@ import { API_URL } from "../config/env";
 interface PaginationParams {
   lastEvaluatedKey?: string | null;
   limit?: number;
+  filter?: string;
 }
 
 function buildListUrl(
   basePath: string,
-  { lastEvaluatedKey, limit = 50 }: PaginationParams
+  { lastEvaluatedKey, limit = 50, filter }: PaginationParams
 ): string {
   const params = new URLSearchParams({ limit: String(limit) });
   if (lastEvaluatedKey) params.set("start_key", lastEvaluatedKey);
+  const trimmed = filter?.trim();
+  if (trimmed) params.set("filter", trimmed);
   return `${basePath}?${params}`;
 }
 

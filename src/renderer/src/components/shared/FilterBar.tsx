@@ -21,6 +21,7 @@ export default function FilterBar({
         <Form.Control
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />

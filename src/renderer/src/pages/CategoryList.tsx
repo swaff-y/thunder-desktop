@@ -16,6 +16,8 @@ export default function CategoryList() {
   const navigate = useNavigate();
   const config = getCategoryConfig(category);
 
+  const { filterValue, setFilterValue, debouncedFilter } = useListFilter();
+
   const {
     data,
     isLoading,
@@ -25,10 +27,9 @@ export default function CategoryList() {
     isFetchingNextPage,
     fetchNextPage,
     refetch,
-  } = useCategoryList(config?.apiPath ?? "", !!config);
+  } = useCategoryList(config?.apiPath ?? "", !!config, debouncedFilter);
 
   const items = data?.pages.flatMap((page) => page.data) ?? [];
-  const { filterValue, setFilterValue, filteredItems } = useListFilter(items);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -62,9 +63,7 @@ export default function CategoryList() {
       />
     );
 
-  const displayedItems = config.filterable ? filteredItems : items;
-
-  const emptyState = displayedItems.length === 0 && (
+  const emptyState = items.length === 0 && (
     <div
       style={{
         textAlign: "center",
@@ -72,7 +71,9 @@ export default function CategoryList() {
         color: "var(--color-text-muted)",
       }}
     >
-      {filterValue ? "No results found" : "No items"}
+      {filterValue
+        ? `No ${config.label.toLowerCase()} starting with "${filterValue}"`
+        : "No items"}
     </div>
   );
 
@@ -83,11 +84,11 @@ export default function CategoryList() {
         <FilterBar
           value={filterValue}
           onChange={setFilterValue}
-          placeholder={`Search ${config.label.toLowerCase()}...`}
+          placeholder={`Find ${config.label.toLowerCase()} — starts with...`}
         />
       )}
       <Row xs={2} md={3} lg={4} className="g-3">
-        {displayedItems.map((item, i) => (
+        {items.map((item, i) => (
           <Col key={item.id ?? i}>
             <div
               className="desktop-list-card"

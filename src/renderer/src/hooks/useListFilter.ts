@@ -1,17 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-export function useListFilter<T extends { name: string }>(
-  items: T[],
-  minLength = 3
-) {
+export function useListFilter(minLength = 3) {
   const [filterValue, setFilterValue] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
 
-  const filteredItems =
-    filterValue.length >= minLength
-      ? items.filter((item) =>
-          item.name.toLowerCase().includes(filterValue.toLowerCase())
-        )
-      : items;
+  // Debounce is time-dependent state, so it must live in an effect, not be derived during render.
+  useEffect(() => {
+    const next = filterValue.length >= minLength ? filterValue : "";
+    const timer = setTimeout(() => setDebouncedFilter(next), 200);
+    return () => clearTimeout(timer);
+  }, [filterValue, minLength]);
 
-  return { filterValue, setFilterValue, filteredItems };
+  return { filterValue, setFilterValue, debouncedFilter };
 }

@@ -96,6 +96,7 @@ export default function CartDropdown() {
 
       <style>{`
         .cart-dropdown {
+          -webkit-app-region: no-drag;
           position: relative;
         }
         .cart-trigger {

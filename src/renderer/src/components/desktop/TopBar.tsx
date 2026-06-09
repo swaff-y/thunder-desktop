@@ -7,11 +7,13 @@ interface TopBarProps {
   onLogout: () => void;
 }
 
+const isMac = window.thunder.platform === "darwin";
+
 export default function TopBar({ onLogout }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <header className="desktop-topbar">
+    <header className={`desktop-topbar${isMac ? " desktop-topbar--mac" : ""}`}>
       <div className="topbar-spacer" />
       <button
         className="topbar-icon-btn"
@@ -38,11 +40,16 @@ export default function TopBar({ onLogout }: TopBarProps) {
           background: var(--color-bg);
           border-bottom: 1px solid var(--color-border);
           min-height: 60px;
+          -webkit-app-region: drag;
+        }
+        .desktop-topbar--mac {
+          padding-left: 70px;
         }
         .topbar-spacer {
           flex: 1;
         }
         .topbar-icon-btn {
+          -webkit-app-region: no-drag;
           width: 40px;
           height: 40px;
           border-radius: 50%;
@@ -60,6 +67,7 @@ export default function TopBar({ onLogout }: TopBarProps) {
           color: var(--color-cta);
         }
         .topbar-logout {
+          -webkit-app-region: no-drag;
           display: flex;
           align-items: center;
           gap: var(--space-sm);

@@ -239,6 +239,12 @@ export type ThunderOpenDirectoryResult =
  * Typed IPC surface for `window.thunder`.
  */
 export interface ThunderApi {
+  /**
+   * TD-050: the host OS, forwarded from the main process's `process.platform`
+   * so the renderer can branch on `darwin` without importing Electron/Node
+   * (e.g. reserving space for macOS `hiddenInset` traffic lights).
+   */
+  platform: NodeJS.Platform
   auth: {
     get: () => Promise<ThunderAuthCredentials | null>
     set: (creds: ThunderAuthCredentials) => Promise<void>
@@ -320,6 +326,7 @@ export interface ThunderApi {
 }
 
 export const thunderApi: ThunderApi = {
+  platform: process.platform,
   auth: {
     get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
     set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),

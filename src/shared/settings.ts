@@ -10,14 +10,18 @@
  */
 
 /**
- * Default Halo prod URL (TD-029 cutover). Single source of truth —
- * main writes it into the settings file on first launch, renderer
- * falls back to it when IPC is unavailable (vitest, dev tools
- * harness, etc.). Keeping this literal in two places used to drift;
- * do not duplicate it.
+ * Default Halo prod URL — the managed domain (TD-051 cutover). Single
+ * source of truth — main writes it into the settings file on first
+ * launch, renderer falls back to it when IPC is unavailable (vitest,
+ * dev tools harness, etc.). Keeping this literal in two places used to
+ * drift; do not duplicate it.
+ *
+ * Trailing slash is load-bearing: callers build request URLs by
+ * concatenation (`${API_URL}v1/login`) and axios joins relative paths
+ * against it as a `baseURL`. Dropping it collapses `v1/...` onto the
+ * host root or produces `halo.swaff.namev1/...`.
  */
-export const DEFAULT_API_URL =
-  'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
+export const DEFAULT_API_URL = 'https://halo.swaff.name/'
 
 /**
  * TD-029: pre-cutover dev URL, retained only so the one-time
@@ -34,6 +38,20 @@ export const DEFAULT_API_URL =
  */
 export const LEGACY_DEV_API_URL =
   'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+
+/**
+ * TD-051: the raw `execute-api` prod URL that {@link DEFAULT_API_URL}
+ * shipped as before the managed-domain cutover. Retained for the same
+ * reason (and under the same rules) as {@link LEGACY_DEV_API_URL}: the
+ * migration rewrites it to the managed domain, and nothing else may
+ * reference it. Must match the previously shipped literal byte for
+ * byte — trailing slash included — or the migration matches nothing.
+ *
+ * The gateway URL still works if a user pastes it into Settings; this
+ * is a migration, not a cut-off.
+ */
+export const LEGACY_PROD_API_URL =
+  'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
 
 /**
  * Persisted user-tunable settings.

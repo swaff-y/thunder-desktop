@@ -11,6 +11,7 @@ import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import {
   DEFAULT_API_URL,
   LEGACY_DEV_API_URL,
+  LEGACY_PROD_API_URL,
   type ThunderSettings
 } from '../../shared/settings'
 import {
@@ -67,11 +68,11 @@ export function registerSettingsHandlers(): void {
   // the existing file is unparseable) so the renderer's first read
   // always returns a coherent record.
   ensureSettingsFile(settingsPath(), defaults())
-  // TD-029: rewrite the dev API URL to the prod default for users
-  // upgrading from a build that shipped the old default. Idempotent —
-  // a no-op once the value has been rewritten or if the user set a
-  // custom override.
-  migrateApiUrl(settingsPath(), defaults(), [LEGACY_DEV_API_URL])
+  // TD-029/TD-051: rewrite either previously shipped `execute-api`
+  // default to the current managed-domain default for users upgrading
+  // from an older build. Idempotent — a no-op once the value has been
+  // rewritten or if the user set a custom override.
+  migrateApiUrl(settingsPath(), defaults(), [LEGACY_DEV_API_URL, LEGACY_PROD_API_URL])
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.settingsGetAll, async () => {
     return readSettings(settingsPath(), defaults())

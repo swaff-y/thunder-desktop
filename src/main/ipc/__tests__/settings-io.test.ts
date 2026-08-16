@@ -12,6 +12,11 @@ import {
   writeSettingsFile,
   type ThunderSettings
 } from '../settings-io'
+import {
+  DEFAULT_API_URL,
+  LEGACY_DEV_API_URL,
+  LEGACY_PROD_API_URL
+} from '../../../shared/settings'
 
 const DEFAULTS: ThunderSettings = {
   apiUrl: 'https://halo.example/dev/',
@@ -154,18 +159,50 @@ describe('settings-io (TD-018)', () => {
     expect(readdirSync(dir)).toEqual(['thunder-desktop-settings.json'])
   })
 
-  // ─── migrateApiUrl (TD-029 prod cutover) ──────────────────────────
+  // ─── API URL constants (TD-051 managed-domain cutover) ────────────
 
-  describe('migrateApiUrl (TD-029)', () => {
-    const LEGACY = 'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+  describe('API URL constants (TD-051)', () => {
+    // Callers concatenate (`${API_URL}v1/login`) and axios joins
+    // relative paths against this as a `baseURL` — a missing or doubled
+    // trailing slash breaks every request path.
+    it('defaults to the managed prod domain with a single trailing slash', () => {
+      expect(DEFAULT_API_URL).toBe('https://halo.swaff.name/')
+      expect(new URL('v1/login', DEFAULT_API_URL).href).toBe('https://halo.swaff.name/v1/login')
+    })
+
+    // The legacy literals are matched by exact string equality against
+    // values written by shipped builds, so they can never be edited to
+    // follow a future default change.
+    it('pins the legacy URLs to the literals older builds shipped', () => {
+      expect(LEGACY_DEV_API_URL).toBe(
+        'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+      )
+      expect(LEGACY_PROD_API_URL).toBe(
+        'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
+      )
+    })
+  })
+
+  // ─── migrateApiUrl (TD-029 prod cutover, TD-051 managed domain) ────
+
+  describe('migrateApiUrl (TD-029, TD-051)', () => {
+    const LEGACY = LEGACY_DEV_API_URL
+    const LEGACY_PROD = LEGACY_PROD_API_URL
     const PROD: ThunderSettings = {
-      apiUrl: 'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/',
+      apiUrl: DEFAULT_API_URL,
       downloadFolder: '/tmp/Thunder'
     }
 
+    it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy prod URL', () => {
+      writeSettingsFile(path, { ...PROD, apiUrl: LEGACY_PROD })
+      migrateApiUrl(path, PROD, [LEGACY, LEGACY_PROD])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.apiUrl).toBe(PROD.apiUrl)
+    })
+
     it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy dev URL', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY })
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateApiUrl(path, PROD, [LEGACY, LEGACY_PROD])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })

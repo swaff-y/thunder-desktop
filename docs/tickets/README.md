@@ -63,7 +63,7 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 See [ai-chat-plan.md](../ai-chat-plan.md) for the design, request flow, and the
 open decision on Bedrock credentials.
 
-- [TD-052](TD-052-chat-bedrock-settings.md) — AI chat: settings and Bedrock credentials
+- [TD-052](complete/TD-052-chat-bedrock-settings.md) — AI chat: settings and Bedrock credentials
 - [TD-053](TD-053-halo-mcp-client.md) — AI chat: halo-mcp client in the main process
 - [TD-054](TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
 - [TD-055](TD-055-chat-session-store.md) — AI chat: chat session store

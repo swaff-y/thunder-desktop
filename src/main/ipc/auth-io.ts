@@ -71,23 +71,50 @@ function writeFile(filePath: string, data: OnDiskCredentials): void {
   renameSync(tmpPath, filePath)
 }
 
-export function getCredentials(path: string, crypto: CryptoAdapter): StoredCredentials | null {
+/**
+ * The stored record, or `null` if there isn't a usable one.
+ *
+ * Encryption-mode mismatch: the record was written encrypted but
+ * safeStorage is no longer available (e.g. user moved their profile
+ * between machines), or it was written plaintext but we now have
+ * safeStorage and would garble it. Either way, refuse — the renderer
+ * will treat us as logged-out and the user re-logs in.
+ *
+ * A legacy plaintext record on a system that now has safeStorage is
+ * honoured once; future writes will encrypt it.
+ */
+function readUsableFile(path: string, crypto: CryptoAdapter): OnDiskCredentials | null {
   const entry = readFile(path)
   if (!entry?.token || !entry?.apiKey) return null
-
-  // Encryption-mode mismatch: the record was written encrypted but
-  // safeStorage is no longer available (e.g. user moved their profile
-  // between machines), or it was written plaintext but we now have
-  // safeStorage and would garble it. Either way, refuse — the renderer
-  // will treat us as logged-out and the user re-logs in.
   if (entry.encrypted && !crypto.isAvailable()) {
     console.warn('[auth-io] stored credentials are encrypted but safeStorage is unavailable')
     return null
   }
-  if (!entry.encrypted && crypto.isAvailable()) {
-    // Legacy plaintext record on a system that now has safeStorage —
-    // honour it once. Future writes will encrypt.
+  return entry
+}
+
+/**
+ * TD-053: the access token on its own, for the halo-mcp client's
+ * per-request read. {@link getCredentials} would also decrypt the api
+ * key, the email and — when "Stay signed in" is on — the user's
+ * password, materialising all three in main-process memory on every
+ * outbound HTTP request for no reason.
+ */
+export function getToken(path: string, crypto: CryptoAdapter): string | null {
+  const entry = readUsableFile(path, crypto)
+  if (entry === null) return null
+  if (!entry.encrypted) return entry.token
+  try {
+    return crypto.decrypt(Buffer.from(entry.token, 'base64'))
+  } catch (error) {
+    console.error('[auth-io] failed to decrypt credentials', error)
+    return null
   }
+}
+
+export function getCredentials(path: string, crypto: CryptoAdapter): StoredCredentials | null {
+  const entry = readUsableFile(path, crypto)
+  if (entry === null) return null
 
   try {
     if (!entry.encrypted) {

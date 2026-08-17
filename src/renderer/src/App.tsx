@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import { TabHistoryProvider } from './hooks/useTabHistory'
 import { ChatProvider } from './hooks/useChat'
+import { useChatBridge } from './hooks/useChatBridge'
 import { DownloadsProvider } from './browser/useDownloads'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -15,6 +16,17 @@ import CategoryDetail from './pages/CategoryDetail'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import LoadingSpinner from './components/shared/LoadingSpinner'
+
+// TD-056: the store takes `send` as a prop so it stays testable without IPC;
+// this is the one place the real bridge is attached.
+function ChatBridgeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const { send, cancelRequest } = useChatBridge()
+  return (
+    <ChatProvider send={send} cancelRequest={cancelRequest}>
+      {children}
+    </ChatProvider>
+  )
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { isAuthenticated, isLoading } = useAuth()
@@ -78,7 +90,7 @@ function App(): React.JSX.Element {
     <QueryProvider>
       <HashRouter>
         <TabHistoryProvider>
-          <ChatProvider>
+          <ChatBridgeProvider>
             <AuthProvider>
               <CartProvider>
                 <DownloadsProvider>
@@ -86,7 +98,7 @@ function App(): React.JSX.Element {
                 </DownloadsProvider>
               </CartProvider>
             </AuthProvider>
-          </ChatProvider>
+          </ChatBridgeProvider>
         </TabHistoryProvider>
       </HashRouter>
     </QueryProvider>

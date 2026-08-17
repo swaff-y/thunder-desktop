@@ -1,50 +1,68 @@
 import { IoRefresh } from "react-icons/io5";
 import { useRandomRecords } from "../hooks/useRecords";
+import { useChat } from "../hooks/useChat";
+import { useChatEnabled } from "../hooks/useSettings";
 import HeroCarousel from "../components/desktop/HeroCarousel";
 import VirtualRecordList from "../components/shared/VirtualRecordList";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
+import ChatPanel from "../components/chat/ChatPanel";
 
 export default function Home() {
+  const chatEnabled = useChatEnabled();
+  const { isEmpty } = useChat();
   const { data, isLoading, isError, error, isRefetching, refetch } =
     useRandomRecords();
 
   const records = data?.data ?? [];
+  // The query keeps running either way — hiding the section must not evict
+  // the cache, or clearing the chat would reshuffle the carousel.
+  const showFeatured = !chatEnabled || isEmpty;
 
   function handleRefresh() {
     void refetch();
   }
 
-  if (isLoading) return <LoadingSpinner fullScreen />;
-  if (isError)
+  // ChatPanel keeps one position in the tree across both states — moving it
+  // would remount the panel, and the composer's draft with it.
+  function featured() {
+    if (isLoading) return <LoadingSpinner fullScreen />;
+    if (isError)
+      return (
+        <ErrorState
+          message={error?.message || "Failed to load content"}
+          onRetry={() => refetch()}
+        />
+      );
     return (
-      <ErrorState
-        message={error?.message || "Failed to load content"}
-        onRetry={() => refetch()}
-      />
+      <>
+        <HeroCarousel records={records} />
+        <div className="library-header">
+          <h2 className="section-title">Your Library</h2>
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={handleRefresh}
+            disabled={isRefetching}
+            aria-busy={isRefetching}
+            aria-label="Refresh library"
+          >
+            <IoRefresh
+              size={18}
+              aria-hidden
+              className={isRefetching ? "spinning" : undefined}
+            />
+          </button>
+        </div>
+        <VirtualRecordList records={records} />
+      </>
     );
+  }
 
   return (
     <div>
-      <HeroCarousel records={records} />
-      <div className="library-header">
-        <h2 className="section-title">Your Library</h2>
-        <button
-          type="button"
-          className="refresh-btn"
-          onClick={handleRefresh}
-          disabled={isRefetching}
-          aria-busy={isRefetching}
-          aria-label="Refresh library"
-        >
-          <IoRefresh
-            size={18}
-            aria-hidden
-            className={isRefetching ? "spinning" : undefined}
-          />
-        </button>
-      </div>
-      <VirtualRecordList records={records} />
+      {chatEnabled && <ChatPanel />}
+      {showFeatured && featured()}
 
       <style>{`
         .library-header {

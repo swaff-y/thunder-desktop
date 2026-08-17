@@ -65,8 +65,8 @@ open decision on Bedrock credentials.
 
 - [TD-052](complete/TD-052-chat-bedrock-settings.md) — AI chat: settings and Bedrock credentials
 - [TD-053](complete/TD-053-halo-mcp-client.md) — AI chat: halo-mcp client in the main process
-- [TD-054](TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
-- [TD-055](TD-055-chat-session-store.md) — AI chat: chat session store
+- [TD-054](complete/TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
+- [TD-055](complete/TD-055-chat-session-store.md) — AI chat: chat session store
 - [TD-056](TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
 - [TD-057](TD-057-action-card-list.md) — AI chat: action card — list
 - [TD-058](TD-058-action-card-record.md) — AI chat: action card — single record with carousel
@@ -88,3 +88,4 @@ open decision on Bedrock credentials.
 - [TD-047](TD-047-browser-save-image-context-menu.md) — Browser tab: right-click image → "Save image" context menu
 - [TD-048](TD-048-browser-default-url-google.md) — Browser tab: default URL of google.com
 - [TD-050](TD-050-draggable-top-bar.md) — Draggable top bar (window drag region)
+- [TD-060](complete/TD-060-dev-backend-default.md) — `npm run dev` defaults to the dev backend

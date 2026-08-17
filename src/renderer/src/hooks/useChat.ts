@@ -33,6 +33,8 @@ export interface ChatTurn {
   tool?: string;
   action?: ChatAction;
   error?: ChatError;
+  /** The failure's own words, for the kinds that have no fixed copy. */
+  message?: string;
 }
 
 type ChatTurnPatch = Omit<Partial<ChatTurn>, "id">;
@@ -52,6 +54,8 @@ interface ChatState {
 
 interface ChatActions {
   ask: (question: string) => Promise<void>;
+  /** Re-asks a failed turn's question in place, rather than below it. */
+  retry: (id: string) => Promise<void>;
   clear: () => void;
   cancel: () => void;
 }
@@ -93,6 +97,7 @@ function isChatTurn(value: unknown): value is ChatTurn {
     isOptional(turn.pending, "boolean") &&
     isOptional(turn.tool, "string") &&
     isOptional(turn.error, "string") &&
+    isOptional(turn.message, "string") &&
     isOptional(turn.action, "object")
   );
 }
@@ -141,7 +146,8 @@ function persistTurns(turns: ChatTurn[]): void {
 export function ChatProvider({
   children,
   send,
-}: PropsWithChildren<{ send?: ChatSend }>): React.JSX.Element {
+  cancelRequest,
+}: PropsWithChildren<{ send?: ChatSend; cancelRequest?: () => void }>): React.JSX.Element {
   const [turns, setTurns] = useState<ChatTurn[]>(loadTurns);
   const [status, setStatus] = useState<ChatStatus>(IDLE);
   const [error, setError] = useState<ChatError | null>(null);
@@ -204,7 +210,11 @@ export function ChatProvider({
             null
           );
         } else {
-          settle(id, { pending: false, error: result.error }, result.error);
+          settle(
+            id,
+            { pending: false, error: result.error, message: result.message },
+            result.error
+          );
         }
       } catch {
         settle(id, { pending: false, error: "unknown" }, "unknown");
@@ -213,15 +223,30 @@ export function ChatProvider({
     [send, settle]
   );
 
+  // Dropping the failed turn first keeps one entry per question. A failed
+  // turn contributes nothing to `toHistory`, so the replay is unaffected.
+  const retry = useCallback(
+    async (id: string) => {
+      const failed = turnsRef.current.find((turn) => turn.id === id);
+      if (!failed) return;
+      setTurns((prev) => prev.filter((turn) => turn.id !== id));
+      await ask(failed.question);
+    },
+    [ask]
+  );
+
   const cancel = useCallback(() => {
     const id = activeIdRef.current;
     if (!id) return;
+    // Abandoning the turn here only frees the renderer — without this the
+    // agent loop in main keeps working on an answer nobody is waiting on.
+    cancelRequest?.();
     abandonedRef.current.add(id);
     activeIdRef.current = null;
     resolveTurn(id, { pending: false, error: "cancelled" });
     setStatus(IDLE);
     setError(null);
-  }, [resolveTurn]);
+  }, [cancelRequest, resolveTurn]);
 
   const clear = useCallback(() => {
     const id = activeIdRef.current;
@@ -234,7 +259,10 @@ export function ChatProvider({
     setError(null);
   }, []);
 
-  const actions = useMemo<ChatActions>(() => ({ ask, clear, cancel }), [ask, clear, cancel]);
+  const actions = useMemo<ChatActions>(
+    () => ({ ask, retry, clear, cancel }),
+    [ask, retry, clear, cancel]
+  );
 
   return React.createElement(
     ChatActionsContext.Provider,

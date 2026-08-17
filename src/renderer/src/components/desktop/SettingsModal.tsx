@@ -7,6 +7,12 @@ interface SettingsModalProps {
   onHide: () => void;
 }
 
+/**
+ * TD-056: the modal's open state lives in TopBar, which the chat panel has
+ * no path to. Errors whose fix is a settings change dispatch this instead.
+ */
+export const OPEN_SETTINGS_EVENT = "thunder:open-settings";
+
 interface FormState {
   apiUrl: string;
   downloadFolder: string;

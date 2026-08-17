@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IoLogOutOutline, IoSettingsOutline } from "react-icons/io5";
 import CartDropdown from "../shared/CartDropdown";
-import SettingsModal from "./SettingsModal";
+import SettingsModal, { OPEN_SETTINGS_EVENT } from "./SettingsModal";
 
 interface TopBarProps {
   onLogout: () => void;
@@ -11,6 +11,14 @@ const isMac = window.thunder.platform === "darwin";
 
 export default function TopBar({ onLogout }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    function handleOpenSettings(): void {
+      setSettingsOpen(true);
+    }
+    window.addEventListener(OPEN_SETTINGS_EVENT, handleOpenSettings);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, handleOpenSettings);
+  }, []);
 
   return (
     <header className={`desktop-topbar${isMac ? " desktop-topbar--mac" : ""}`}>

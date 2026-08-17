@@ -74,4 +74,67 @@ describe('toAnthropicTools (TD-053)', () => {
   it('returns an empty list for an empty tool list', () => {
     expect(toAnthropicTools([])).toEqual([])
   })
+
+  // ─── Top-level keyword unions (TD-061) ────────────────────────────
+
+  it.each(['oneOf', 'allOf', 'anyOf'])(
+    'strips a top-level %s and keeps the tool',
+    (keyword) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const tool = {
+        name: 'record_interaction',
+        inputSchema: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+          [keyword]: [{ required: ['id'] }]
+        }
+      } as unknown as Tool
+
+      const [mapped] = toAnthropicTools([tool])
+
+      expect(mapped.name).toBe('record_interaction')
+      expect(mapped.input_schema).toEqual({
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id']
+      })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(keyword))
+    }
+  )
+
+  it('strips every top-level union present in one pass', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const tool = {
+      name: 'update_record',
+      inputSchema: {
+        type: 'object',
+        anyOf: [{ required: ['name'] }],
+        oneOf: [{ required: ['id'] }],
+        allOf: [{ required: ['id'] }]
+      }
+    } as unknown as Tool
+
+    expect(toAnthropicTools([tool])[0].input_schema).toEqual({ type: 'object' })
+  })
+
+  // Only the root is rejected by the API — `update_record`'s nullable
+  // entity fields are typed this way and must survive.
+  it('leaves a nested union untouched', () => {
+    const inputSchema = {
+      type: 'object',
+      properties: {
+        movie: { anyOf: [{ type: 'object' }, { type: 'null' }] }
+      }
+    }
+    const tool = { name: 'update_record', inputSchema } as unknown as Tool
+
+    expect(toAnthropicTools([tool])[0].input_schema).toEqual(inputSchema)
+  })
+
+  it('does not warn for a schema with no top-level union', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    toAnthropicTools([SEARCH_RECORDS])
+    expect(warn).not.toHaveBeenCalled()
+  })
 })

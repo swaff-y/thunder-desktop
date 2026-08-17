@@ -12,7 +12,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync, unlinkSync } from 'node:fs'
+import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,6 +25,9 @@ const ipcHandlers = new Map<
 
 vi.mock('electron', () => ({
   app: {
+    // TD-060: these tests stand in for an unpackaged (`npm run dev`)
+    // launch, so the apiUrl default resolves to the dev backend.
+    isPackaged: false,
     getPath: (name: string) => {
       if (name === 'userData') return dir
       if (name === 'downloads') return dir
@@ -130,5 +133,39 @@ describe('settings IPC validation (TD-052)', () => {
     expect(all.mcpUrl).toBe('https://halo-mcp.swaff.name/mcp')
     expect(all.bedrockRegion).toBe('ap-south-1')
     expect(all.bedrockModelId).toBe('global.anthropic.claude-sonnet-5')
+  })
+
+  // ─── Dev backend (TD-060) ─────────────────────────────────────────
+
+  it('seeds the dev backend on an unpackaged first launch', async () => {
+    const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
+    expect(all.apiUrl).toBe('https://halo-dev.swaff.name/')
+  })
+
+  // Without this the new default would only reach machines that have
+  // never launched the app — every existing dev box has a settings
+  // file pinned to prod from before the change.
+  it('flips an untouched prod default to dev on an unpackaged launch', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({ apiUrl: 'https://halo.swaff.name/' })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'apiUrl')).toBe(
+      'https://halo-dev.swaff.name/'
+    )
+  })
+
+  it('leaves a hand-set apiUrl alone', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({ apiUrl: 'https://halo.example/custom/' })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'apiUrl')).toBe(
+      'https://halo.example/custom/'
+    )
   })
 })

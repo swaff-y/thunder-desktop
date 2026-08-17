@@ -12,9 +12,11 @@ import {
   DEFAULT_API_URL,
   DEFAULT_BEDROCK_MODEL_ID,
   DEFAULT_BEDROCK_REGION,
+  DEFAULT_DEV_API_URL,
   DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
+  resolveDefaultApiUrl,
   type ThunderSettings
 } from '../../shared/settings'
 import {
@@ -49,7 +51,9 @@ function settingsPath(): string {
 export function defaults(): ThunderSettings {
   if (cachedDefaults === null) {
     cachedDefaults = {
-      apiUrl: DEFAULT_API_URL,
+      // TD-060: dev backend for unpackaged runs unless `-prod` was
+      // passed; packaged builds are always prod.
+      apiUrl: resolveDefaultApiUrl({ isPackaged: app.isPackaged, argv: process.argv }),
       downloadFolder: join(app.getPath('downloads'), 'Thunder'),
       mcpUrl: DEFAULT_MCP_URL,
       bedrockRegion: DEFAULT_BEDROCK_REGION,
@@ -147,7 +151,22 @@ export function registerSettingsHandlers(): void {
   // default to the current managed-domain default for users upgrading
   // from an older build. Idempotent — a no-op once the value has been
   // rewritten or if the user set a custom override.
-  migrateApiUrl(settingsPath(), defaults(), [LEGACY_DEV_API_URL, LEGACY_PROD_API_URL])
+  //
+  // TD-060: unpackaged runs additionally flip an untouched *current*
+  // default to the other one, so toggling `-prod` retargets a settings
+  // file that already exists — without it, the new dev default would
+  // only ever apply on a machine that has never launched the app. A
+  // URL the developer typed into Settings is still left alone, and
+  // packaged builds keep the legacy-only list so a deliberate
+  // halo-dev override there survives a restart.
+  const shippedDefaults = app.isPackaged
+    ? []
+    : [DEFAULT_API_URL, DEFAULT_DEV_API_URL].filter((url) => url !== defaults().apiUrl)
+  migrateApiUrl(settingsPath(), defaults(), [
+    LEGACY_DEV_API_URL,
+    LEGACY_PROD_API_URL,
+    ...shippedDefaults
+  ])
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.settingsGetAll, async () => {
     return readSettings(settingsPath(), defaults())

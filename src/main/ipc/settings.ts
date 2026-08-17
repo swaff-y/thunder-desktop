@@ -10,6 +10,9 @@ import { join } from 'node:path'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import {
   DEFAULT_API_URL,
+  DEFAULT_BEDROCK_MODEL_ID,
+  DEFAULT_BEDROCK_REGION,
+  DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   type ThunderSettings
@@ -37,30 +40,75 @@ function settingsPath(): string {
   return cachedPath
 }
 
-function defaults(): ThunderSettings {
+/**
+ * Single source of truth for the shipped defaults. Exported because
+ * `browser-download.ts` reads settings through the same file and would
+ * otherwise keep its own copy — a drift trap now that TD-052 has taken
+ * the record past two fields.
+ */
+export function defaults(): ThunderSettings {
   if (cachedDefaults === null) {
     cachedDefaults = {
       apiUrl: DEFAULT_API_URL,
-      downloadFolder: join(app.getPath('downloads'), 'Thunder')
+      downloadFolder: join(app.getPath('downloads'), 'Thunder'),
+      mcpUrl: DEFAULT_MCP_URL,
+      bedrockRegion: DEFAULT_BEDROCK_REGION,
+      bedrockModelId: DEFAULT_BEDROCK_MODEL_ID,
+      chatEnabled: false
     }
   }
   return cachedDefaults
 }
 
-const VALID_KEYS: ReadonlyArray<keyof ThunderSettings> = ['apiUrl', 'downloadFolder', 'userAgent']
-
-function isValidKey(key: unknown): key is keyof ThunderSettings {
-  return typeof key === 'string' && (VALID_KEYS as ReadonlyArray<string>).includes(key)
+// The persistable keys and the type each one accepts. A table rather
+// than a list plus a special case, so adding a non-string field is a
+// one-line entry here instead of another branch in `isValidValue` —
+// and so a field added to `ThunderSettings` without a matching entry
+// fails to compile rather than silently becoming unsettable.
+const FIELD_TYPES: Record<keyof ThunderSettings, 'string' | 'boolean'> = {
+  apiUrl: 'string',
+  downloadFolder: 'string',
+  userAgent: 'string',
+  mcpUrl: 'string',
+  bedrockRegion: 'string',
+  bedrockModelId: 'string',
+  chatEnabled: 'boolean'
 }
 
-// All persistable values are non-empty strings. `userAgent` is optional
-// in the schema, but "absent" means the key isn't present at all — IPC
-// drops `undefined` arguments anyway, so we don't try to support
-// `set('userAgent', undefined)` as a clear path. A dedicated
-// `settings:clear` channel would be the right shape if that's ever
-// needed.
-function isValidValue(_key: keyof ThunderSettings, value: unknown): boolean {
-  return typeof value === 'string' && value.length > 0
+function isValidKey(key: unknown): key is keyof ThunderSettings {
+  return typeof key === 'string' && Object.hasOwn(FIELD_TYPES, key)
+}
+
+/**
+ * TD-052: `mcpUrl` becomes an outbound request target in TD-053, so it
+ * is validated here and not only in the Settings modal — the renderer's
+ * check is a UX affordance, and main must not trust it. Restricting the
+ * scheme keeps `file:`/`data:` and similar out of the field before
+ * anything is built on top of it.
+ */
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+// Booleans must accept `false` — a truthiness or length check would
+// reject the chat toggle's off state outright. Strings must be
+// non-empty.
+//
+// `userAgent` is optional in the schema, but "absent" means the key
+// isn't present at all — IPC drops `undefined` arguments anyway, so we
+// don't try to support `set('userAgent', undefined)` as a clear path. A
+// dedicated `settings:clear` channel would be the right shape if that's
+// ever needed.
+function isValidValue(key: keyof ThunderSettings, value: unknown): boolean {
+  if (FIELD_TYPES[key] === 'boolean') return typeof value === 'boolean'
+  if (typeof value !== 'string' || value.length === 0) return false
+  if (key === 'mcpUrl') return isValidHttpUrl(value)
+  return true
 }
 
 export function registerSettingsHandlers(): void {

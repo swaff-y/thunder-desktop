@@ -35,6 +35,20 @@ export const THUNDER_IPC_CHANNELS = {
   authClear: 'thunder:auth:clear',
 
   /**
+   * TD-052: encrypted AWS credential store backing Bedrock's SigV4
+   * signing. Handlers are registered in `main/ipc/aws-creds.ts`.
+   *
+   * Note the missing getter — that asymmetry with `auth:*` is
+   * deliberate and load-bearing. IAM keys are a standing grant against
+   * the user's AWS account, so the sandboxed renderer can ask whether
+   * credentials exist (`has`, for the Settings indicator) but has no
+   * path to read them back. Do not add `thunder:aws:get`.
+   */
+  awsSet: 'thunder:aws:set',
+  awsClear: 'thunder:aws:clear',
+  awsHas: 'thunder:aws:has',
+
+  /**
    * TD-018: JSON-backed settings store at `<userData>/thunder-desktop-settings.json`.
    * Main-process handlers are registered in `main/ipc/settings.ts`.
    */
@@ -119,6 +133,9 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
   THUNDER_IPC_CHANNELS.authSet,
   THUNDER_IPC_CHANNELS.authClear,
+  THUNDER_IPC_CHANNELS.awsSet,
+  THUNDER_IPC_CHANNELS.awsClear,
+  THUNDER_IPC_CHANNELS.awsHas,
   THUNDER_IPC_CHANNELS.settingsGet,
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
@@ -153,6 +170,18 @@ export interface ThunderAuthCredentials {
   email?: string
   /** Present iff "Stay signed in" was checked at login time. */
   password?: string
+}
+
+/**
+ * TD-052: shape of the AWS credentials the renderer submits to
+ * `window.thunder.aws.set`. Write-only across the boundary — nothing
+ * ever returns this shape to the renderer.
+ */
+export interface ThunderAwsCredentials {
+  accessKeyId: string
+  secretAccessKey: string
+  /** Present only for temporary (STS / SSO) credentials. */
+  sessionToken?: string
 }
 
 /**
@@ -250,6 +279,17 @@ export interface ThunderApi {
     set: (creds: ThunderAuthCredentials) => Promise<void>
     clear: () => Promise<void>
   }
+  /**
+   * TD-052: write-only AWS credential store. `has` is the renderer's
+   * only read — a boolean for the Settings "configured / not
+   * configured" indicator. There is no getter, by design.
+   */
+  aws: {
+    /** Rejects if the OS keychain is unavailable — nothing is persisted. */
+    set: (creds: ThunderAwsCredentials) => Promise<void>
+    clear: () => Promise<void>
+    has: () => Promise<boolean>
+  }
   settings: {
     get: <K extends keyof ThunderSettings>(key: K) => Promise<ThunderSettings[K]>
     set: <K extends keyof ThunderSettings>(key: K, value: ThunderSettings[K]) => Promise<void>
@@ -331,6 +371,11 @@ export const thunderApi: ThunderApi = {
     get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
     set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),
     clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear)
+  },
+  aws: {
+    set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsSet, creds),
+    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsClear),
+    has: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsHas)
   },
   settings: {
     get: (key) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGet, key),

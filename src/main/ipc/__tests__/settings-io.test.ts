@@ -16,9 +16,11 @@ import {
   DEFAULT_API_URL,
   DEFAULT_BEDROCK_MODEL_ID,
   DEFAULT_BEDROCK_REGION,
+  DEFAULT_DEV_API_URL,
   DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
-  LEGACY_PROD_API_URL
+  LEGACY_PROD_API_URL,
+  resolveDefaultApiUrl
 } from '../../../shared/settings'
 
 const DEFAULTS: ThunderSettings = {
@@ -288,6 +290,51 @@ describe('settings-io (TD-018)', () => {
       )
       expect(LEGACY_PROD_API_URL).toBe(
         'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
+      )
+    })
+  })
+
+  // ─── resolveDefaultApiUrl (TD-060 dev-by-default) ─────────────────
+
+  describe('resolveDefaultApiUrl (TD-060)', () => {
+    it('defaults an unpackaged run to the dev backend', () => {
+      expect(resolveDefaultApiUrl({ isPackaged: false, argv: ['electron', '.'] })).toBe(
+        DEFAULT_DEV_API_URL
+      )
+    })
+
+    it('opts an unpackaged run back into prod with -prod or --prod', () => {
+      expect(resolveDefaultApiUrl({ isPackaged: false, argv: ['electron', '.', '-prod'] })).toBe(
+        DEFAULT_API_URL
+      )
+      expect(resolveDefaultApiUrl({ isPackaged: false, argv: ['electron', '.', '--prod'] })).toBe(
+        DEFAULT_API_URL
+      )
+    })
+
+    // A shipped build must not be talkable onto the dev backend by
+    // whatever argv the launcher happens to pass.
+    it('ignores argv entirely when packaged', () => {
+      expect(resolveDefaultApiUrl({ isPackaged: true, argv: ['Thunder Desktop'] })).toBe(
+        DEFAULT_API_URL
+      )
+      expect(resolveDefaultApiUrl({ isPackaged: true, argv: ['Thunder Desktop', '-prod'] })).toBe(
+        DEFAULT_API_URL
+      )
+    })
+
+    // Substring matches would make `--production` or a path containing
+    // "-prod" silently repoint the app at prod.
+    it('matches the flag exactly, not as a substring', () => {
+      expect(
+        resolveDefaultApiUrl({ isPackaged: false, argv: ['electron', '.', '--production'] })
+      ).toBe(DEFAULT_DEV_API_URL)
+    })
+
+    it('keeps the dev URL on a single trailing slash', () => {
+      expect(DEFAULT_DEV_API_URL).toBe('https://halo-dev.swaff.name/')
+      expect(new URL('v1/login', DEFAULT_DEV_API_URL).href).toBe(
+        'https://halo-dev.swaff.name/v1/login'
       )
     })
   })

@@ -24,6 +24,42 @@
 export const DEFAULT_API_URL = 'https://halo.swaff.name/'
 
 /**
+ * TD-060: the dev-account Halo backend. `npm run dev` defaults to this
+ * so an unpackaged run never talks to prod by accident; `npm run
+ * dev:prod` (or any launch carrying {@link PROD_FLAGS}) opts back into
+ * {@link DEFAULT_API_URL}. Packaged builds always ship prod.
+ *
+ * Trailing slash is load-bearing for the same reason as
+ * {@link DEFAULT_API_URL}.
+ */
+export const DEFAULT_DEV_API_URL = 'https://halo-dev.swaff.name/'
+
+/**
+ * TD-060: argv flags that force the prod backend in an unpackaged run.
+ * Both spellings are accepted because `-prod` is what reads naturally
+ * at the CLI while `--prod` is what habit types.
+ */
+export const PROD_FLAGS: ReadonlyArray<string> = ['-prod', '--prod']
+
+/**
+ * TD-060: which backend an unpackaged launch points at. Pure (argv and
+ * `isPackaged` are passed in) so it can be unit-tested without an
+ * Electron `app`.
+ *
+ * Packaged builds ignore argv entirely — a shipped app must not be
+ * talkable onto the dev backend by a command-line flag.
+ */
+export function resolveDefaultApiUrl(options: {
+  isPackaged: boolean
+  argv: readonly string[]
+}): string {
+  if (options.isPackaged) return DEFAULT_API_URL
+  return options.argv.some((arg) => PROD_FLAGS.includes(arg))
+    ? DEFAULT_API_URL
+    : DEFAULT_DEV_API_URL
+}
+
+/**
  * TD-029: pre-cutover dev URL, retained only so the one-time
  * settings migration can identify untouched defaults from prior
  * versions and rewrite them to the prod URL. Users who explicitly

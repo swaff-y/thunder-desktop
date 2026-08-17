@@ -67,10 +67,11 @@ open decision on Bedrock credentials.
 - [TD-053](complete/TD-053-halo-mcp-client.md) — AI chat: halo-mcp client in the main process
 - [TD-054](complete/TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
 - [TD-055](complete/TD-055-chat-session-store.md) — AI chat: chat session store
-- [TD-056](TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
+- [TD-056](complete/TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
 - [TD-057](TD-057-action-card-list.md) — AI chat: action card — list
 - [TD-058](TD-058-action-card-record.md) — AI chat: action card — single record with carousel
 - [TD-059](TD-059-action-card-chart.md) — AI chat: action card — chart
+- [TD-061](complete/TD-061-tool-schema-top-level-unions.md) — AI chat: strip top-level oneOf/anyOf from MCP tool schemas
 
 ## Bugs / polish
 
@@ -89,3 +90,4 @@ open decision on Bedrock credentials.
 - [TD-048](TD-048-browser-default-url-google.md) — Browser tab: default URL of google.com
 - [TD-050](TD-050-draggable-top-bar.md) — Draggable top bar (window drag region)
 - [TD-060](complete/TD-060-dev-backend-default.md) — `npm run dev` defaults to the dev backend
+- [TD-062](TD-062-bedrock-smoke-client-mismatch.md) — Bedrock smoke test validates a different client than the app

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Spinner } from "react-bootstrap";
 import type { ChatStatus } from "../../../../shared/chat";
 import { useChat, type ChatTurn } from "../../hooks/useChat";
+import ActionCardList from "./ActionCardList";
 import ChatError from "./ChatError";
 
 function subscribeToConnectivity(onChange: () => void): () => void {
@@ -41,6 +42,9 @@ export default function ChatPanel() {
 
   const isPending = status.state !== "idle";
   const lastAnswer = turns.at(-1)?.answer;
+  // Design 2a: only the latest action gets a card — earlier turns keep
+  // their text, so the transcript never stacks stale result sets.
+  const latestActionId = turns.findLast((turn) => turn.action !== undefined)?.id;
 
   // The design's `stick()`: a new turn, and the panel on mount, land at the
   // bottom of the transcript rather than wherever the last scroll left it.
@@ -102,6 +106,9 @@ export default function ChatPanel() {
                     <p className="chat-who">Assistant</p>
                     <p className="chat-said">{turn.answer}</p>
                   </>
+                )}
+                {turn.action?.kind === "list" && turn.id === latestActionId && (
+                  <ActionCardList action={turn.action} />
                 )}
                 {turn.error !== undefined && (
                   <ChatError

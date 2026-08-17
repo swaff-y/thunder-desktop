@@ -8,8 +8,16 @@ export const NO_ACTION: ChatAction = {
   result: null,
 };
 
-export function answer(text: string): ChatAskResult {
-  return { ok: true, text, action: NO_ACTION, truncated: false };
+export function answer(text: string, action: ChatAction = NO_ACTION): ChatAskResult {
+  return { ok: true, text, action, truncated: false };
+}
+
+export function listAction(
+  tool: string,
+  args: Record<string, unknown>,
+  result: unknown
+): ChatAction {
+  return { kind: "list", tool, args, title: tool, result };
 }
 
 export function deferredAnswer(): {

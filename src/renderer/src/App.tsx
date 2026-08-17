@@ -6,6 +6,7 @@ import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import { TabHistoryProvider } from './hooks/useTabHistory'
+import { ChatProvider } from './hooks/useChat'
 import { DownloadsProvider } from './browser/useDownloads'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -77,13 +78,15 @@ function App(): React.JSX.Element {
     <QueryProvider>
       <HashRouter>
         <TabHistoryProvider>
-          <AuthProvider>
-            <CartProvider>
-              <DownloadsProvider>
-                <AppRoutes />
-              </DownloadsProvider>
-            </CartProvider>
-          </AuthProvider>
+          <ChatProvider>
+            <AuthProvider>
+              <CartProvider>
+                <DownloadsProvider>
+                  <AppRoutes />
+                </DownloadsProvider>
+              </CartProvider>
+            </AuthProvider>
+          </ChatProvider>
         </TabHistoryProvider>
       </HashRouter>
     </QueryProvider>

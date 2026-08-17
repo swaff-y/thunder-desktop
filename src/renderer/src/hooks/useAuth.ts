@@ -13,6 +13,7 @@ import { setCachedCreds, resetClientGuards } from "../api/client";
 import { queryClient } from "../api/cache";
 import { RANDOM_RECORDS_KEY } from "./useRecords";
 import { useTabHistory } from "./useTabHistory";
+import { useChatActions } from "./useChat";
 import React from "react";
 
 interface JwtPayload {
@@ -83,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(EMPTY_STATE);
   const [isLoading, setIsLoading] = useState(true);
   const { clearHistory: clearTabHistory } = useTabHistory();
+  const { clear: clearChat } = useChatActions();
 
   const isAuthenticated = !!state.token && isTokenValid(state.token);
 
@@ -188,8 +190,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCachedCreds(null);
     resetClientGuards();
     clearTabHistory();
+    clearChat();
     setState(EMPTY_STATE);
-  }, [clearTabHistory]);
+  }, [clearTabHistory, clearChat]);
 
   // Re-check token validity on window focus. If the JWT has expired,
   // try silent reauth first — only fall through to logout (which clears

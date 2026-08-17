@@ -9,6 +9,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import React from "react";
+import { MAX_TURN_TEXT_LENGTH } from "../../../shared/chat";
 import type {
   ChatAction,
   ChatAskResult,
@@ -65,16 +66,51 @@ type ChatContextValue = ChatState & ChatActions;
 const IDLE: ChatStatus = { state: "idle" };
 const THINKING: ChatStatus = { state: "thinking" };
 
+const RESULT_HEADING = "Data behind that answer";
+/** Below this there isn't room for a useful fragment, so don't bother. */
+const MIN_RESULT_ROOM = 200;
+
+/**
+ * The prose alone can't ground a follow-up: asked "show me the first
+ * one", the model re-runs the tool and describes whatever comes back,
+ * which need not be what the user is looking at. Replaying the result
+ * gives it the rows it already reported on.
+ *
+ * Newest turn only, and truncated to the per-turn cap — main rejects the
+ * whole request if any turn is over, and older results are the ones
+ * least likely to be referred back to.
+ */
+function withToolResult(turn: ChatTurn): string {
+  const answer = turn.answer ?? "";
+  if (turn.action?.result === undefined || turn.action.result === null) return answer;
+
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(turn.action.result);
+  } catch {
+    return answer;
+  }
+  if (typeof serialized !== "string") return answer;
+
+  const heading = `\n\n${RESULT_HEADING}${turn.tool ? ` (\`${turn.tool}\`)` : ""}:\n`;
+  const room = MAX_TURN_TEXT_LENGTH - answer.length - heading.length;
+  if (room < MIN_RESULT_ROOM) return answer;
+
+  const body =
+    serialized.length > room ? `${serialized.slice(0, room - 1)}…` : serialized;
+  return `${answer}${heading}${body}`;
+}
+
 /** Only answered turns are worth replaying — pending and failed ones have no assistant text. */
 function toHistory(turns: ChatTurn[]): ChatHistoryTurn[] {
-  return turns.flatMap((turn) =>
-    turn.answer
-      ? [
-          { role: "user" as const, text: turn.question },
-          { role: "assistant" as const, text: turn.answer },
-        ]
-      : []
-  );
+  const answered = turns.filter((turn) => turn.answer);
+  return answered.flatMap((turn, index) => [
+    { role: "user" as const, text: turn.question },
+    {
+      role: "assistant" as const,
+      text: index === answered.length - 1 ? withToolResult(turn) : (turn.answer ?? ""),
+    },
+  ]);
 }
 
 // State and actions are separate contexts so that consumers which only need

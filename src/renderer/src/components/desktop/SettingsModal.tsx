@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
+import { queryClient } from "../../api/cache";
+import { CHAT_ENABLED_KEY } from "../../hooks/useSettings";
 import type { ThunderSettings } from "../../../../shared/settings";
 
 interface SettingsModalProps {
@@ -163,6 +165,11 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
       await saveIfChanged("bedrockRegion", bedrockRegion, initial.bedrockRegion);
       await saveIfChanged("bedrockModelId", bedrockModelId, initial.bedrockModelId);
       await saveIfChanged("chatEnabled", form.chatEnabled, initial.chatEnabled);
+      // TD-056: Home reads this at mount, and the modal closes over a Home
+      // that never unmounted — without this the toggle looks like a no-op.
+      if (form.chatEnabled !== initial.chatEnabled) {
+        await queryClient.invalidateQueries({ queryKey: CHAT_ENABLED_KEY });
+      }
 
       if (hasCredsInput) {
         // Caught separately from the settings writes so a keychain

@@ -32,6 +32,27 @@ describe("ChatPanel", () => {
     cancelRequest.mockClear();
   });
 
+  it("shows only the composer while there is no conversation", () => {
+    renderPanel(vi.fn(async () => answer("unused")));
+
+    expect(composer()).toBeInTheDocument();
+    expect(screen.queryByText("node-chat")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("reveals the header and transcript once a turn exists", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await user.type(composer(), "who is popular?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText("node-chat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
+    expect(screen.getByRole("list")).toBeInTheDocument();
+  });
+
   it("does not send an empty or whitespace-only question", async () => {
     const user = userEvent.setup();
     const send = vi.fn(async () => answer("unused"));

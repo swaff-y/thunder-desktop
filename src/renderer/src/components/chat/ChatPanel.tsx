@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Spinner } from "react-bootstrap";
 import type { ChatStatus } from "../../../../shared/chat";
 import { useChat, type ChatTurn } from "../../hooks/useChat";
-import ChatEmptyState from "./ChatEmptyState";
 import ChatError from "./ChatError";
 
 function subscribeToConnectivity(onChange: () => void): () => void {
@@ -68,51 +67,53 @@ export default function ChatPanel() {
 
   return (
     <section className="chat-panel" aria-label="Catalogue chat">
-      <header className="chat-header">
-        <span
-          className={`chat-dot${isOnline ? "" : " chat-dot--offline"}`}
-          aria-hidden="true"
-        />
-        <span className="chat-node">node-chat</span>
-        <span className="chat-connection">
-          MCP · catalogue · {isOnline ? "connected" : "offline"}
-        </span>
-        <button type="button" className="chat-clear" onClick={clear} disabled={isEmpty}>
-          Clear
-        </button>
-      </header>
+      {/* Idle Home is an invitation, not a window: the header and transcript
+          only earn their space once there is a conversation to show. */}
+      {!isEmpty && (
+        <>
+          <header className="chat-header">
+            <span
+              className={`chat-dot${isOnline ? "" : " chat-dot--offline"}`}
+              aria-hidden="true"
+            />
+            <span className="chat-node">node-chat</span>
+            <span className="chat-connection">
+              MCP · catalogue · {isOnline ? "connected" : "offline"}
+            </span>
+            <button type="button" className="chat-clear" onClick={clear}>
+              Clear
+            </button>
+          </header>
 
-      {isEmpty ? (
-        <ChatEmptyState onSuggestion={ask} />
-      ) : (
-        <ol className="chat-transcript" ref={transcriptRef}>
-          {turns.map((turn) => (
-            <li key={turn.id} className="chat-turn">
-              <p className="chat-who">You</p>
-              <p className="chat-said">{turn.question}</p>
-              {turn.pending && (
-                <span className="chat-dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              )}
-              {turn.answer !== undefined && (
-                <>
-                  <p className="chat-who">Assistant</p>
-                  <p className="chat-said">{turn.answer}</p>
-                </>
-              )}
-              {turn.error !== undefined && (
-                <ChatError
-                  error={turn.error}
-                  message={turn.message}
-                  onRetry={() => handleRetry(turn)}
-                />
-              )}
-            </li>
-          ))}
-        </ol>
+          <ol className="chat-transcript" ref={transcriptRef}>
+            {turns.map((turn) => (
+              <li key={turn.id} className="chat-turn">
+                <p className="chat-who">You</p>
+                <p className="chat-said">{turn.question}</p>
+                {turn.pending && (
+                  <span className="chat-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+                {turn.answer !== undefined && (
+                  <>
+                    <p className="chat-who">Assistant</p>
+                    <p className="chat-said">{turn.answer}</p>
+                  </>
+                )}
+                {turn.error !== undefined && (
+                  <ChatError
+                    error={turn.error}
+                    message={turn.message}
+                    onRetry={() => handleRetry(turn)}
+                  />
+                )}
+              </li>
+            ))}
+          </ol>
+        </>
       )}
 
       <p className="visually-hidden" role="status">
@@ -127,7 +128,10 @@ export default function ChatPanel() {
         </div>
       )}
 
-      <form className="chat-composer" onSubmit={handleSubmit}>
+      <form
+        className={`chat-composer${isEmpty ? " chat-composer--only" : ""}`}
+        onSubmit={handleSubmit}
+      >
         <label className="chat-label" htmlFor="chat-question">
           Ask the catalogue
         </label>
@@ -277,6 +281,10 @@ export default function ChatPanel() {
           display: flex;
           gap: var(--space-sm);
           padding: var(--space-md);
+        }
+        /* Idle: the composer is the panel, so it needs no divider above it. */
+        .chat-composer--only {
+          border-top: none;
         }
         .chat-label {
           color: var(--color-text-muted);

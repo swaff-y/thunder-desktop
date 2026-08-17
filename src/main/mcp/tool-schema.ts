@@ -6,15 +6,12 @@
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import { isPlainObject } from '../lib/json'
 
 export interface AnthropicToolDefinition {
   name: string
   description?: string
   input_schema: Record<string, unknown>
-}
-
-function isObjectSchema(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
@@ -24,7 +21,7 @@ function isObjectSchema(value: unknown): value is Record<string, unknown> {
  */
 export function toAnthropicTools(mcpTools: readonly Tool[]): AnthropicToolDefinition[] {
   return mcpTools.flatMap((tool) => {
-    if (!isObjectSchema(tool.inputSchema)) {
+    if (!isPlainObject(tool.inputSchema)) {
       console.warn(
         `[tool-schema] dropping "${tool.name}" — inputSchema is missing or not an object`
       )

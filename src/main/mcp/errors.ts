@@ -80,7 +80,8 @@ function isNetworkError(error: unknown): boolean {
   return typeof message === 'string' && NETWORK_MESSAGE.test(message)
 }
 
-function messageOf(error: unknown): string {
+/** Exported for TD-054's chat-side classifier, which needs the same. */
+export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
 }
@@ -110,7 +111,13 @@ export function toMcpFailure(error: unknown): McpFailure {
   return { kind: 'protocol', message: messageOf(error) }
 }
 
-function textOf(content: CallToolResult['content']): string {
+/**
+ * The text blocks of a tool result, joined. Exported because TD-054
+ * needs the same flattening twice over — once to hand the result back
+ * to the model, once to build the card payload — and a second copy
+ * would drift the first time a new block type shows up.
+ */
+export function contentText(content: CallToolResult['content']): string {
   return content
     .map((block) => (block.type === 'text' ? block.text : ''))
     .filter((text) => text.length > 0)
@@ -131,7 +138,7 @@ function textOf(content: CallToolResult['content']): string {
 export function toolResultFailure(result: CallToolResult): McpFailure | null {
   if (result.isError !== true) return null
 
-  const message = textOf(result.content) || 'The tool reported an error.'
+  const message = contentText(result.content) || 'The tool reported an error.'
   if (SESSION_EXPIRED.test(message)) {
     return { kind: 'unauthorized', message }
   }

@@ -20,7 +20,7 @@
  * Save-As dialog, which is fine until that's a real use case.
  */
 
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { app, ipcMain, session, shell } from 'electron'
 import type { DownloadItem, Event, Session } from 'electron'
 import { mkdirSync, unlinkSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
@@ -41,6 +41,7 @@ import {
   type HlsDownloadHandle
 } from './browser-download-hls'
 import { getSetting } from './settings-io'
+import { sendToFocused } from './window-send'
 
 // Throttle progress events: at most one per item per window. The `done`
 // event always fires separately and carries final state, so a missed
@@ -129,16 +130,6 @@ function settingsPath(): string {
     cachedSettingsPath = join(app.getPath('userData'), 'thunder-desktop-settings.json')
   }
   return cachedSettingsPath
-}
-
-function sendToFocused(channel: string, payload: unknown): void {
-  // Mirrors halo-desktop's updater fan-out: prefer the focused window,
-  // but fall back to the first available so events still land if the
-  // user clicked away (e.g., onto a video player) mid-download.
-  const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
-  if (target && !target.isDestroyed() && !target.webContents.isDestroyed()) {
-    target.webContents.send(channel, payload)
-  }
 }
 
 export function registerBrowserDownloadHandlers(): BrowserDownloadHandlers {

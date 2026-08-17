@@ -1,9 +1,27 @@
 import { ipcRenderer } from 'electron'
 import { THUNDER_BROWSER_PARTITION } from '../shared/browser'
+import type {
+  ChatAction,
+  ChatActionKind,
+  ChatAskRequest,
+  ChatAskResult,
+  ChatErrorKind,
+  ChatHistoryTurn,
+  ChatStatus
+} from '../shared/chat'
 import type { ThunderSettings } from '../shared/settings'
 
 export { THUNDER_BROWSER_PARTITION }
 export type { ThunderSettings }
+export type {
+  ChatAction,
+  ChatActionKind,
+  ChatAskRequest,
+  ChatAskResult,
+  ChatErrorKind,
+  ChatHistoryTurn,
+  ChatStatus
+}
 
 /**
  * IPC channels exposed across the main / preload / renderer boundary.
@@ -115,7 +133,20 @@ export const THUNDER_IPC_CHANNELS = {
    * `main/ipc/dialog.ts`.
    */
   dialogOpenDirectory: 'thunder:dialog:open-directory',
-  dialogShowItemInFolder: 'thunder:dialog:show-item-in-folder'
+  dialogShowItemInFolder: 'thunder:dialog:show-item-in-folder',
+
+  /**
+   * TD-054: the AI chat's Bedrock agent loop. `ask` and `cancel` are
+   * renderer → main invokes; `status` is a one-way main → renderer push
+   * driving the "Running catalogue query…" spinner. Handlers are
+   * registered in `main/ipc/chat.ts`.
+   *
+   * All three no-op while `chatEnabled` is false — no LLM or AWS call
+   * is made, and no status is ever pushed.
+   */
+  chatAsk: 'thunder:chat:ask',
+  chatCancel: 'thunder:chat:cancel',
+  chatStatus: 'thunder:chat:status'
 } as const
 
 /**
@@ -125,9 +156,9 @@ export const THUNDER_IPC_CHANNELS = {
  * so an attacker who somehow obtained a renderer handle still can't
  * drive arbitrary main-process IPC.
  *
- * `menuAction` is intentionally excluded — it's a one-way main →
- * renderer channel, not invoke-able. Add new channels here as their
- * handlers ship.
+ * `menuAction` and `chatStatus` are intentionally excluded — they're
+ * one-way main → renderer channels, not invoke-able. Add new channels
+ * here as their handlers ship.
  */
 export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
@@ -147,7 +178,9 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.browserSessionClear,
   THUNDER_IPC_CHANNELS.browserContextMenuShow,
   THUNDER_IPC_CHANNELS.dialogOpenDirectory,
-  THUNDER_IPC_CHANNELS.dialogShowItemInFolder
+  THUNDER_IPC_CHANNELS.dialogShowItemInFolder,
+  THUNDER_IPC_CHANNELS.chatAsk,
+  THUNDER_IPC_CHANNELS.chatCancel
 ]
 
 /**
@@ -357,6 +390,29 @@ export interface ThunderApi {
     }
   }
   /**
+   * TD-054: the AI chat. The whole agent loop runs in main — the
+   * renderer sends a question and receives the finished turn, so a
+   * navigation away from Home mid-answer doesn't kill it.
+   *
+   * Every path no-ops while `chatEnabled` is false: `ask` resolves to a
+   * failure without touching Bedrock, `cancel` does nothing, and no
+   * status is pushed.
+   */
+  chat: {
+    /**
+     * Never rejects — failures come back as `{ ok: false, error }` so
+     * the renderer branches on a field rather than a message.
+     */
+    ask: (request: ChatAskRequest) => Promise<ChatAskResult>
+    /** Aborts the in-flight turn, which then resolves `cancelled`. */
+    cancel: () => Promise<void>
+    /**
+     * Subscribe to spinner state. Returns an unsubscribe function —
+     * call it on unmount to avoid a leaked listener.
+     */
+    onStatus: (callback: (status: ChatStatus) => void) => () => void
+  }
+  /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
    * Prefer the typed `auth` / `settings` surfaces — `invoke` exists so
    * tests can prove the allowlist rejects arbitrary channels and so
@@ -429,6 +485,17 @@ export const thunderApi: ThunderApi = {
     clearSession: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserSessionClear),
     contextMenu: {
       show: (request) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.browserContextMenuShow, request)
+    }
+  },
+  chat: {
+    ask: (request) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatAsk, request),
+    cancel: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatCancel),
+    onStatus: (callback) => {
+      const handler = (_event: unknown, status: ChatStatus): void => callback(status)
+      ipcRenderer.on(THUNDER_IPC_CHANNELS.chatStatus, handler)
+      return (): void => {
+        ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.chatStatus, handler)
+      }
     }
   },
   invoke: (channel, ...args) => {

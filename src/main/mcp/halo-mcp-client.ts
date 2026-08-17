@@ -39,7 +39,11 @@ const CLIENT_INFO = { name: 'thunder-desktop', version: '1.0.0' } as const
 export interface McpSession {
   connect(): Promise<void>
   listTools(): Promise<{ tools: Tool[] }>
-  callTool(name: string, args: Record<string, unknown>): Promise<CallToolResult>
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<CallToolResult>
   close(): Promise<void>
 }
 
@@ -84,8 +88,13 @@ function createStreamableSession(url: URL, fetchImpl: FetchLike): McpSession {
   return {
     connect: () => client.connect(transport, timeout),
     listTools: () => client.listTools(undefined, timeout),
-    callTool: async (name, args) => {
-      const result = await client.callTool({ name, arguments: args }, CallToolResultSchema, timeout)
+    callTool: async (name, args, signal) => {
+      const result = await client.callTool({ name, arguments: args }, CallToolResultSchema, {
+        ...timeout,
+        // TD-054: a cancelled chat turn has to stop the request that is
+        // already on the wire, not just skip the next one.
+        ...(signal !== undefined && { signal })
+      })
       // The declared return also covers the legacy `toolResult` shape,
       // which passing `CallToolResultSchema` rules out — the union is an
       // artefact of the signature, not a runtime possibility.
@@ -175,9 +184,13 @@ export class HaloMcpClient {
    * adapt to — that one throws, to reach the renderer's
    * `reauthenticate()`.
    */
-  async callTool(name: string, args: Record<string, unknown> = {}): Promise<CallToolResult> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown> = {},
+    signal?: AbortSignal
+  ): Promise<CallToolResult> {
     const session = await this.#connect()
-    const result = await mapFailures(() => session.callTool(name, args))
+    const result = await mapFailures(() => session.callTool(name, args, signal))
 
     const failure = toolResultFailure(result)
     if (failure?.kind === 'unauthorized') throw new McpFailureError(failure)

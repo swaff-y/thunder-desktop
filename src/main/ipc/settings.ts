@@ -60,6 +60,15 @@ export function defaults(): ThunderSettings {
   return cachedDefaults
 }
 
+/**
+ * TD-053: main-process only. Read per connection rather than cached so
+ * a Settings change takes effect on the next MCP session instead of the
+ * next app launch.
+ */
+export function resolveMcpUrl(): string {
+  return getSetting(settingsPath(), defaults(), 'mcpUrl')
+}
+
 // The persistable keys and the type each one accepts. A table rather
 // than a list plus a special case, so adding a non-string field is a
 // one-line entry here instead of another branch in `isValidValue` —

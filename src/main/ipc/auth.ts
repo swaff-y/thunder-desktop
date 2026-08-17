@@ -4,12 +4,16 @@ import { THUNDER_IPC_CHANNELS, type ThunderAuthCredentials } from '../../preload
 import {
   clearCredentials,
   getCredentials,
+  getToken,
   setCredentials,
   type CryptoAdapter
 } from './auth-io'
 
+/** Exported so the smoke script can resolve the same file outside Electron. */
+export const AUTH_CREDENTIALS_FILENAME = 'thunder-desktop-credentials.enc'
+
 function credentialsPath(): string {
-  return join(app.getPath('userData'), 'thunder-desktop-credentials.enc')
+  return join(app.getPath('userData'), AUTH_CREDENTIALS_FILENAME)
 }
 
 const crypto: CryptoAdapter = {
@@ -26,6 +30,15 @@ function isValidAuthPayload(value: unknown): value is ThunderAuthCredentials {
   if (v.email !== undefined && typeof v.email !== 'string') return false
   if (v.password !== undefined && typeof v.password !== 'string') return false
   return true
+}
+
+/**
+ * TD-053: main-process only. The halo-mcp client reads this on every
+ * request rather than caching it — a silent reauth rewrites the stored
+ * record, and a captured token would outlive its own session.
+ */
+export function resolveAuthToken(): string | undefined {
+  return getToken(credentialsPath(), crypto) ?? undefined
 }
 
 export function registerAuthHandlers(): void {

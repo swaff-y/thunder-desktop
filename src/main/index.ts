@@ -7,6 +7,7 @@ import { registerAwsCredentialHandlers } from './ipc/aws-creds'
 import { registerBrowserContextMenuHandlers } from './ipc/browser-context-menu'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
 import { registerBrowserDownloadHandlers } from './ipc/browser-download'
+import { registerChatHandlers } from './ipc/chat'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
@@ -29,6 +30,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers()
   registerAuthHandlers()
   registerAwsCredentialHandlers()
+  registerChatHandlers()
   registerShellHandlers()
   registerDialogHandlers()
   registerBrowserDetectHandlers()

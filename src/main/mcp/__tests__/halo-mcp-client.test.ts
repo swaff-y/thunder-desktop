@@ -157,12 +157,13 @@ describe('HaloMcpClient — tool list memoisation (TD-053)', () => {
 describe('HaloMcpClient — callTool (TD-053)', () => {
   it('forwards the name and arguments to the session', async () => {
     await createClient().callTool('search_records', { limit: 2 })
-    expect(session.callTool).toHaveBeenCalledWith('search_records', { limit: 2 })
+    // Third argument is TD-054's optional cancellation signal.
+    expect(session.callTool).toHaveBeenCalledWith('search_records', { limit: 2 }, undefined)
   })
 
   it('defaults to empty arguments for a tool that takes none', async () => {
     await createClient().callTool('get_stats_summary')
-    expect(session.callTool).toHaveBeenCalledWith('get_stats_summary', {})
+    expect(session.callTool).toHaveBeenCalledWith('get_stats_summary', {}, undefined)
   })
 
   it('returns an empty result verbatim rather than treating it as a failure', async () => {

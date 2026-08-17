@@ -69,6 +69,24 @@ export function resolveMcpUrl(): string {
   return getSetting(settingsPath(), defaults(), 'mcpUrl')
 }
 
+/**
+ * TD-054: main-process only. Read per turn for the same reason as
+ * {@link resolveMcpUrl} — flipping the chat off, or repointing it at a
+ * region the account actually has model access in, should take effect
+ * on the next question rather than the next launch.
+ */
+export function resolveChatSettings(): Pick<
+  ThunderSettings,
+  'chatEnabled' | 'bedrockRegion' | 'bedrockModelId'
+> {
+  const settings = readSettings(settingsPath(), defaults())
+  return {
+    chatEnabled: settings.chatEnabled,
+    bedrockRegion: settings.bedrockRegion,
+    bedrockModelId: settings.bedrockModelId
+  }
+}
+
 // The persistable keys and the type each one accepts. A table rather
 // than a list plus a special case, so adding a non-string field is a
 // one-line entry here instead of another branch in `isValidValue` —

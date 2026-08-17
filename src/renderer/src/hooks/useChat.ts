@@ -9,6 +9,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import React from "react";
+import { MAX_TURN_TEXT_LENGTH } from "../../../shared/chat";
 import type {
   ChatAction,
   ChatAskResult,
@@ -33,6 +34,8 @@ export interface ChatTurn {
   tool?: string;
   action?: ChatAction;
   error?: ChatError;
+  /** The failure's own words, for the kinds that have no fixed copy. */
+  message?: string;
 }
 
 type ChatTurnPatch = Omit<Partial<ChatTurn>, "id">;
@@ -52,6 +55,8 @@ interface ChatState {
 
 interface ChatActions {
   ask: (question: string) => Promise<void>;
+  /** Re-asks a failed turn's question in place, rather than below it. */
+  retry: (id: string) => Promise<void>;
   clear: () => void;
   cancel: () => void;
 }
@@ -61,16 +66,51 @@ type ChatContextValue = ChatState & ChatActions;
 const IDLE: ChatStatus = { state: "idle" };
 const THINKING: ChatStatus = { state: "thinking" };
 
+const RESULT_HEADING = "Data behind that answer";
+/** Below this there isn't room for a useful fragment, so don't bother. */
+const MIN_RESULT_ROOM = 200;
+
+/**
+ * The prose alone can't ground a follow-up: asked "show me the first
+ * one", the model re-runs the tool and describes whatever comes back,
+ * which need not be what the user is looking at. Replaying the result
+ * gives it the rows it already reported on.
+ *
+ * Newest turn only, and truncated to the per-turn cap — main rejects the
+ * whole request if any turn is over, and older results are the ones
+ * least likely to be referred back to.
+ */
+function withToolResult(turn: ChatTurn): string {
+  const answer = turn.answer ?? "";
+  if (turn.action?.result === undefined || turn.action.result === null) return answer;
+
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(turn.action.result);
+  } catch {
+    return answer;
+  }
+  if (typeof serialized !== "string") return answer;
+
+  const heading = `\n\n${RESULT_HEADING}${turn.tool ? ` (\`${turn.tool}\`)` : ""}:\n`;
+  const room = MAX_TURN_TEXT_LENGTH - answer.length - heading.length;
+  if (room < MIN_RESULT_ROOM) return answer;
+
+  const body =
+    serialized.length > room ? `${serialized.slice(0, room - 1)}…` : serialized;
+  return `${answer}${heading}${body}`;
+}
+
 /** Only answered turns are worth replaying — pending and failed ones have no assistant text. */
 function toHistory(turns: ChatTurn[]): ChatHistoryTurn[] {
-  return turns.flatMap((turn) =>
-    turn.answer
-      ? [
-          { role: "user" as const, text: turn.question },
-          { role: "assistant" as const, text: turn.answer },
-        ]
-      : []
-  );
+  const answered = turns.filter((turn) => turn.answer);
+  return answered.flatMap((turn, index) => [
+    { role: "user" as const, text: turn.question },
+    {
+      role: "assistant" as const,
+      text: index === answered.length - 1 ? withToolResult(turn) : (turn.answer ?? ""),
+    },
+  ]);
 }
 
 // State and actions are separate contexts so that consumers which only need
@@ -93,6 +133,7 @@ function isChatTurn(value: unknown): value is ChatTurn {
     isOptional(turn.pending, "boolean") &&
     isOptional(turn.tool, "string") &&
     isOptional(turn.error, "string") &&
+    isOptional(turn.message, "string") &&
     isOptional(turn.action, "object")
   );
 }
@@ -141,7 +182,8 @@ function persistTurns(turns: ChatTurn[]): void {
 export function ChatProvider({
   children,
   send,
-}: PropsWithChildren<{ send?: ChatSend }>): React.JSX.Element {
+  cancelRequest,
+}: PropsWithChildren<{ send?: ChatSend; cancelRequest?: () => void }>): React.JSX.Element {
   const [turns, setTurns] = useState<ChatTurn[]>(loadTurns);
   const [status, setStatus] = useState<ChatStatus>(IDLE);
   const [error, setError] = useState<ChatError | null>(null);
@@ -204,7 +246,11 @@ export function ChatProvider({
             null
           );
         } else {
-          settle(id, { pending: false, error: result.error }, result.error);
+          settle(
+            id,
+            { pending: false, error: result.error, message: result.message },
+            result.error
+          );
         }
       } catch {
         settle(id, { pending: false, error: "unknown" }, "unknown");
@@ -213,15 +259,30 @@ export function ChatProvider({
     [send, settle]
   );
 
+  // Dropping the failed turn first keeps one entry per question. A failed
+  // turn contributes nothing to `toHistory`, so the replay is unaffected.
+  const retry = useCallback(
+    async (id: string) => {
+      const failed = turnsRef.current.find((turn) => turn.id === id);
+      if (!failed) return;
+      setTurns((prev) => prev.filter((turn) => turn.id !== id));
+      await ask(failed.question);
+    },
+    [ask]
+  );
+
   const cancel = useCallback(() => {
     const id = activeIdRef.current;
     if (!id) return;
+    // Abandoning the turn here only frees the renderer — without this the
+    // agent loop in main keeps working on an answer nobody is waiting on.
+    cancelRequest?.();
     abandonedRef.current.add(id);
     activeIdRef.current = null;
     resolveTurn(id, { pending: false, error: "cancelled" });
     setStatus(IDLE);
     setError(null);
-  }, [resolveTurn]);
+  }, [cancelRequest, resolveTurn]);
 
   const clear = useCallback(() => {
     const id = activeIdRef.current;
@@ -234,7 +295,10 @@ export function ChatProvider({
     setError(null);
   }, []);
 
-  const actions = useMemo<ChatActions>(() => ({ ask, clear, cancel }), [ask, clear, cancel]);
+  const actions = useMemo<ChatActions>(
+    () => ({ ask, retry, clear, cancel }),
+    [ask, retry, clear, cancel]
+  );
 
   return React.createElement(
     ChatActionsContext.Provider,

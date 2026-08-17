@@ -65,7 +65,22 @@ export interface ChatAskFailure {
 
 export type ChatAskResult = ChatAskSuccess | ChatAskFailure
 
-/** One prior turn, replayed as plain text — no tool blocks are kept. */
+/**
+ * The cap main enforces on a question and on each replayed history
+ * turn. Shared so the renderer can build history that fits rather than
+ * having the whole request rejected — TD-056 appends the most recent
+ * tool result to its turn and needs to know the room it has.
+ */
+export const MAX_TURN_TEXT_LENGTH = 4_000
+
+/**
+ * One prior turn, replayed as plain text — no tool blocks are kept.
+ *
+ * The newest answered turn carries its tool result appended to `text`,
+ * because the prose alone doesn't let the model answer a follow-up like
+ * "show me the first one" without re-running the tool and describing a
+ * different result set.
+ */
 export interface ChatHistoryTurn {
   role: 'user' | 'assistant'
   text: string

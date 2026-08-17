@@ -11,6 +11,7 @@
 
 import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
+import { MAX_TURN_TEXT_LENGTH } from '../../shared/chat'
 import type { ChatAskResult, ChatHistoryTurn, ChatStatus } from '../../shared/chat'
 import { createAgentLoop } from '../chat/agent-loop'
 import { createBedrockModel } from '../chat/bedrock-client'
@@ -25,7 +26,7 @@ import { sendToFocused } from './window-send'
  * turn. Neither limit is a product rule — they exist so an unbounded
  * payload can't be laundered into Bedrock token spend.
  */
-const MAX_QUESTION_LENGTH = 4_000
+const MAX_QUESTION_LENGTH = MAX_TURN_TEXT_LENGTH
 const MAX_HISTORY_TURNS = 40
 
 const DISABLED_RESULT: ChatAskResult = {

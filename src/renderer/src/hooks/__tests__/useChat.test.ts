@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import React, { type ReactNode } from "react";
 import { ChatProvider, useChat, type ChatSend, type ChatTurn } from "../useChat";
+import { MAX_TURN_TEXT_LENGTH } from "../../../../shared/chat";
 import type { ChatAction, ChatAskResult } from "../../../../shared/chat";
 
 const STORAGE_KEY = "thunder_chat";
@@ -95,6 +96,82 @@ describe("useChat", () => {
       { role: "user", text: "first" },
       { role: "assistant", text: "ok" },
     ]);
+  });
+
+  // ─── Tool results in history (TD-056) ─────────────────────────────
+
+  function listing(records: unknown, tool = "get_random_records"): ChatAction {
+    return { kind: "list", tool, args: {}, title: "Records", result: records };
+  }
+
+  it("replays the newest turn's tool result so a follow-up can reference it", async () => {
+    const send = vi.fn<ChatSend>(async () =>
+      answer("Here's a sample.", listing([{ name: "New New" }]))
+    );
+    const { result } = renderHook(() => useChat(), { wrapper: wrapper(send) });
+
+    await act(async () => {
+      await result.current.ask("show me some movies");
+    });
+    await act(async () => {
+      await result.current.ask("show me the first one");
+    });
+
+    const [, assistant] = send.mock.calls[1][1];
+    expect(assistant.text).toContain("Here's a sample.");
+    expect(assistant.text).toContain("get_random_records");
+    expect(assistant.text).toContain('[{"name":"New New"}]');
+  });
+
+  it("carries the result on the newest answered turn only", async () => {
+    const send = vi
+      .fn<ChatSend>()
+      .mockResolvedValueOnce(answer("first answer", listing([{ name: "Old" }])))
+      .mockResolvedValueOnce(answer("second answer", listing([{ name: "New" }])))
+      .mockResolvedValue(answer("third answer"));
+    const { result } = renderHook(() => useChat(), { wrapper: wrapper(send) });
+
+    for (const question of ["one", "two", "three"]) {
+      await act(async () => {
+        await result.current.ask(question);
+      });
+    }
+
+    const history = send.mock.calls[2][1];
+    expect(history[1].text).toBe("first answer");
+    expect(history[3].text).toContain('[{"name":"New"}]');
+  });
+
+  it("truncates a result that would push the turn past the cap", async () => {
+    const huge = Array.from({ length: 2000 }, (_, i) => ({ name: `record ${i}` }));
+    const send = vi.fn<ChatSend>(async () => answer("Here's a sample.", listing(huge)));
+    const { result } = renderHook(() => useChat(), { wrapper: wrapper(send) });
+
+    await act(async () => {
+      await result.current.ask("first");
+    });
+    await act(async () => {
+      await result.current.ask("second");
+    });
+
+    const [, assistant] = send.mock.calls[1][1];
+    expect(assistant.text.length).toBeLessThanOrEqual(MAX_TURN_TEXT_LENGTH);
+    expect(assistant.text).toContain("…");
+    expect(assistant.text).toContain("Here's a sample.");
+  });
+
+  it("leaves the answer untouched when the turn made no tool call", async () => {
+    const send = vi.fn<ChatSend>(async () => answer("just prose"));
+    const { result } = renderHook(() => useChat(), { wrapper: wrapper(send) });
+
+    await act(async () => {
+      await result.current.ask("first");
+    });
+    await act(async () => {
+      await result.current.ask("second");
+    });
+
+    expect(send.mock.calls[1][1][1].text).toBe("just prose");
   });
 
   it("leaves failed turns out of history", async () => {

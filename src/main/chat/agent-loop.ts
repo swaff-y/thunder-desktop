@@ -24,6 +24,15 @@ import { toAnthropicTools, type AnthropicToolDefinition } from '../mcp/tool-sche
 import { deriveAction, type ToolCallRecord } from './action'
 import { classifyChatError } from './chat-errors'
 import { CHAT_SYSTEM_PROMPT } from './system-prompt'
+import {
+  INVALID_INPUT_MESSAGE,
+  NO_DATA_MESSAGE,
+  SHOW_CHART_ACK,
+  SHOW_CHART_TOOL,
+  SHOW_CHART_TOOL_NAME,
+  parseChartRequest,
+  type ChartRequest
+} from './tools/show-chart'
 
 /**
  * Bounds a turn that keeps asking for tools. halo-mcp's deepest phase-1
@@ -121,6 +130,26 @@ export function createAgentLoop({ model, tools, onStatus }: AgentLoopOptions): A
     }
 
     const calls: ToolCallRecord[] = []
+    // The chart belongs to the call it was drawn from, so it survives
+    // only until the next one. Last one wins if the model re-charts;
+    // a later halo-mcp call drops it rather than leaving the card's
+    // header describing one result and its bars another.
+    let chart: ChartRequest | null = null
+
+    /**
+     * TD-059's client-side tool. Runs here rather than over MCP — it
+     * fetches nothing, so there is no server to ask — and is refused
+     * outright until a halo-mcp call has put real numbers in `calls`.
+     */
+    function runShowChart(use: ModelToolUse): ToolResultBlockParam {
+      if (calls.length === 0) return errorBlock(use.id, NO_DATA_MESSAGE)
+
+      const request = parseChartRequest(use.input)
+      if (request === null) return errorBlock(use.id, INVALID_INPUT_MESSAGE)
+
+      chart = request
+      return { type: 'tool_result', tool_use_id: use.id, content: SHOW_CHART_ACK }
+    }
 
     /**
      * A tool that ran and failed is a normal outcome: hand the message
@@ -133,11 +162,14 @@ export function createAgentLoop({ model, tools, onStatus }: AgentLoopOptions): A
      * renderer's `reauthenticate()`.
      */
     async function runTool(use: ModelToolUse): Promise<ToolResultBlockParam> {
+      if (use.name === SHOW_CHART_TOOL_NAME) return runShowChart(use)
+
       const result = await tools.callTool(use.name, use.input, signal)
       const failure = toolResultFailure(result)
       if (failure !== null) return errorBlock(use.id, failure.message)
 
       calls.push({ tool: use.name, args: use.input, result })
+      chart = null
       return { type: 'tool_result', tool_use_id: use.id, content: toolResultText(result) }
     }
 
@@ -145,7 +177,7 @@ export function createAgentLoop({ model, tools, onStatus }: AgentLoopOptions): A
       if (isCancelled()) return cancelled()
 
       emit({ state: 'thinking' })
-      const toolDefinitions = toAnthropicTools(await tools.listTools())
+      const toolDefinitions = [...toAnthropicTools(await tools.listTools()), SHOW_CHART_TOOL]
 
       const messages: MessageParam[] = [
         ...history.map((turn) => ({ role: turn.role, content: turn.text })),
@@ -186,7 +218,7 @@ export function createAgentLoop({ model, tools, onStatus }: AgentLoopOptions): A
         return {
           ok: true,
           text: turn.text,
-          action: deriveAction(calls),
+          action: deriveAction(calls, chart),
           truncated:
             turn.stopReason === 'max_tokens' || turn.stopReason === 'model_context_window_exceeded'
         }

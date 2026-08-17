@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
 import type { ChatAction, ChatStatus } from "../../../../shared/chat";
 import { useChat, type ChatTurn } from "../../hooks/useChat";
+import ActionCardChart from "./ActionCardChart";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionRowImage from "./ActionRowImage";
@@ -44,6 +45,9 @@ function TurnAction({
 
   if (showList && previousList !== undefined) {
     return <ActionCardList action={previousList} renderImage={renderRowImage} />;
+  }
+  if (action.kind === "chart") {
+    return <ActionCardChart action={action} />;
   }
   if (action.kind === "list") {
     return <ActionCardList action={action} renderImage={renderRowImage} />;

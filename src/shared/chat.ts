@@ -11,8 +11,12 @@
  * What the renderer should render beside the answer. Picked from the
  * tool the model actually called, not from the prose — `list` fans out
  * to a card list, `single` to one record card, `none` renders nothing.
+ *
+ * `chart` is the exception: `get_top_entities` backs both a list and a
+ * chart, so TD-059 has the model say which it meant by calling the
+ * `show_chart` tool rather than guessing from the question.
  */
-export type ChatActionKind = 'list' | 'single' | 'none'
+export type ChatActionKind = 'list' | 'single' | 'chart' | 'none'
 
 /**
  * The halo-mcp tools that answer with a page of rows. Shared because
@@ -53,6 +57,15 @@ export interface ChatAction {
   args: Record<string, unknown>
   title: string
   result: unknown
+  /** TD-059: the model's own bars, present only on `kind: 'chart'`. */
+  metricLabel?: string
+  bars?: ChartBar[]
+}
+
+/** One row of a TD-059 chart, as the model named and measured it. */
+export interface ChartBar {
+  name: string
+  value: number
 }
 
 /**

@@ -150,4 +150,39 @@ describe('deriveAction', () => {
     const action = deriveAction([call('describe_catalogue', textResult('ok'))])
     expect(action).toMatchObject({ kind: 'none', tool: 'describe_catalogue' })
   })
+
+  it('lets a chart win over the list the source tool would have derived', () => {
+    const action = deriveAction(
+      [
+        call('get_top_entities', structured({ items: [{ entity_id: 'a1', count: 40 }] }), {
+          entity_type: 'movie'
+        })
+      ],
+      {
+        title: 'Top movies by clicks',
+        metricLabel: 'Clicks',
+        bars: [{ name: 'Alpha', value: 40 }]
+      }
+    )
+
+    expect(action).toEqual({
+      kind: 'chart',
+      tool: 'get_top_entities',
+      args: { entity_type: 'movie' },
+      title: 'Top movies by clicks',
+      metricLabel: 'Clicks',
+      bars: [{ name: 'Alpha', value: 40 }],
+      result: { items: [{ entity_id: 'a1', count: 40 }] }
+    })
+  })
+
+  it('discards a chart that no tool call backs', () => {
+    expect(
+      deriveAction([], {
+        title: 'Invented',
+        metricLabel: 'Clicks',
+        bars: [{ name: 'Alpha', value: 40 }]
+      })
+    ).toEqual(NO_ACTION)
+  })
 })

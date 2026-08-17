@@ -68,7 +68,7 @@ open decision on Bedrock credentials.
 - [TD-054](complete/TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
 - [TD-055](complete/TD-055-chat-session-store.md) — AI chat: chat session store
 - [TD-056](complete/TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
-- [TD-057](TD-057-action-card-list.md) — AI chat: action card — list
+- [TD-057](complete/TD-057-action-card-list.md) — AI chat: action card — list
 - [TD-058](TD-058-action-card-record.md) — AI chat: action card — single record with carousel
 - [TD-059](TD-059-action-card-chart.md) — AI chat: action card — chart
 - [TD-061](complete/TD-061-tool-schema-top-level-unions.md) — AI chat: strip top-level oneOf/anyOf from MCP tool schemas

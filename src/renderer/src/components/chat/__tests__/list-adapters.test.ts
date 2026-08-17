@@ -32,6 +32,7 @@ describe("toListCard", () => {
       id: "rec-1",
       metric: 1204,
       cta: { label: "View record", to: "/watch/rec-1" },
+      image: { kind: "record", id: "rec-1" },
     });
   });
 
@@ -68,6 +69,7 @@ describe("toListCard", () => {
       id: "a-2",
       metric: 88,
       cta: { label: "View actor", to: "/actors/a-2" },
+      image: { kind: "entity", entityType: "actor", id: "a-2" },
     });
   });
 
@@ -88,6 +90,7 @@ describe("toListCard", () => {
       id: "a-2",
       metric: 50,
       cta: { label: "View actor", to: "/actors/a-2" },
+      image: { kind: "entity", entityType: "actor", id: "a-2" },
     });
   });
 

@@ -9,7 +9,13 @@
  */
 
 import { LIST_TOOLS, type ChatAction, type ListTool } from "../../../../shared/chat";
-import { CATEGORIES, type CategoryConfig } from "../../types";
+import { count, isJsonObject, text, type JsonObject } from "./action-json";
+import {
+  categoryFor,
+  catalogueRoute,
+  imageTargetFor,
+  type ImageTarget,
+} from "./entity-routes";
 
 /** The design shows six rows inline; the rest wait for the Expand drawer. */
 export const MAX_ROWS = 6;
@@ -29,6 +35,8 @@ export type ListRow = {
   metric: number | null;
   /** Absent when the entity type has no route in this app. */
   cta?: ListRowCta;
+  /** What TD-058 re-fetches to draw the row's thumbnail. */
+  image?: ImageTarget;
 };
 
 export type ListCard = {
@@ -44,26 +52,12 @@ export type ListCard = {
   emptyMessage: string;
 };
 
-type JsonObject = Record<string, unknown>;
-
 /** halo-mcp types with no `CATEGORIES` entry, so no route and no CTA. */
 const UNROUTED_PLURALS: Record<string, string> = {
   franchise: "Franchises",
   image: "Images",
   record: "Records",
 };
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function count(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 function isListTool(tool: string | null): tool is ListTool {
   return tool !== null && (LIST_TOOLS as readonly string[]).includes(tool);
@@ -82,11 +76,6 @@ function hasMore(result: unknown): boolean {
   return isJsonObject(result) && text(result.next_cursor) !== undefined;
 }
 
-/** `apiPath` is halo-mcp's singular vocabulary; `type` is the app's route. */
-function categoryFor(entityType: string | undefined): CategoryConfig | undefined {
-  return CATEGORIES.find((category) => category.apiPath === entityType);
-}
-
 function pluralOf(entityType: string | undefined): string {
   const category = categoryFor(entityType);
   if (category) return category.label;
@@ -94,19 +83,16 @@ function pluralOf(entityType: string | undefined): string {
 }
 
 function recordCta(id: string): ListRowCta | undefined {
-  return id ? { label: "View record", to: `/watch/${id}` } : undefined;
+  const to = catalogueRoute("record", id);
+  if (to === undefined) return undefined;
+  return { label: "View record", to };
 }
 
-/**
- * `franchise` and `image` have no page in this app. A row without a
- * route renders without a CTA rather than with a button that dead-ends.
- */
 function entityCta(entityType: string | undefined, id: string): ListRowCta | undefined {
-  if (!id) return undefined;
   if (entityType === "record") return recordCta(id);
-  const category = categoryFor(entityType);
-  if (!category) return undefined;
-  return { label: `View ${entityType}`, to: `/${category.type}/${id}` };
+  const to = catalogueRoute(entityType, id);
+  if (to === undefined) return undefined;
+  return { label: `View ${entityType}`, to };
 }
 
 function actorNames(value: unknown): string | undefined {
@@ -125,6 +111,7 @@ function recordRow(item: JsonObject, index: number): ListRow {
     id,
     metric: count(item.views),
     cta: recordCta(id),
+    image: imageTargetFor("record", id),
   };
 }
 
@@ -146,6 +133,7 @@ function entityRow(
     id,
     metric: count(item[metricKey]),
     cta: entityCta(entityType, id),
+    image: imageTargetFor(entityType, id),
   };
 }
 

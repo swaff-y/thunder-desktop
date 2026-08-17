@@ -30,6 +30,15 @@ export const LIST_TOOLS = [
 export type ListTool = (typeof LIST_TOOLS)[number]
 
 /**
+ * The halo-mcp tools that answer with one row. Shared for the same
+ * reason as `LIST_TOOLS`: main derives `kind: 'single'` from this set and
+ * the renderer's record card reads a different shape per name.
+ */
+export const SINGLE_TOOLS = ['get_record', 'get_entity'] as const
+
+export type SingleTool = (typeof SINGLE_TOOLS)[number]
+
+/**
  * `tool` is `null` only when the turn made no successful tool call at
  * all. A tool outside the phase-1 set produces `kind: 'none'` with the
  * tool still named, so a card that gains support later has the payload

@@ -8,10 +8,31 @@ export interface CategoryItem {
   status: "processing" | "processed";
 }
 
+/** Halo's per-slot processing state — `url` is only set on `processed`. */
+export type ImageSlotStatus = "awaiting" | "processing" | "processed" | "failed";
+
 export interface RecordImage {
   url: string;
   imageKey?: string;
   imageVersion?: number | string;
+  status?: ImageSlotStatus;
+  /** Only present on a failed slot. */
+  error?: string;
+}
+
+/**
+ * `GET /v1/{type}/{id}`. `franchise` answers with `{id, name}` alone, and
+ * `image` answers without `clicks` — both absences are the type saying it
+ * has no such field, not a zero.
+ */
+export interface EntityDetail {
+  id: string;
+  name: string;
+  status?: ImageSlotStatus;
+  url?: string;
+  imageKey?: string;
+  imageVersion?: number | string;
+  clicks?: number;
 }
 
 export interface RecordRef {

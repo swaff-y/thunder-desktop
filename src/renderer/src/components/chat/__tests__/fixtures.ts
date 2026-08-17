@@ -20,6 +20,14 @@ export function listAction(
   return { kind: "list", tool, args, title: tool, result };
 }
 
+export function singleAction(
+  tool: string,
+  args: Record<string, unknown>,
+  result: unknown
+): ChatAction {
+  return { kind: "single", tool, args, title: tool, result };
+}
+
 export function deferredAnswer(): {
   promise: Promise<ChatAskResult>;
   resolve: (result: ChatAskResult) => void;

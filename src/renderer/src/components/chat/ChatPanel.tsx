@@ -1,18 +1,12 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
-import type { ChatStatus } from "../../../../shared/chat";
+import type { ChatAction, ChatStatus } from "../../../../shared/chat";
 import { useChat, type ChatTurn } from "../../hooks/useChat";
 import ActionCardList from "./ActionCardList";
+import ActionCardRecord from "./ActionCardRecord";
+import ActionRowImage from "./ActionRowImage";
 import ChatError from "./ChatError";
-
-function subscribeToConnectivity(onChange: () => void): () => void {
-  window.addEventListener("online", onChange);
-  window.addEventListener("offline", onChange);
-  return () => {
-    window.removeEventListener("online", onChange);
-    window.removeEventListener("offline", onChange);
-  };
-}
+import type { ListRow } from "./list-adapters";
 
 const RUNNING_QUERY = "Running catalogue query…";
 
@@ -26,25 +20,61 @@ function liveMessage(status: ChatStatus, lastAnswer: string | undefined): string
   return lastAnswer ?? "";
 }
 
-function useIsOnline(): boolean {
-  return useSyncExternalStore(
-    subscribeToConnectivity,
-    () => navigator.onLine,
-    () => true
-  );
+function renderRowImage(row: ListRow): React.ReactNode {
+  return <ActionRowImage row={row} />;
+}
+
+/**
+ * The card for the turn that owns the latest action. A single-record card
+ * that followed a list keeps a way back to it — the list is the answer to
+ * a different question, so it is shown again rather than re-run.
+ */
+function TurnAction({
+  action,
+  previousList,
+}: {
+  action: ChatAction;
+  previousList: ChatAction | undefined;
+}): React.JSX.Element | null {
+  const [showList, setShowList] = useState(false);
+
+  function handleBackToList(): void {
+    setShowList(true);
+  }
+
+  if (showList && previousList !== undefined) {
+    return <ActionCardList action={previousList} renderImage={renderRowImage} />;
+  }
+  if (action.kind === "list") {
+    return <ActionCardList action={action} renderImage={renderRowImage} />;
+  }
+  if (action.kind === "single") {
+    return (
+      <ActionCardRecord
+        action={action}
+        onBackToList={previousList === undefined ? undefined : handleBackToList}
+      />
+    );
+  }
+  return null;
 }
 
 export default function ChatPanel() {
   const { turns, status, isEmpty, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLOListElement>(null);
-  const isOnline = useIsOnline();
 
   const isPending = status.state !== "idle";
   const lastAnswer = turns.at(-1)?.answer;
   // Design 2a: only the latest action gets a card — earlier turns keep
   // their text, so the transcript never stacks stale result sets.
-  const latestActionId = turns.findLast((turn) => turn.action !== undefined)?.id;
+  const actionTurns = turns.filter((turn) => turn.action !== undefined);
+  const latestActionId = actionTurns.at(-1)?.id;
+  // "Back to list" belongs to the list the card came out of — the action
+  // immediately before it. An older list further up the transcript answered
+  // a different question and would send the reader somewhere they never was.
+  const precedingAction = actionTurns.at(-2)?.action;
+  const previousList = precedingAction?.kind === "list" ? precedingAction : undefined;
 
   // The design's `stick()`: a new turn, and the panel on mount, land at the
   // bottom of the transcript rather than wherever the last scroll left it.
@@ -76,14 +106,6 @@ export default function ChatPanel() {
       {!isEmpty && (
         <>
           <header className="chat-header">
-            <span
-              className={`chat-dot${isOnline ? "" : " chat-dot--offline"}`}
-              aria-hidden="true"
-            />
-            <span className="chat-node">node-chat</span>
-            <span className="chat-connection">
-              MCP · catalogue · {isOnline ? "connected" : "offline"}
-            </span>
             <button type="button" className="chat-clear" onClick={clear}>
               Clear
             </button>
@@ -107,8 +129,8 @@ export default function ChatPanel() {
                     <p className="chat-said">{turn.answer}</p>
                   </>
                 )}
-                {turn.action?.kind === "list" && turn.id === latestActionId && (
-                  <ActionCardList action={turn.action} />
+                {turn.action !== undefined && turn.id === latestActionId && (
+                  <TurnAction action={turn.action} previousList={previousList} />
                 )}
                 {turn.error !== undefined && (
                   <ChatError
@@ -177,27 +199,8 @@ export default function ChatPanel() {
           align-items: center;
           border-bottom: 1px solid var(--color-border);
           display: flex;
-          gap: var(--space-sm);
+          justify-content: flex-end;
           padding: var(--space-sm) var(--space-md);
-        }
-        .chat-dot {
-          background: var(--color-accent);
-          border-radius: var(--radius-full);
-          height: 8px;
-          width: 8px;
-        }
-        .chat-dot--offline {
-          background: var(--color-text-faint);
-        }
-        .chat-node {
-          color: var(--color-text);
-          font-size: var(--text-body-sm);
-          font-weight: var(--weight-semibold);
-        }
-        .chat-connection {
-          color: var(--color-text-muted);
-          flex: 1;
-          font-size: var(--text-caption);
         }
         .chat-clear {
           background: none;

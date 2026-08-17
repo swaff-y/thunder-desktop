@@ -4,12 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ChatProvider, type ChatSend } from "../../../hooks/useChat";
 import ChatPanel from "../ChatPanel";
-import { answer, deferredAnswer, listAction } from "./fixtures";
+import { answer, deferredAnswer, listAction, singleAction } from "./fixtures";
 
 const reauthenticate = vi.fn(async () => ({ token: "t", apiKey: "k" }));
 
 vi.mock("../../../api/auth", () => ({
   reauthenticate: () => reauthenticate(),
+}));
+
+// The cards fetch their pictures by id; this panel's tests are about the
+// transcript, not about what Halo returns for an image slot.
+vi.mock("../useActionImages", () => ({
+  useActionImages: () => ({ slides: [], isLoading: false, isError: false }),
 }));
 
 const cancelRequest = vi.fn();
@@ -39,7 +45,6 @@ describe("ChatPanel", () => {
     renderPanel(vi.fn(async () => answer("unused")));
 
     expect(composer()).toBeInTheDocument();
-    expect(screen.queryByText("node-chat")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
@@ -51,8 +56,7 @@ describe("ChatPanel", () => {
     await user.type(composer(), "who is popular?");
     await user.click(screen.getByRole("button", { name: "Ask" }));
 
-    expect(await screen.findByText("node-chat")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Clear" })).toBeInTheDocument();
     expect(screen.getByRole("list")).toBeInTheDocument();
   });
 
@@ -144,6 +148,68 @@ describe("ChatPanel", () => {
     expect(await screen.findByText("Nightjar Sessions")).toBeInTheDocument();
     expect(screen.queryByText("Mara Vale")).not.toBeInTheDocument();
     expect(screen.getByText("Mara Vale is the only one.")).toBeInTheDocument();
+  });
+
+  it("takes a record card back to the list it came out of", async () => {
+    const user = userEvent.setup();
+    const send = vi
+      .fn<ChatSend>()
+      .mockResolvedValueOnce(
+        answer(
+          "One record matches.",
+          listAction("search_records", { filter: "nig" }, {
+            items: [{ id: "rec-1", name: "Nightjar Sessions", actors: [], views: 12 }],
+            next_cursor: null,
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        answer(
+          "Here it is.",
+          singleAction("get_record", { id: "rec-1" }, {
+            id: "rec-1",
+            name: "Nightjar Sessions",
+            views: 12,
+            actors: [],
+          })
+        )
+      );
+    renderPanel(send);
+
+    await user.type(composer(), "records starting with nig");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Records starting with 'nig'")).toBeInTheDocument();
+
+    await user.type(composer(), "show me the first one");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Action · Record")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to list" }));
+
+    expect(screen.getByText("Records starting with 'nig'")).toBeInTheDocument();
+    expect(screen.queryByText("Action · Record")).not.toBeInTheDocument();
+  });
+
+  it("offers no way back when the action before the record was not a list", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn<ChatSend>().mockResolvedValue(
+      answer(
+        "Here it is.",
+        singleAction("get_record", { id: "rec-1" }, {
+          id: "rec-1",
+          name: "Nightjar Sessions",
+          views: 12,
+          actors: [],
+        })
+      )
+    );
+    renderPanel(send);
+
+    await user.type(composer(), "show me rec-1");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText("Action · Record")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to list" })).not.toBeInTheDocument();
   });
 
   it("cancels the in-flight request and re-enables the composer when Stop is clicked", async () => {

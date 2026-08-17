@@ -11,7 +11,7 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { LIST_TOOLS } from '../../shared/chat'
+import { LIST_TOOLS, SINGLE_TOOLS } from '../../shared/chat'
 import type { ChatAction, ChatActionKind } from '../../shared/chat'
 import { isPlainObject } from '../lib/json'
 import { contentText } from '../mcp/errors'
@@ -25,7 +25,7 @@ export interface ToolCallRecord {
 
 const LIST_TOOL_NAMES: ReadonlySet<string> = new Set(LIST_TOOLS)
 
-const SINGLE_TOOLS: ReadonlySet<string> = new Set(['get_record', 'get_entity'])
+const SINGLE_TOOL_NAMES: ReadonlySet<string> = new Set(SINGLE_TOOLS)
 
 /**
  * Presigned fields, by name. A key match rather than a value match:
@@ -45,7 +45,7 @@ export const NO_ACTION: ChatAction = {
 
 export function actionKindFor(tool: string): ChatActionKind {
   if (LIST_TOOL_NAMES.has(tool)) return 'list'
-  if (SINGLE_TOOLS.has(tool)) return 'single'
+  if (SINGLE_TOOL_NAMES.has(tool)) return 'single'
   return 'none'
 }
 

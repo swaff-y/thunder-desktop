@@ -3,6 +3,7 @@ import type {
   PaginatedResponse,
   CategoryItem,
   ContentRecord,
+  EntityDetail,
   LoginResponse,
   RecordPatchBody,
   StatsEntityType,
@@ -124,6 +125,16 @@ export function fetchRandomRecords() {
 // Single record
 export function fetchRecord(recordId: string) {
   return client.get<{ data: ContentRecord }>(`v1/record/${recordId}`).then((r) => r.data.data);
+}
+
+// Single entity of any halo type — `entityType` is halo's singular path
+// segment ("actor", "movie", "series", "tag", "image", "franchise").
+export function fetchEntity(entityType: string, id: string) {
+  return client
+    .get<{ data: EntityDetail }>(
+      `v1/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}`
+    )
+    .then((r) => r.data.data);
 }
 
 // Video proxy URL builder

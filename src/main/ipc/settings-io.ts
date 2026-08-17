@@ -33,6 +33,18 @@ function parseFile(filePath: string): Partial<ThunderSettings> | null {
   }
 }
 
+/**
+ * TD-033 rule, applied to the TD-052 fields: trim first, then treat an
+ * empty result as absent. A whitespace-only value persisted from a
+ * fat-fingered Settings save would otherwise be handed to the Bedrock
+ * client verbatim and fail as an unhelpful 400.
+ */
+function coerceTrimmed(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : fallback
+}
+
 function coerce(partial: Partial<ThunderSettings>, defaults: ThunderSettings): ThunderSettings {
   const out: ThunderSettings = {
     apiUrl: typeof partial.apiUrl === 'string' && partial.apiUrl.length > 0
@@ -40,7 +52,12 @@ function coerce(partial: Partial<ThunderSettings>, defaults: ThunderSettings): T
       : defaults.apiUrl,
     downloadFolder: typeof partial.downloadFolder === 'string' && partial.downloadFolder.length > 0
       ? partial.downloadFolder
-      : defaults.downloadFolder
+      : defaults.downloadFolder,
+    mcpUrl: coerceTrimmed(partial.mcpUrl, defaults.mcpUrl),
+    bedrockRegion: coerceTrimmed(partial.bedrockRegion, defaults.bedrockRegion),
+    bedrockModelId: coerceTrimmed(partial.bedrockModelId, defaults.bedrockModelId),
+    chatEnabled:
+      typeof partial.chatEnabled === 'boolean' ? partial.chatEnabled : defaults.chatEnabled
   }
   if (typeof partial.userAgent === 'string' && partial.userAgent.length > 0) {
     out.userAgent = partial.userAgent

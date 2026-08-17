@@ -54,6 +54,39 @@ export const LEGACY_PROD_API_URL =
   'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
 
 /**
+ * TD-052: halo-mcp endpoint the AI chat reaches for its tool surface.
+ * Tunable for the same reason as {@link DEFAULT_API_URL} — staging and
+ * local MCP servers exist and shouldn't need a rebuild to point at.
+ */
+export const DEFAULT_MCP_URL = 'https://halo-mcp.swaff.name/mcp'
+
+/**
+ * TD-052: AWS region hosting the Bedrock model. Bedrock model access is
+ * granted per account *and* per region, so this and
+ * {@link DEFAULT_BEDROCK_MODEL_ID} have to agree with what the account
+ * has actually been approved for.
+ */
+export const DEFAULT_BEDROCK_REGION = 'ap-south-1'
+
+/**
+ * TD-052: Bedrock model id. Two prefixes, both load-bearing:
+ *
+ * - `anthropic.` — Bedrock namespaces model ids by provider, so the
+ *   bare first-party id (`claude-sonnet-5`) is rejected with a 400.
+ * - `global.` — a cross-region inference profile. Bedrock will not
+ *   serve `anthropic.claude-sonnet-5` on on-demand throughput at all;
+ *   `npm run smoke:bedrock` gets back "Invocation of model ID
+ *   anthropic.claude-sonnet-5 with on-demand throughput isn't
+ *   supported. Retry your request with the ID or ARN of an inference
+ *   profile that contains this model."
+ *
+ * `global.` routes dynamically at no pricing premium. The regional
+ * alternative (`apac.` for {@link DEFAULT_BEDROCK_REGION}) pins the
+ * request for data residency but costs ~10% more.
+ */
+export const DEFAULT_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
+
+/**
  * Persisted user-tunable settings.
  *
  * - `apiUrl`        — Halo backend the desktop client talks to. Tunable
@@ -61,9 +94,22 @@ export const LEGACY_PROD_API_URL =
  * - `downloadFolder`— Destination for any future "save to disk" actions.
  * - `userAgent`     — Optional override for the embedded webview's UA
  *                     (needed for sites that 403 Electron's default).
+ * - `mcpUrl`        — TD-052: halo-mcp endpoint backing the AI chat's tools.
+ * - `bedrockRegion` — TD-052: AWS region the Bedrock model is invoked in.
+ * - `bedrockModelId`— TD-052: Bedrock-namespaced model id (see
+ *                     {@link DEFAULT_BEDROCK_MODEL_ID}).
+ * - `chatEnabled`   — TD-052: master switch for the AI chat surface.
+ *                     Ships `false`; TD-056 is what makes it visible.
+ *
+ * AWS credentials are deliberately NOT here — they live in an encrypted
+ * file written by `main/ipc/aws-creds.ts` and never transit this record.
  */
 export interface ThunderSettings {
   apiUrl: string
   downloadFolder: string
   userAgent?: string
+  mcpUrl: string
+  bedrockRegion: string
+  bedrockModelId: string
+  chatEnabled: boolean
 }

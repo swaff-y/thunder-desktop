@@ -38,5 +38,14 @@ export default defineConfig(
       'react-hooks/set-state-in-effect': 'off'
     }
   },
+  {
+    // TD-052: standalone Node/Electron maintenance scripts, written as
+    // plain ESM JavaScript so they need no build step. A TypeScript
+    // return-type rule can't be satisfied in a file with no type syntax.
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
+  },
   eslintConfigPrettier
 )

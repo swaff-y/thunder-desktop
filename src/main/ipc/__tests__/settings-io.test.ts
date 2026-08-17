@@ -14,13 +14,20 @@ import {
 } from '../settings-io'
 import {
   DEFAULT_API_URL,
+  DEFAULT_BEDROCK_MODEL_ID,
+  DEFAULT_BEDROCK_REGION,
+  DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL
 } from '../../../shared/settings'
 
 const DEFAULTS: ThunderSettings = {
   apiUrl: 'https://halo.example/dev/',
-  downloadFolder: '/tmp/Thunder'
+  downloadFolder: '/tmp/Thunder',
+  mcpUrl: 'https://halo-mcp.example/mcp',
+  bedrockRegion: 'ap-south-1',
+  bedrockModelId: 'global.anthropic.claude-sonnet-5',
+  chatEnabled: false
 }
 
 describe('settings-io (TD-018)', () => {
@@ -63,6 +70,7 @@ describe('settings-io (TD-018)', () => {
 
   it('round-trips a fully-populated record via write → read', () => {
     const settings: ThunderSettings = {
+      ...DEFAULTS,
       apiUrl: 'https://staging.halo.example/',
       downloadFolder: '/Users/test/Downloads/Thunder',
       userAgent: 'CustomUA/1.0'
@@ -86,6 +94,7 @@ describe('settings-io (TD-018)', () => {
 
   it('setSetting updates a single key without clobbering the others', () => {
     writeSettingsFile(path, {
+      ...DEFAULTS,
       apiUrl: 'https://a/',
       downloadFolder: '/Users/test/Downloads/Thunder'
     })
@@ -111,6 +120,7 @@ describe('settings-io (TD-018)', () => {
 
   it('ensureSettingsFile leaves a valid existing file alone', () => {
     const existing: ThunderSettings = {
+      ...DEFAULTS,
       apiUrl: 'https://existing/',
       downloadFolder: '/Users/test/Downloads/Thunder'
     }
@@ -159,6 +169,105 @@ describe('settings-io (TD-018)', () => {
     expect(readdirSync(dir)).toEqual(['thunder-desktop-settings.json'])
   })
 
+  // ─── AI chat fields (TD-052) ──────────────────────────────────────
+
+  describe('AI chat fields (TD-052)', () => {
+    it('exposes the shipped defaults for the four new fields', () => {
+      expect(DEFAULT_MCP_URL).toBe('https://halo-mcp.swaff.name/mcp')
+      expect(DEFAULT_BEDROCK_REGION).toBe('ap-south-1')
+      // The `anthropic.` prefix is load-bearing — Bedrock namespaces
+      // model ids by provider and 400s the bare first-party id.
+      expect(DEFAULT_BEDROCK_MODEL_ID).toBe('global.anthropic.claude-sonnet-5')
+      // Both prefixes are load-bearing: `anthropic.` namespaces the
+      // provider, `global.` selects the cross-region inference profile
+      // without which Bedrock refuses on-demand throughput entirely.
+      expect(DEFAULT_BEDROCK_MODEL_ID).toMatch(/^global\.anthropic\./)
+    })
+
+    it('falls back to defaults when the four fields are absent from the file', () => {
+      writeFileSync(path, JSON.stringify({ apiUrl: 'https://a/' }))
+      const settings = readSettings(path, DEFAULTS)
+      expect(settings.mcpUrl).toBe(DEFAULTS.mcpUrl)
+      expect(settings.bedrockRegion).toBe(DEFAULTS.bedrockRegion)
+      expect(settings.bedrockModelId).toBe(DEFAULTS.bedrockModelId)
+      expect(settings.chatEnabled).toBe(false)
+    })
+
+    it('round-trips explicit values for the four fields', () => {
+      const settings: ThunderSettings = {
+        ...DEFAULTS,
+        mcpUrl: 'https://mcp.staging.example/mcp',
+        bedrockRegion: 'us-west-2',
+        bedrockModelId: 'anthropic.claude-opus-5',
+        chatEnabled: true
+      }
+      writeSettingsFile(path, settings)
+      expect(readSettings(path, DEFAULTS)).toEqual(settings)
+    })
+
+    it('trims surrounding whitespace off the three string fields', () => {
+      writeFileSync(
+        path,
+        JSON.stringify({
+          mcpUrl: '  https://mcp.example/mcp\n',
+          bedrockRegion: ' us-east-1 ',
+          bedrockModelId: '\tanthropic.claude-opus-5  '
+        })
+      )
+      const settings = readSettings(path, DEFAULTS)
+      expect(settings.mcpUrl).toBe('https://mcp.example/mcp')
+      expect(settings.bedrockRegion).toBe('us-east-1')
+      expect(settings.bedrockModelId).toBe('anthropic.claude-opus-5')
+    })
+
+    it('falls back rather than persisting a whitespace-only mcpUrl', () => {
+      writeFileSync(path, JSON.stringify({ mcpUrl: '   ' }))
+      expect(readSettings(path, DEFAULTS).mcpUrl).toBe(DEFAULTS.mcpUrl)
+    })
+
+    it.each(['bedrockRegion', 'bedrockModelId'] as const)(
+      'falls back rather than persisting a whitespace-only %s',
+      (key) => {
+        writeFileSync(path, JSON.stringify({ [key]: ' \t\n ' }))
+        expect(readSettings(path, DEFAULTS)[key]).toBe(DEFAULTS[key])
+      }
+    )
+
+    it.each(['mcpUrl', 'bedrockRegion', 'bedrockModelId'] as const)(
+      'falls back when %s is not a string',
+      (key) => {
+        writeFileSync(path, JSON.stringify({ [key]: 42 }))
+        expect(readSettings(path, DEFAULTS)[key]).toBe(DEFAULTS[key])
+      }
+    )
+
+    it('preserves chatEnabled: false rather than treating it as absent', () => {
+      // A truthiness check here would silently re-enable chat on every
+      // read for anyone who turned it off.
+      writeSettingsFile(path, { ...DEFAULTS, chatEnabled: true })
+      setSetting(path, DEFAULTS, 'chatEnabled', false)
+      expect(readSettings(path, DEFAULTS).chatEnabled).toBe(false)
+    })
+
+    it('falls back to the default when chatEnabled is not a boolean', () => {
+      writeFileSync(path, JSON.stringify({ chatEnabled: 'yes' }))
+      expect(readSettings(path, DEFAULTS).chatEnabled).toBe(false)
+    })
+
+    it('persists a trimmed value written through setSetting', () => {
+      writeSettingsFile(path, DEFAULTS)
+      setSetting(path, DEFAULTS, 'bedrockRegion', '  eu-west-1  ')
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.bedrockRegion).toBe('eu-west-1')
+    })
+
+    it('never carries AWS key material — those live in the encrypted store', () => {
+      writeSettingsFile(path, DEFAULTS)
+      const raw = readFileSync(path, 'utf-8')
+      expect(raw).not.toMatch(/accessKeyId|secretAccessKey|sessionToken/)
+    })
+  })
+
   // ─── API URL constants (TD-051 managed-domain cutover) ────────────
 
   describe('API URL constants (TD-051)', () => {
@@ -189,6 +298,7 @@ describe('settings-io (TD-018)', () => {
     const LEGACY = LEGACY_DEV_API_URL
     const LEGACY_PROD = LEGACY_PROD_API_URL
     const PROD: ThunderSettings = {
+      ...DEFAULTS,
       apiUrl: DEFAULT_API_URL,
       downloadFolder: '/tmp/Thunder'
     }
@@ -228,6 +338,7 @@ describe('settings-io (TD-018)', () => {
 
     it('preserves other fields (downloadFolder, userAgent) while rewriting apiUrl', () => {
       writeSettingsFile(path, {
+        ...DEFAULTS,
         apiUrl: LEGACY,
         downloadFolder: '/Users/test/Downloads/Thunder',
         userAgent: 'CustomUA/1.0'
@@ -235,6 +346,7 @@ describe('settings-io (TD-018)', () => {
       migrateApiUrl(path, PROD, [LEGACY])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw).toEqual({
+        ...DEFAULTS,
         apiUrl: PROD.apiUrl,
         downloadFolder: '/Users/test/Downloads/Thunder',
         userAgent: 'CustomUA/1.0'

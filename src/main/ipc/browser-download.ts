@@ -27,7 +27,7 @@ import { writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
-import { DEFAULT_API_URL, type ThunderSettings } from '../../shared/settings'
+import { defaults } from './settings'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { resolveCollisionSafePath } from './browser-download-path'
 import {
@@ -123,23 +123,12 @@ export interface BrowserDownloadHandlers {
 }
 
 let cachedSettingsPath: string | null = null
-let cachedDefaults: ThunderSettings | null = null
 
 function settingsPath(): string {
   if (cachedSettingsPath === null) {
     cachedSettingsPath = join(app.getPath('userData'), 'thunder-desktop-settings.json')
   }
   return cachedSettingsPath
-}
-
-function defaults(): ThunderSettings {
-  if (cachedDefaults === null) {
-    cachedDefaults = {
-      apiUrl: DEFAULT_API_URL,
-      downloadFolder: join(app.getPath('downloads'), 'Thunder')
-    }
-  }
-  return cachedDefaults
 }
 
 function sendToFocused(channel: string, payload: unknown): void {

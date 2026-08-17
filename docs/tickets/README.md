@@ -52,10 +52,25 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-027](TD-027-code-signing.md) — macOS code signing and notarization
 - [TD-028](TD-028-auto-updater.md) — Auto-updater wiring
 - [TD-029](TD-029-prod-url-cutover.md) — Production API URL cutover
+- [TD-051](complete/TD-051-managed-api-domains-cutover.md) — Managed API domain cutover + settings migration
 
 ## Phase 7 — Browser hardening
 
 - [TD-031](TD-031-safe-browsing.md) — Browser tab — Safe Browsing URL filtering
+
+## Phase 8 — AI chat on Home
+
+See [ai-chat-plan.md](../ai-chat-plan.md) for the design, request flow, and the
+open decision on Bedrock credentials.
+
+- [TD-052](TD-052-chat-bedrock-settings.md) — AI chat: settings and Bedrock credentials
+- [TD-053](TD-053-halo-mcp-client.md) — AI chat: halo-mcp client in the main process
+- [TD-054](TD-054-bedrock-agent-loop.md) — AI chat: Bedrock agent loop and chat IPC
+- [TD-055](TD-055-chat-session-store.md) — AI chat: chat session store
+- [TD-056](TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
+- [TD-057](TD-057-action-card-list.md) — AI chat: action card — list
+- [TD-058](TD-058-action-card-record.md) — AI chat: action card — single record with carousel
+- [TD-059](TD-059-action-card-chart.md) — AI chat: action card — chart
 
 ## Bugs / polish
 

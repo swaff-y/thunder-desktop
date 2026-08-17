@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ChatProvider, type ChatSend } from "../../../hooks/useChat";
 import ChatPanel from "../ChatPanel";
-import { answer, deferredAnswer } from "./fixtures";
+import { answer, deferredAnswer, listAction } from "./fixtures";
 
 const reauthenticate = vi.fn(async () => ({ token: "t", apiKey: "k" }));
 
@@ -15,9 +16,11 @@ const cancelRequest = vi.fn();
 
 function renderPanel(send: ChatSend) {
   return render(
-    <ChatProvider send={send} cancelRequest={cancelRequest}>
-      <ChatPanel />
-    </ChatProvider>
+    <MemoryRouter>
+      <ChatProvider send={send} cancelRequest={cancelRequest}>
+        <ChatPanel />
+      </ChatProvider>
+    </MemoryRouter>
   );
 }
 
@@ -105,6 +108,42 @@ describe("ChatPanel", () => {
     expect(send.mock.calls[1][0]).toBe("who is popular?");
     // Retried in place — the transcript keeps one entry per question.
     expect(screen.getAllByText("who is popular?")).toHaveLength(1);
+  });
+
+  it("replaces the card when a second question lands, leaving the earlier turn as text", async () => {
+    const user = userEvent.setup();
+    const send = vi
+      .fn<ChatSend>()
+      .mockResolvedValueOnce(
+        answer(
+          "Mara Vale is the only one.",
+          listAction("list_entities", { entity_type: "actor", filter: "mar" }, {
+            items: [{ id: "a-2", name: "Mara Vale", clicks: 88 }],
+            next_cursor: null,
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        answer(
+          "One record matches.",
+          listAction("search_records", { filter: "nig" }, {
+            items: [{ id: "rec-1", name: "Nightjar Sessions", actors: [], views: 12 }],
+            next_cursor: null,
+          })
+        )
+      );
+    renderPanel(send);
+
+    await user.type(composer(), "actors starting with mar");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Mara Vale")).toBeInTheDocument();
+
+    await user.type(composer(), "records starting with nig");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText("Nightjar Sessions")).toBeInTheDocument();
+    expect(screen.queryByText("Mara Vale")).not.toBeInTheDocument();
+    expect(screen.getByText("Mara Vale is the only one.")).toBeInTheDocument();
   });
 
   it("cancels the in-flight request and re-enables the composer when Stop is clicked", async () => {

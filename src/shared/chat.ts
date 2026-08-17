@@ -15,6 +15,21 @@
 export type ChatActionKind = 'list' | 'single' | 'none'
 
 /**
+ * The halo-mcp tools that answer with a page of rows. Shared because
+ * both sides must agree: main derives `kind: 'list'` from this set and
+ * the renderer's list card maps a row shape per name, so a tool added
+ * to one copy and not the other renders an empty card.
+ */
+export const LIST_TOOLS = [
+  'search_records',
+  'list_entities',
+  'get_related_records',
+  'get_top_entities'
+] as const
+
+export type ListTool = (typeof LIST_TOOLS)[number]
+
+/**
  * `tool` is `null` only when the turn made no successful tool call at
  * all. A tool outside the phase-1 set produces `kind: 'none'` with the
  * tool still named, so a card that gains support later has the payload

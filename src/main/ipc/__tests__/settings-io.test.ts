@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import {
   ensureSettingsFile,
   getSetting,
-  migrateApiUrl,
+  migrateUrlSetting,
   readSettings,
   setSetting,
   writeSettings,
@@ -17,10 +17,12 @@ import {
   DEFAULT_BEDROCK_MODEL_ID,
   DEFAULT_BEDROCK_REGION,
   DEFAULT_DEV_API_URL,
+  DEFAULT_DEV_MCP_URL,
   DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
-  resolveDefaultApiUrl
+  resolveDefaultApiUrl,
+  resolveDefaultMcpUrl
 } from '../../../shared/settings'
 
 const DEFAULTS: ThunderSettings = {
@@ -339,9 +341,56 @@ describe('settings-io (TD-018)', () => {
     })
   })
 
-  // ─── migrateApiUrl (TD-029 prod cutover, TD-051 managed domain) ────
+  // ─── resolveDefaultMcpUrl (TD-066 paired with the API URL) ────────
 
-  describe('migrateApiUrl (TD-029, TD-051)', () => {
+  describe('resolveDefaultMcpUrl (TD-066)', () => {
+    it('defaults an unpackaged run to the dev halo-mcp', () => {
+      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.'] })).toBe(
+        DEFAULT_DEV_MCP_URL
+      )
+    })
+
+    it('opts an unpackaged run back into prod with -prod or --prod', () => {
+      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.', '-prod'] })).toBe(
+        DEFAULT_MCP_URL
+      )
+      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.', '--prod'] })).toBe(
+        DEFAULT_MCP_URL
+      )
+    })
+
+    it('ignores argv entirely when packaged', () => {
+      expect(resolveDefaultMcpUrl({ isPackaged: true, argv: ['Thunder Desktop', '-prod'] })).toBe(
+        DEFAULT_MCP_URL
+      )
+      expect(resolveDefaultMcpUrl({ isPackaged: true, argv: ['Thunder Desktop'] })).toBe(
+        DEFAULT_MCP_URL
+      )
+    })
+
+    // The whole point of the ticket: halo-mcp forwards the caller's
+    // Halo token, so a launch that resolves one field to dev and the
+    // other to prod 401s on the first question.
+    it('names the same environment as resolveDefaultApiUrl for any launch', () => {
+      const launches = [
+        { isPackaged: false, argv: ['electron', '.'] },
+        { isPackaged: false, argv: ['electron', '.', '-prod'] },
+        { isPackaged: false, argv: ['electron', '.', '--prod'] },
+        { isPackaged: false, argv: ['electron', '.', '--production'] },
+        { isPackaged: true, argv: ['Thunder Desktop'] },
+        { isPackaged: true, argv: ['Thunder Desktop', '-prod'] }
+      ]
+      for (const launch of launches) {
+        const apiIsDev = resolveDefaultApiUrl(launch) === DEFAULT_DEV_API_URL
+        const mcpIsDev = resolveDefaultMcpUrl(launch) === DEFAULT_DEV_MCP_URL
+        expect(mcpIsDev).toBe(apiIsDev)
+      }
+    })
+  })
+
+  // ─── migrateUrlSetting: apiUrl (TD-029 cutover, TD-051 managed domain) ───
+
+  describe('migrateUrlSetting — apiUrl (TD-029, TD-051)', () => {
     const LEGACY = LEGACY_DEV_API_URL
     const LEGACY_PROD = LEGACY_PROD_API_URL
     const PROD: ThunderSettings = {
@@ -352,14 +401,14 @@ describe('settings-io (TD-018)', () => {
 
     it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy prod URL', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY_PROD })
-      migrateApiUrl(path, PROD, [LEGACY, LEGACY_PROD])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })
 
     it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy dev URL', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY })
-      migrateApiUrl(path, PROD, [LEGACY, LEGACY_PROD])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })
@@ -367,16 +416,16 @@ describe('settings-io (TD-018)', () => {
     it('preserves a custom apiUrl that is not in the legacy list', () => {
       const custom = 'https://staging.halo.example/'
       writeSettingsFile(path, { ...PROD, apiUrl: custom })
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(custom)
     })
 
     it('is idempotent — a second run after migration does not re-touch the file', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY })
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       const firstMtime = readFileSync(path, 'utf-8')
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       // After the first run the value is no longer in the legacy list,
       // so the second run is a no-op and the on-disk content is
       // byte-identical (no rewrite, no temp-file dance).
@@ -390,7 +439,7 @@ describe('settings-io (TD-018)', () => {
         downloadFolder: '/Users/test/Downloads/Thunder',
         userAgent: 'CustomUA/1.0'
       })
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw).toEqual({
         ...DEFAULTS,
@@ -404,7 +453,7 @@ describe('settings-io (TD-018)', () => {
       // Migration runs after `ensureSettingsFile` in production, so a
       // missing file at this point would mean the seed write itself
       // failed — surface nothing here, just don't throw.
-      expect(() => migrateApiUrl(path, PROD, [LEGACY])).not.toThrow()
+      expect(() => migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])).not.toThrow()
       expect(readdirSync(dir)).toEqual([])
     })
 
@@ -412,13 +461,13 @@ describe('settings-io (TD-018)', () => {
       // `ensureSettingsFile` is responsible for repairing a corrupt
       // file; the migration shouldn't second-guess that policy.
       writeFileSync(path, '{ not json')
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       expect(readFileSync(path, 'utf-8')).toBe('{ not json')
     })
 
     it('no-ops when the stored apiUrl is not a string (defensive)', () => {
       writeFileSync(path, JSON.stringify({ apiUrl: 42, downloadFolder: '/tmp' }))
-      migrateApiUrl(path, PROD, [LEGACY])
+      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
       // File untouched — readSettings will fall back to defaults at
       // the next read regardless.
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as { apiUrl: unknown }
@@ -429,9 +478,64 @@ describe('settings-io (TD-018)', () => {
       const legacyA = 'https://old-a.example/'
       const legacyB = 'https://old-b.example/'
       writeSettingsFile(path, { ...PROD, apiUrl: legacyB })
-      migrateApiUrl(path, PROD, [legacyA, legacyB])
+      migrateUrlSetting(path, PROD, 'apiUrl', [legacyA, legacyB])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
+    })
+  })
+
+  // ─── migrateUrlSetting: mcpUrl (TD-066) ───────────────────────────
+
+  describe('migrateUrlSetting — mcpUrl (TD-066)', () => {
+    // What an unpackaged run passes: the shipped default it did *not*
+    // resolve to. Mirrors `shippedMcpDefaults` in `ipc/settings.ts`.
+    const DEV: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_DEV_MCP_URL }
+
+    it('retargets a settings file pinned to the prod MCP default', () => {
+      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
+      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
+    })
+
+    it('flips back to prod on a -prod launch', () => {
+      const prod: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_MCP_URL }
+      writeSettingsFile(path, { ...prod, mcpUrl: DEFAULT_DEV_MCP_URL })
+      migrateUrlSetting(path, prod, 'mcpUrl', [DEFAULT_DEV_MCP_URL])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
+    })
+
+    it('preserves a custom mcpUrl typed into Settings', () => {
+      const custom = 'https://localhost:8787/mcp'
+      writeSettingsFile(path, { ...DEV, mcpUrl: custom })
+      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.mcpUrl).toBe(custom)
+    })
+
+    it('is idempotent', () => {
+      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
+      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      const first = readFileSync(path, 'utf-8')
+      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      expect(readFileSync(path, 'utf-8')).toBe(first)
+    })
+
+    it('leaves apiUrl alone while rewriting mcpUrl', () => {
+      const custom = 'https://staging.halo.example/'
+      writeSettingsFile(path, { ...DEV, apiUrl: custom, mcpUrl: DEFAULT_MCP_URL })
+      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.apiUrl).toBe(custom)
+      expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
+    })
+
+    it('no-ops on an empty legacy list (the packaged-build case)', () => {
+      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
+      migrateUrlSetting(path, DEV, 'mcpUrl', [])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
     })
   })
 })

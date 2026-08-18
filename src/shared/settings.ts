@@ -42,21 +42,28 @@ export const DEFAULT_DEV_API_URL = 'https://halo-dev.swaff.name/'
 export const PROD_FLAGS: ReadonlyArray<string> = ['-prod', '--prod']
 
 /**
- * TD-060: which backend an unpackaged launch points at. Pure (argv and
- * `isPackaged` are passed in) so it can be unit-tested without an
- * Electron `app`.
+ * TD-060: how a launch was invoked. Pure (argv and `isPackaged` are
+ * passed in) so it can be unit-tested without an Electron `app`.
  *
  * Packaged builds ignore argv entirely — a shipped app must not be
  * talkable onto the dev backend by a command-line flag.
+ *
+ * TD-066: extracted from `resolveDefaultApiUrl` once `mcpUrl` needed
+ * the same rule. Every per-environment default has to answer "dev or
+ * prod?" identically, or a single launch ends up straddling both
+ * accounts — which is exactly the bug TD-066 fixed.
  */
+export function isDevLaunch(options: { isPackaged: boolean; argv: readonly string[] }): boolean {
+  if (options.isPackaged) return false
+  return !options.argv.some((arg) => PROD_FLAGS.includes(arg))
+}
+
+/** TD-060: which Halo backend an unpackaged launch points at. */
 export function resolveDefaultApiUrl(options: {
   isPackaged: boolean
   argv: readonly string[]
 }): string {
-  if (options.isPackaged) return DEFAULT_API_URL
-  return options.argv.some((arg) => PROD_FLAGS.includes(arg))
-    ? DEFAULT_API_URL
-    : DEFAULT_DEV_API_URL
+  return isDevLaunch(options) ? DEFAULT_DEV_API_URL : DEFAULT_API_URL
 }
 
 /**
@@ -95,6 +102,31 @@ export const LEGACY_PROD_API_URL =
  * local MCP servers exist and shouldn't need a rebuild to point at.
  */
 export const DEFAULT_MCP_URL = 'https://halo-mcp.swaff.name/mcp'
+
+/**
+ * TD-066: the dev-account halo-mcp deployment, paired with
+ * {@link DEFAULT_DEV_API_URL}.
+ *
+ * The pairing is not cosmetic. halo-mcp holds no credentials of its own
+ * — it forwards the caller's Halo bearer token — so an MCP server from
+ * one account cannot accept a token minted by the other. A dev run left
+ * on the prod MCP URL gets a 401 on the first `listTools()`, which the
+ * chat surfaces as "Your session expired." against a token issued
+ * seconds earlier.
+ */
+export const DEFAULT_DEV_MCP_URL = 'https://halo-mcp-dev.swaff.name/mcp'
+
+/**
+ * TD-066: which halo-mcp an unpackaged launch points at. Same rule as
+ * {@link resolveDefaultApiUrl}, and deliberately sharing
+ * {@link isDevLaunch} with it.
+ */
+export function resolveDefaultMcpUrl(options: {
+  isPackaged: boolean
+  argv: readonly string[]
+}): string {
+  return isDevLaunch(options) ? DEFAULT_DEV_MCP_URL : DEFAULT_MCP_URL
+}
 
 /**
  * TD-052: AWS region hosting the Bedrock model. Bedrock model access is

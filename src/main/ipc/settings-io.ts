@@ -102,10 +102,13 @@ export function ensureSettingsFile(filePath: string, defaults: ThunderSettings):
   }
 }
 
+/** The URL-valued settings a migration may rewrite. */
+type UrlSettingKey = 'apiUrl' | 'mcpUrl'
+
 /**
- * TD-029: one-time migration. If the stored `apiUrl` exactly matches
- * any value in `legacyApiUrls`, rewrite it to `defaults.apiUrl`. Any
- * other stored value (including custom overrides set via the
+ * TD-029: one-time migration. If the stored value at `key` exactly
+ * matches any value in `legacyValues`, rewrite it to `defaults[key]`.
+ * Any other stored value (including custom overrides set via the
  * Settings modal) is left alone.
  *
  * Idempotent: a second run is a no-op because the rewritten value no
@@ -113,20 +116,27 @@ export function ensureSettingsFile(filePath: string, defaults: ThunderSettings):
  *
  * No-ops cleanly when the file is missing or unparseable —
  * `ensureSettingsFile` handles those cases on the same call site.
+ *
+ * TD-066 generalised this from an `apiUrl`-only helper. `mcpUrl` needs
+ * the identical treatment for the identical reason — a persisted file
+ * means a new shipped default would otherwise only ever reach a machine
+ * that has never launched the app.
  */
-export function migrateApiUrl(
+export function migrateUrlSetting(
   filePath: string,
   defaults: ThunderSettings,
-  legacyApiUrls: ReadonlyArray<string>
+  key: UrlSettingKey,
+  legacyValues: ReadonlyArray<string>
 ): void {
   const parsed = parseFile(filePath)
   if (!parsed) return
-  if (typeof parsed.apiUrl !== 'string') return
-  if (!legacyApiUrls.includes(parsed.apiUrl)) return
+  const stored = parsed[key]
+  if (typeof stored !== 'string') return
+  if (!legacyValues.includes(stored)) return
   // Re-coerce to fill in any other missing fields with current
   // defaults — a partial file from an older schema version shouldn't
   // be left half-populated by the rewrite.
-  const next = coerce({ ...parsed, apiUrl: defaults.apiUrl }, defaults)
+  const next = coerce({ ...parsed, [key]: defaults[key] }, defaults)
   writeSettingsFile(filePath, next)
 }
 

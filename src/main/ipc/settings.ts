@@ -26,6 +26,9 @@ import {
   readSettings,
   setSetting
 } from './settings-io'
+// TD-063: filename lives in `userdata-seed` so the dev-profile seed
+// list can't drift from the real path.
+import { SETTINGS_FILENAME } from '../userdata-seed'
 
 // Memoised after first access. `app.getPath()` is cheap, but we hit
 // these on every IPC invocation and the values can't change after
@@ -37,7 +40,7 @@ let cachedDefaults: ThunderSettings | null = null
 
 function settingsPath(): string {
   if (cachedPath === null) {
-    cachedPath = join(app.getPath('userData'), 'thunder-desktop-settings.json')
+    cachedPath = join(app.getPath('userData'), SETTINGS_FILENAME)
   }
   return cachedPath
 }

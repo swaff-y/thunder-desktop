@@ -11,8 +11,10 @@ import {
   writeWindowStateFile,
   type WindowState
 } from './window-state'
+// TD-063: filename lives in `userdata-seed` so the dev-profile seed
+// list can't drift from the real path.
+import { WINDOW_STATE_FILENAME } from './userdata-seed'
 
-const WINDOW_STATE_FILENAME = 'thunder-desktop-window-state.json'
 // Debounce resize/move writes so a drag doesn't burn one disk write
 // per pixel of movement. 500ms is short enough that a hard quit
 // moments after a resize still persists, long enough that a normal

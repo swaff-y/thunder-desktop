@@ -70,8 +70,19 @@ open decision on Bedrock credentials.
 - [TD-056](complete/TD-056-home-chat-shell.md) — AI chat: Home chat panel and featured-content swap
 - [TD-057](complete/TD-057-action-card-list.md) — AI chat: action card — list
 - [TD-058](TD-058-action-card-record.md) — AI chat: action card — single record with carousel
-- [TD-059](TD-059-action-card-chart.md) — AI chat: action card — chart
+- [TD-059](complete/TD-059-action-card-chart.md) — AI chat: action card — chart
 - [TD-061](complete/TD-061-tool-schema-top-level-unions.md) — AI chat: strip top-level oneOf/anyOf from MCP tool schemas
+
+## Phase 9 — AI chat moves to a shared server
+
+See [thunder-context-server-proposal.md](../thunder-context-server-proposal.md).
+The Bedrock loop, MCP client and per-user AWS keys move to
+[thunder-context](https://github.com/swaff-y/thunder-context) so web-thunder and
+thunder can have the same chat — neither can hold AWS credentials, so neither
+could ever have copied phase 8.
+
+- [TD-065](TD-065-context-server-cutover.md) — AI chat: cut over to
+  thunder-context. Blocked on thunder-context TC-001–TC-006.
 
 ## Bugs / polish
 
@@ -90,4 +101,6 @@ open decision on Bedrock credentials.
 - [TD-048](TD-048-browser-default-url-google.md) — Browser tab: default URL of google.com
 - [TD-050](TD-050-draggable-top-bar.md) — Draggable top bar (window drag region)
 - [TD-060](complete/TD-060-dev-backend-default.md) — `npm run dev` defaults to the dev backend
-- [TD-062](TD-062-bedrock-smoke-client-mismatch.md) — Bedrock smoke test validates a different client than the app
+- [TD-062](complete/TD-062-bedrock-smoke-client-mismatch.md) — Bedrock smoke test validates a different client than the app
+- [TD-063](TD-063-dev-userdata-isolation.md) — `npm run dev` repoints the packaged app at the dev backend (shared userData)
+- [TD-064](TD-064-bedrock-defaults-stale.md) — Shipped Bedrock defaults don't work against the app's own client

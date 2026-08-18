@@ -21,9 +21,15 @@ import {
   type CryptoAdapter,
   type StoredAwsCredentials
 } from './aws-creds-io'
+import { AWS_CREDENTIALS_FILENAME } from '../userdata-seed'
 
-/** Exported so the smoke script can resolve the same file outside Electron. */
-export const AWS_CREDENTIALS_FILENAME = 'thunder-desktop-aws.enc'
+/**
+ * Re-exported so the smoke script can keep resolving the same file
+ * outside Electron. The constant itself lives in `userdata-seed`
+ * (TD-063) because the dev-profile seed has to enumerate it alongside
+ * the other `userData` files.
+ */
+export { AWS_CREDENTIALS_FILENAME }
 
 function credentialsPath(): string {
   return join(app.getPath('userData'), AWS_CREDENTIALS_FILENAME)

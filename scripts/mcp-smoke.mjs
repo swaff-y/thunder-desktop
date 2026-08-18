@@ -10,9 +10,10 @@
  *
  * Launched as a loose script, Electron names itself "Electron" and
  * would read `<appData>/Electron` — never the directory the app writes
- * to. {@link APP_DIRS} pins the two real ones instead: `npm run dev`
- * uses the package `name`, a packaged build uses the `productName`
- * from `electron-builder.yml`.
+ * to. {@link APP_DIRS} pins the real ones instead: TD-063 gives an
+ * unpackaged run `<name>-dev`, `npm run dev` before that used the bare
+ * package `name`, and a packaged build uses the `productName` from
+ * `electron-builder.yml`.
  *
  * The settings/credential reads and the failure classification below
  * are duplicated from `src/shared/settings.ts`, `src/main/ipc/auth-io.ts`
@@ -33,7 +34,7 @@ import {
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 
 /** Dev first — that's the profile a developer running this is testing. */
-const APP_DIRS = ['thunder-desktop', 'Thunder Desktop']
+const APP_DIRS = ['thunder-desktop-dev', 'thunder-desktop', 'Thunder Desktop']
 const SETTINGS_FILENAME = 'thunder-desktop-settings.json'
 const CREDENTIALS_FILENAME = 'thunder-desktop-credentials.enc'
 

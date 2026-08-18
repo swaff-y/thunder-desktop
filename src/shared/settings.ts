@@ -79,8 +79,7 @@ export function resolveDefaultApiUrl(options: {
  * the migration helper. Once a release or two passes (most users
  * upgraded), it can be removed.
  */
-export const LEGACY_DEV_API_URL =
-  'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
+export const LEGACY_DEV_API_URL = 'https://uqd749736g.execute-api.ap-southeast-2.amazonaws.com/dev/'
 
 /**
  * TD-051: the raw `execute-api` prod URL that {@link DEFAULT_API_URL}
@@ -93,93 +92,36 @@ export const LEGACY_DEV_API_URL =
  * The gateway URL still works if a user pastes it into Settings; this
  * is a migration, not a cut-off.
  */
-export const LEGACY_PROD_API_URL =
-  'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
+export const LEGACY_PROD_API_URL = 'https://iunjwmwjv0.execute-api.ap-south-1.amazonaws.com/prod/'
 
 /**
- * TD-052: halo-mcp endpoint the AI chat reaches for its tool surface.
- * Tunable for the same reason as {@link DEFAULT_API_URL} — staging and
- * local MCP servers exist and shouldn't need a rebuild to point at.
- */
-export const DEFAULT_MCP_URL = 'https://halo-mcp.swaff.name/mcp'
-
-/**
- * TD-066: the dev-account halo-mcp deployment, paired with
- * {@link DEFAULT_DEV_API_URL}.
+ * TD-065: the thunder-context deployment the AI chat talks to. Every
+ * question, the whole tool-use loop and the model itself live behind
+ * this URL now — the desktop holds no AWS credentials of its own.
  *
- * The pairing is not cosmetic. halo-mcp holds no credentials of its own
- * — it forwards the caller's Halo bearer token — so an MCP server from
- * one account cannot accept a token minted by the other. A dev run left
- * on the prod MCP URL gets a 401 on the first `listTools()`, which the
- * chat surfaces as "Your session expired." against a token issued
- * seconds earlier.
+ * No trailing slash: request paths are appended with a leading `/`.
  */
-export const DEFAULT_DEV_MCP_URL = 'https://halo-mcp-dev.swaff.name/mcp'
+export const DEFAULT_CONTEXT_URL = 'https://thunder-context.swaff.name/v1'
 
 /**
- * TD-066: which halo-mcp an unpackaged launch points at. Same rule as
- * {@link resolveDefaultApiUrl}, and deliberately sharing
+ * TD-065: the dev-account thunder-context, paired with
+ * {@link DEFAULT_DEV_API_URL} for the reason TD-066 documented for
+ * halo-mcp — the service forwards the caller's Halo bearer token, so one
+ * account's deployment cannot accept a token minted by the other.
+ */
+export const DEFAULT_DEV_CONTEXT_URL = 'https://thunder-context-dev.swaff.name/v1'
+
+/**
+ * TD-065: which thunder-context an unpackaged launch points at. Same
+ * rule as {@link resolveDefaultApiUrl}, and deliberately sharing
  * {@link isDevLaunch} with it.
  */
-export function resolveDefaultMcpUrl(options: {
+export function resolveDefaultContextUrl(options: {
   isPackaged: boolean
   argv: readonly string[]
 }): string {
-  return isDevLaunch(options) ? DEFAULT_DEV_MCP_URL : DEFAULT_MCP_URL
+  return isDevLaunch(options) ? DEFAULT_DEV_CONTEXT_URL : DEFAULT_CONTEXT_URL
 }
-
-/**
- * TD-052: AWS region hosting the Bedrock model. Bedrock model access is
- * granted per account *and* per region, so this and
- * {@link DEFAULT_BEDROCK_MODEL_ID} have to agree with what the account
- * has actually been approved for.
- *
- * TD-064: `us-east-1`, because `ap-south-1` serves *nothing* on the
- * Messages-API endpoint the app calls. Probed against the account's own
- * credentials with `AnthropicBedrockMantle`: every candidate — Sonnet 5,
- * Sonnet 4.6, Opus 5, Opus 4.8, Haiku 4.5 — 404s there, while
- * {@link DEFAULT_BEDROCK_MODEL_ID} answers in `us-east-1`.
- *
- * `aws bedrock list-foundation-models --region ap-south-1` disagrees and
- * lists them all. It is describing the legacy `bedrock-runtime`
- * InvokeModel surface, which is a different endpoint with a different
- * catalogue — do not use it to pick this value. Probe the Mantle client
- * instead (`npm run smoke:bedrock`).
- */
-export const DEFAULT_BEDROCK_REGION = 'us-east-1'
-
-/**
- * TD-052: Bedrock model id. The `anthropic.` prefix is load-bearing —
- * Bedrock namespaces model ids by provider, so the bare first-party id
- * (`claude-sonnet-5`) 404s.
- *
- * TD-064: exactly one prefix, not two. The `global.` this shipped with
- * is a cross-region *inference profile* id, which belongs to the legacy
- * `bedrock-runtime` InvokeModel path. TD-054 moved the app onto
- * `AnthropicBedrockMantle` — the Messages-API endpoint — which takes the
- * model id verbatim, so the extra prefix made every request a 404:
- * "The model 'global.anthropic.claude-sonnet-5' does not exist".
- *
- * Verified by probing all three spellings against the real account:
- * `global.anthropic.claude-sonnet-5` and bare `claude-sonnet-5` both
- * 404; `anthropic.claude-sonnet-5` answers.
- */
-export const DEFAULT_BEDROCK_MODEL_ID = 'anthropic.claude-sonnet-5'
-
-/**
- * TD-064: the region/model pair this app shipped with before the fix.
- * Retained only so the one-time migration can identify a settings file
- * still pinned to the broken defaults and rewrite it — same contract,
- * and the same "do not reference from runtime code" rule, as
- * {@link LEGACY_DEV_API_URL}.
- *
- * The pair never worked against the app's own client, so a stored value
- * matching one of these is an untouched default rather than a
- * deliberate override — nobody chose a combination that 404s on every
- * question.
- */
-export const LEGACY_BEDROCK_REGION = 'ap-south-1'
-export const LEGACY_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
 
 /**
  * Persisted user-tunable settings.
@@ -189,22 +131,18 @@ export const LEGACY_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
  * - `downloadFolder`— Destination for any future "save to disk" actions.
  * - `userAgent`     — Optional override for the embedded webview's UA
  *                     (needed for sites that 403 Electron's default).
- * - `mcpUrl`        — TD-052: halo-mcp endpoint backing the AI chat's tools.
- * - `bedrockRegion` — TD-052: AWS region the Bedrock model is invoked in.
- * - `bedrockModelId`— TD-052: Bedrock-namespaced model id (see
- *                     {@link DEFAULT_BEDROCK_MODEL_ID}).
+ * - `contextUrl`    — TD-065: thunder-context deployment backing the AI chat.
  * - `chatEnabled`   — TD-052: master switch for the AI chat surface.
  *                     Ships `false`; TD-056 is what makes it visible.
  *
- * AWS credentials are deliberately NOT here — they live in an encrypted
- * file written by `main/ipc/aws-creds.ts` and never transit this record.
+ * TD-065 removed `mcpUrl`, `bedrockRegion` and `bedrockModelId`: the
+ * model, its region and the tool surface are the server's business now,
+ * and per-machine copies of them were what TD-062 went wrong on.
  */
 export interface ThunderSettings {
   apiUrl: string
   downloadFolder: string
   userAgent?: string
-  mcpUrl: string
-  bedrockRegion: string
-  bedrockModelId: string
+  contextUrl: string
   chatEnabled: boolean
 }

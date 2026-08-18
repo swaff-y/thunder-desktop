@@ -83,8 +83,7 @@ describe('settings IPC validation (TD-052)', () => {
     await expect(setSetting('apiUrl', 'https://halo.example/')).resolves.toBeUndefined()
     await expect(setSetting('downloadFolder', '/tmp/Thunder')).resolves.toBeUndefined()
     await expect(setSetting('userAgent', 'UA/1.0')).resolves.toBeUndefined()
-    await expect(setSetting('bedrockRegion', 'us-west-2')).resolves.toBeUndefined()
-    await expect(setSetting('bedrockModelId', 'global.anthropic.x')).resolves.toBeUndefined()
+    await expect(setSetting('contextUrl', 'https://ctx.example/v1')).resolves.toBeUndefined()
   })
 
   // ─── chatEnabled is a boolean, and `false` is a real value ────────
@@ -100,24 +99,27 @@ describe('settings IPC validation (TD-052)', () => {
     await expect(setSetting('chatEnabled', 1)).rejects.toThrow(/invalid value/)
   })
 
-  // ─── mcpUrl scheme check ──────────────────────────────────────────
+  // ─── contextUrl scheme check ──────────────────────────────────────
 
   it.each([
     ['a file: URL', 'file:///etc/passwd'],
     ['a data: URL', 'data:text/plain,hi'],
     ['a javascript: URL', 'javascript:alert(1)'],
-    ['a bare hostname', 'halo-mcp.example'],
+    ['a bare hostname', 'thunder-context.example'],
     ['an empty string', ''],
     ['a non-string', 42]
-  ])('rejects %s for mcpUrl — main must not trust the renderer check', async (_label, value) => {
-    await expect(setSetting('mcpUrl', value)).rejects.toThrow(/invalid value/)
-  })
+  ])(
+    'rejects %s for contextUrl — main must not trust the renderer check',
+    async (_label, value) => {
+      await expect(setSetting('contextUrl', value)).rejects.toThrow(/invalid value/)
+    }
+  )
 
-  it.each(['https://halo-mcp.example/mcp', 'http://localhost:3000/mcp'])(
-    'accepts %s for mcpUrl',
+  it.each(['https://thunder-context.example/v1', 'http://localhost:3000/v1'])(
+    'accepts %s for contextUrl',
     async (value) => {
-      await expect(setSetting('mcpUrl', value)).resolves.toBeUndefined()
-      expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(value)
+      await expect(setSetting('contextUrl', value)).resolves.toBeUndefined()
+      expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'contextUrl')).toBe(value)
     }
   )
 
@@ -130,12 +132,9 @@ describe('settings IPC validation (TD-052)', () => {
 
   it('seeds the AI chat defaults on first launch', async () => {
     const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
-    // TD-066: unpackaged, so the MCP URL follows `apiUrl` to the dev
-    // account. Bedrock is per-AWS-account rather than per-Halo
-    // environment, so its defaults do not move.
-    expect(all.mcpUrl).toBe('https://halo-mcp-dev.swaff.name/mcp')
-    expect(all.bedrockRegion).toBe('us-east-1')
-    expect(all.bedrockModelId).toBe('anthropic.claude-sonnet-5')
+    // TD-065: unpackaged, so the context URL follows `apiUrl` to the dev
+    // account.
+    expect(all.contextUrl).toBe('https://thunder-context-dev.swaff.name/v1')
   })
 
   // ─── Dev backend (TD-060) ─────────────────────────────────────────
@@ -172,87 +171,87 @@ describe('settings IPC validation (TD-052)', () => {
     )
   })
 
-  // ─── Dev halo-mcp (TD-066) ────────────────────────────────────────
+  // ─── Dev thunder-context (TD-065) ─────────────────────────────────
 
-  // The bug this ticket fixes: a settings file written before the dev
-  // MCP default existed pairs a dev `apiUrl` with the prod `mcpUrl`,
-  // and every chat question 401s as "Your session expired."
-  it('flips an untouched prod MCP default to dev on an unpackaged launch', async () => {
+  // The TD-066 bug, in its new clothes: a settings file that pairs a dev
+  // `apiUrl` with the prod context URL 401s on every question, because
+  // the service forwards the caller's Halo token.
+  it('flips an untouched prod context default to dev on an unpackaged launch', async () => {
     writeFileSync(
       join(dir, 'thunder-desktop-settings.json'),
       JSON.stringify({
         apiUrl: 'https://halo-dev.swaff.name/',
-        mcpUrl: 'https://halo-mcp.swaff.name/mcp'
+        contextUrl: 'https://thunder-context.swaff.name/v1'
       })
     )
     ipcHandlers.clear()
     registerSettingsHandlers()
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(
-      'https://halo-mcp-dev.swaff.name/mcp'
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'contextUrl')).toBe(
+      'https://thunder-context-dev.swaff.name/v1'
     )
   })
 
-  it('leaves a hand-set mcpUrl alone', async () => {
+  it('leaves a hand-set contextUrl alone', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({ contextUrl: 'http://localhost:8787/v1' })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'contextUrl')).toBe(
+      'http://localhost:8787/v1'
+    )
+  })
+
+  // ─── The cutover migration (TD-065) ───────────────────────────────
+
+  it('replaces the three retired keys with a contextUrl on an upgraded machine', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({
+        apiUrl: 'https://halo-dev.swaff.name/',
+        mcpUrl: 'https://halo-mcp-dev.swaff.name/mcp',
+        bedrockRegion: 'us-east-1',
+        bedrockModelId: 'anthropic.claude-sonnet-5'
+      })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
+    expect(all).not.toHaveProperty('mcpUrl')
+    expect(all).not.toHaveProperty('bedrockRegion')
+    expect(all).not.toHaveProperty('bedrockModelId')
+    expect(all.contextUrl).toBe('https://thunder-context-dev.swaff.name/v1')
+    await expect(setSetting('mcpUrl', 'https://x.example/mcp')).rejects.toThrow(/unknown key/)
+  })
+
+  // A halo-mcp endpoint is not a thunder-context one — carrying a
+  // hand-typed one across would point the chat at a URL that answers
+  // nothing, and the user would have no idea where it came from.
+  it('does not resurrect a hand-typed mcpUrl as the contextUrl', async () => {
     writeFileSync(
       join(dir, 'thunder-desktop-settings.json'),
       JSON.stringify({ mcpUrl: 'http://localhost:8787/mcp' })
     )
     ipcHandlers.clear()
     registerSettingsHandlers()
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(
-      'http://localhost:8787/mcp'
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'contextUrl')).toBe(
+      'https://thunder-context-dev.swaff.name/v1'
     )
   })
 
-  // ─── Bedrock defaults (TD-064) ────────────────────────────────────
-
-  // The pair 404s against the app's own client, so unlike the URL
-  // migrations this one has to reach packaged builds too — there is no
-  // deployment where keeping it is the user's intent.
-  it('rewrites the stale Bedrock pair that shipped before TD-064', async () => {
-    writeFileSync(
-      join(dir, 'thunder-desktop-settings.json'),
-      JSON.stringify({
-        bedrockRegion: 'ap-south-1',
-        bedrockModelId: 'global.anthropic.claude-sonnet-5'
-      })
-    )
-    ipcHandlers.clear()
-    registerSettingsHandlers()
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockRegion')).toBe('us-east-1')
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockModelId')).toBe(
-      'anthropic.claude-sonnet-5'
-    )
-  })
-
-  it('leaves a hand-set Bedrock pair alone', async () => {
-    writeFileSync(
-      join(dir, 'thunder-desktop-settings.json'),
-      JSON.stringify({
-        bedrockRegion: 'eu-central-1',
-        bedrockModelId: 'anthropic.claude-opus-5'
-      })
-    )
-    ipcHandlers.clear()
-    registerSettingsHandlers()
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockRegion')).toBe('eu-central-1')
-    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockModelId')).toBe(
-      'anthropic.claude-opus-5'
-    )
-  })
-
-  it('lands apiUrl and mcpUrl on the same environment after a launch', async () => {
+  it('lands apiUrl and contextUrl on the same environment after a launch', async () => {
     writeFileSync(
       join(dir, 'thunder-desktop-settings.json'),
       JSON.stringify({
         apiUrl: 'https://halo.swaff.name/',
-        mcpUrl: 'https://halo-mcp.swaff.name/mcp'
+        contextUrl: 'https://thunder-context.swaff.name/v1'
       })
     )
     ipcHandlers.clear()
     registerSettingsHandlers()
     const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
     expect(all.apiUrl).toBe('https://halo-dev.swaff.name/')
-    expect(all.mcpUrl).toBe('https://halo-mcp-dev.swaff.name/mcp')
+    expect(all.contextUrl).toBe('https://thunder-context-dev.swaff.name/v1')
   })
 })

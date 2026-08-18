@@ -1,8 +1,10 @@
 /**
- * TD-054: Electron wiring for the AI chat. Everything that touches
- * Bedrock, AWS credentials or the Halo bearer token stays here and in
- * `main/chat/` — the sandboxed renderer sends a question and gets the
- * finished turn back.
+ * TD-054 / TD-065: Electron wiring for the AI chat. The IPC surface is
+ * unchanged — the renderer still sends a question and gets the finished
+ * turn back — but the loop behind it now runs in thunder-context. Main
+ * holds the Halo token and the poll, which is why the poll stayed here
+ * rather than moving to the renderer: a turn has to survive a navigation
+ * away from Home.
  *
  * `chatEnabled` is checked on every invocation rather than at
  * registration: the handlers have to exist before the renderer can call
@@ -13,18 +15,15 @@ import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { MAX_TURN_TEXT_LENGTH } from '../../shared/chat'
 import type { ChatAskResult, ChatHistoryTurn, ChatStatus } from '../../shared/chat'
-import { createAgentLoop } from '../chat/agent-loop'
-import { createBedrockModel } from '../chat/bedrock-client'
-import { HaloMcpClient } from '../mcp/halo-mcp-client'
+import { createContextClient } from '../context/context-client'
 import { resolveAuthToken } from './auth'
-import { resolveCredentials } from './aws-creds'
-import { resolveChatSettings, resolveMcpUrl } from './settings'
+import { resolveChatSettings, resolveContextUrl } from './settings'
 import { sendToFocused } from './window-send'
 
 /**
  * Bounds what a compromised or buggy renderer can push through a single
  * turn. Neither limit is a product rule — they exist so an unbounded
- * payload can't be laundered into Bedrock token spend.
+ * payload can't be laundered into model token spend.
  */
 const MAX_QUESTION_LENGTH = MAX_TURN_TEXT_LENGTH
 const MAX_HISTORY_TURNS = 40
@@ -42,16 +41,14 @@ const INVALID_REQUEST: ChatAskResult = {
 }
 
 /**
- * Memoised for the process lifetime. The URL and token arrive as
- * getters, so a Settings change or a silent reauth is picked up on the
- * next request without rebuilding the client.
+ * The URL and the token arrive as getters, so a Settings change or a
+ * silent reauth is picked up on the next request without rebuilding the
+ * client — and the conversation id it memoises survives across turns.
  */
-let mcpClient: HaloMcpClient | null = null
-
-function haloMcp(): HaloMcpClient {
-  mcpClient ??= new HaloMcpClient({ getUrl: resolveMcpUrl, getToken: resolveAuthToken })
-  return mcpClient
-}
+const context = createContextClient({
+  getBaseUrl: resolveContextUrl,
+  getToken: resolveAuthToken
+})
 
 /** One turn at a time — `cancel` has exactly one thing to abort. */
 let inFlight: AbortController | null = null
@@ -87,9 +84,12 @@ function parseAskRequest(payload: unknown): ParsedAskRequest | null {
 
 export function registerChatHandlers(): void {
   ipcMain.handle(THUNDER_IPC_CHANNELS.chatAsk, async (_event, payload: unknown) => {
-    const { chatEnabled, bedrockRegion, bedrockModelId } = resolveChatSettings()
-    if (!chatEnabled) return DISABLED_RESULT
+    if (!resolveChatSettings().chatEnabled) return DISABLED_RESULT
 
+    // History is still validated but not forwarded: thunder-context
+    // keeps the transcript against the conversation id, so replaying it
+    // would send the same turns twice. The renderer keeps building it
+    // for the browser and native clients that share the hook.
     const request = parseAskRequest(payload)
     if (request === null) return INVALID_REQUEST
 
@@ -100,18 +100,18 @@ export function registerChatHandlers(): void {
     const controller = new AbortController()
     inFlight = controller
 
-    const loop = createAgentLoop({
-      model: createBedrockModel({
-        region: bedrockRegion,
-        modelId: bedrockModelId,
-        credentials: resolveCredentials()
-      }),
-      tools: haloMcp(),
-      onStatus: (status: ChatStatus) => sendToFocused(THUNDER_IPC_CHANNELS.chatStatus, status)
-    })
-
     try {
-      return await loop.ask({ ...request, signal: controller.signal })
+      return await context.ask({
+        question: request.question,
+        signal: controller.signal,
+        // A superseded or cancelled turn must not drive the spinner for
+        // the question that replaced it.
+        onStatus: (status: ChatStatus) => {
+          if (!controller.signal.aborted) {
+            sendToFocused(THUNDER_IPC_CHANNELS.chatStatus, status)
+          }
+        }
+      })
     } finally {
       if (inFlight === controller) inFlight = null
     }
@@ -120,5 +120,12 @@ export function registerChatHandlers(): void {
   ipcMain.handle(THUNDER_IPC_CHANNELS.chatCancel, async () => {
     if (!resolveChatSettings().chatEnabled) return
     inFlight?.abort()
+  })
+
+  // Not gated on `chatEnabled`: logout has to drop the server-side
+  // transcript whatever the toggle says.
+  ipcMain.handle(THUNDER_IPC_CHANNELS.chatClear, async () => {
+    inFlight?.abort()
+    await context.clearConversation()
   })
 }

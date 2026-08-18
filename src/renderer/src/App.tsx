@@ -20,9 +20,9 @@ import LoadingSpinner from './components/shared/LoadingSpinner'
 // TD-056: the store takes `send` as a prop so it stays testable without IPC;
 // this is the one place the real bridge is attached.
 function ChatBridgeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const { send, cancelRequest } = useChatBridge()
+  const { send, cancelRequest, clearRequest } = useChatBridge()
   return (
-    <ChatProvider send={send} cancelRequest={cancelRequest}>
+    <ChatProvider send={send} cancelRequest={cancelRequest} clearRequest={clearRequest}>
       {children}
     </ChatProvider>
   )

@@ -10,20 +10,17 @@ import { join } from 'node:path'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import {
   DEFAULT_API_URL,
-  DEFAULT_BEDROCK_MODEL_ID,
-  DEFAULT_BEDROCK_REGION,
+  DEFAULT_CONTEXT_URL,
   DEFAULT_DEV_API_URL,
-  DEFAULT_DEV_MCP_URL,
-  DEFAULT_MCP_URL,
-  LEGACY_BEDROCK_MODEL_ID,
-  LEGACY_BEDROCK_REGION,
+  DEFAULT_DEV_CONTEXT_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   resolveDefaultApiUrl,
-  resolveDefaultMcpUrl,
+  resolveDefaultContextUrl,
   type ThunderSettings
 } from '../../shared/settings'
 import {
+  dropRetiredSettings,
   ensureSettingsFile,
   getSetting,
   migrateSetting,
@@ -62,12 +59,10 @@ export function defaults(): ThunderSettings {
       // passed; packaged builds are always prod.
       apiUrl: resolveDefaultApiUrl({ isPackaged: app.isPackaged, argv: process.argv }),
       downloadFolder: join(app.getPath('downloads'), 'Thunder'),
-      // TD-066: paired with `apiUrl` — halo-mcp forwards the caller's
-      // Halo token, so a dev API URL with a prod MCP URL is a 401 on
-      // every question.
-      mcpUrl: resolveDefaultMcpUrl({ isPackaged: app.isPackaged, argv: process.argv }),
-      bedrockRegion: DEFAULT_BEDROCK_REGION,
-      bedrockModelId: DEFAULT_BEDROCK_MODEL_ID,
+      // TD-065: paired with `apiUrl` — thunder-context forwards the
+      // caller's Halo token, so a dev API URL with a prod context URL is
+      // a 401 on every question.
+      contextUrl: resolveDefaultContextUrl({ isPackaged: app.isPackaged, argv: process.argv }),
       chatEnabled: false
     }
   }
@@ -75,30 +70,21 @@ export function defaults(): ThunderSettings {
 }
 
 /**
- * TD-053: main-process only. Read per connection rather than cached so
- * a Settings change takes effect on the next MCP session instead of the
- * next app launch.
+ * TD-065: main-process only. Read per request rather than cached so a
+ * Settings change takes effect on the next call instead of the next app
+ * launch.
  */
-export function resolveMcpUrl(): string {
-  return getSetting(settingsPath(), defaults(), 'mcpUrl')
+export function resolveContextUrl(): string {
+  return getSetting(settingsPath(), defaults(), 'contextUrl')
 }
 
 /**
  * TD-054: main-process only. Read per turn for the same reason as
- * {@link resolveMcpUrl} — flipping the chat off, or repointing it at a
- * region the account actually has model access in, should take effect
+ * {@link resolveContextUrl} — flipping the chat off should take effect
  * on the next question rather than the next launch.
  */
-export function resolveChatSettings(): Pick<
-  ThunderSettings,
-  'chatEnabled' | 'bedrockRegion' | 'bedrockModelId'
-> {
-  const settings = readSettings(settingsPath(), defaults())
-  return {
-    chatEnabled: settings.chatEnabled,
-    bedrockRegion: settings.bedrockRegion,
-    bedrockModelId: settings.bedrockModelId
-  }
+export function resolveChatSettings(): Pick<ThunderSettings, 'chatEnabled'> {
+  return { chatEnabled: readSettings(settingsPath(), defaults()).chatEnabled }
 }
 
 // The persistable keys and the type each one accepts. A table rather
@@ -110,9 +96,7 @@ const FIELD_TYPES: Record<keyof ThunderSettings, 'string' | 'boolean'> = {
   apiUrl: 'string',
   downloadFolder: 'string',
   userAgent: 'string',
-  mcpUrl: 'string',
-  bedrockRegion: 'string',
-  bedrockModelId: 'string',
+  contextUrl: 'string',
   chatEnabled: 'boolean'
 }
 
@@ -121,11 +105,10 @@ function isValidKey(key: unknown): key is keyof ThunderSettings {
 }
 
 /**
- * TD-052: `mcpUrl` becomes an outbound request target in TD-053, so it
- * is validated here and not only in the Settings modal — the renderer's
- * check is a UX affordance, and main must not trust it. Restricting the
- * scheme keeps `file:`/`data:` and similar out of the field before
- * anything is built on top of it.
+ * `contextUrl` is an outbound request target, so it is validated here
+ * and not only in the Settings modal — the renderer's check is a UX
+ * affordance, and main must not trust it. Restricting the scheme keeps
+ * `file:`/`data:` and similar out of the field.
  */
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -148,7 +131,7 @@ function isValidHttpUrl(value: string): boolean {
 function isValidValue(key: keyof ThunderSettings, value: unknown): boolean {
   if (FIELD_TYPES[key] === 'boolean') return typeof value === 'boolean'
   if (typeof value !== 'string' || value.length === 0) return false
-  if (key === 'mcpUrl') return isValidHttpUrl(value)
+  if (key === 'contextUrl') return isValidHttpUrl(value)
   return true
 }
 
@@ -178,24 +161,22 @@ export function registerSettingsHandlers(): void {
     ...shippedDefaults
   ])
 
-  // TD-066: the same retarget for `mcpUrl`. No legacy list of its own —
-  // `mcpUrl` has only ever shipped the one default, so the untouched
-  // values to flip are exactly the two current ones. Packaged builds
-  // migrate nothing, so a deliberate override there survives a restart.
-  const shippedMcpDefaults = app.isPackaged
-    ? []
-    : [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL].filter((url) => url !== defaults().mcpUrl)
-  migrateSetting(settingsPath(), defaults(), 'mcpUrl', shippedMcpDefaults)
+  // TD-065: the three keys the cutover retired. Rewriting the file
+  // drops them and fills in `contextUrl` from the shipped defaults —
+  // deliberately *not* carrying a hand-typed `mcpUrl` across, because a
+  // halo-mcp endpoint is not a thunder-context one and pointing the
+  // chat at it would fail every question with a stale URL the user
+  // never chose.
+  dropRetiredSettings(settingsPath(), defaults())
 
-  // TD-064: unlike the URL migrations above, this one runs in packaged
-  // builds too. The pair it replaces 404s on every question against the
-  // app's own client, so there is no deployment where leaving it in
-  // place is the user's intent — and no "deliberate override" to
-  // protect, because nobody chose a combination that never worked. A
-  // region or model the user actually typed does not match these
-  // literals and is left alone.
-  migrateSetting(settingsPath(), defaults(), 'bedrockRegion', [LEGACY_BEDROCK_REGION])
-  migrateSetting(settingsPath(), defaults(), 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+  // TD-066's retarget, for `contextUrl`. No legacy list of its own — it
+  // has only ever shipped the two current defaults, so those are the
+  // untouched values to flip. Packaged builds migrate nothing, so a
+  // deliberate override there survives a restart.
+  const shippedContextDefaults = app.isPackaged
+    ? []
+    : [DEFAULT_CONTEXT_URL, DEFAULT_DEV_CONTEXT_URL].filter((url) => url !== defaults().contextUrl)
+  migrateSetting(settingsPath(), defaults(), 'contextUrl', shippedContextDefaults)
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.settingsGetAll, async () => {
     return readSettings(settingsPath(), defaults())

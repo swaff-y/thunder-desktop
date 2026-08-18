@@ -21,10 +21,11 @@ import type {
 const STORAGE_KEY = "thunder_chat";
 
 /**
- * The main-process error vocabulary plus one the renderer owns:
- * `interrupted` marks a turn whose request died with the old renderer.
+ * The shared error vocabulary. `interrupted` marks a turn nobody is
+ * coming back to — a request that died with the old renderer here, or a
+ * turn the context server has already swept (TD-065).
  */
-export type ChatError = ChatErrorKind | "interrupted";
+export type ChatError = ChatErrorKind;
 
 export interface ChatTurn {
   id: string;
@@ -183,7 +184,12 @@ export function ChatProvider({
   children,
   send,
   cancelRequest,
-}: PropsWithChildren<{ send?: ChatSend; cancelRequest?: () => void }>): React.JSX.Element {
+  clearRequest,
+}: PropsWithChildren<{
+  send?: ChatSend;
+  cancelRequest?: () => void;
+  clearRequest?: () => void;
+}>): React.JSX.Element {
   const [turns, setTurns] = useState<ChatTurn[]>(loadTurns);
   const [status, setStatus] = useState<ChatStatus>(IDLE);
   const [error, setError] = useState<ChatError | null>(null);
@@ -290,10 +296,14 @@ export function ChatProvider({
       abandonedRef.current.add(id);
       activeIdRef.current = null;
     }
+    // TD-065: the transcript is on the context server too, so wiping only
+    // this side would leave the next question answering against turns the
+    // user thinks they deleted.
+    clearRequest?.();
     setTurns([]);
     setStatus(IDLE);
     setError(null);
-  }, []);
+  }, [clearRequest]);
 
   const actions = useMemo<ChatActions>(
     () => ({ ask, retry, clear, cancel }),

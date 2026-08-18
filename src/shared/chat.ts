@@ -2,9 +2,11 @@
  * TD-054: the AI chat contract shared by main, preload and renderer.
  *
  * Lives beside `settings.ts` and under the same rule: no `electron` and
- * no runtime imports that aren't safe in a sandboxed renderer. The
- * agent loop runs entirely in main, so this module is the only part of
- * it the renderer ever sees.
+ * no runtime imports that aren't safe in a sandboxed renderer.
+ *
+ * TD-065: these shapes are now the thunder-context wire contract too
+ * (`docs/wire-contract.md` in that repo reproduces them). Changing one
+ * is a change to three clients and a Ruby service, not a local edit.
  */
 
 /**
@@ -48,8 +50,8 @@ export type SingleTool = (typeof SINGLE_TOOLS)[number]
  * tool still named, so a card that gains support later has the payload
  * waiting for it.
  *
- * `result` never carries a presigned `url` / `uploadUrl` — see
- * `main/chat/action.ts`. Cards re-fetch images by id (TD-058).
+ * `result` never carries a presigned `url` / `uploadUrl` — thunder-context
+ * strips them at every depth. Cards re-fetch images by id (TD-058).
  */
 export interface ChatAction {
   kind: ChatActionKind
@@ -75,6 +77,12 @@ export interface ChartBar {
  * `bedrock_access_denied` is deliberately separate from `unauthorized`:
  * the fix is granting model access in the AWS console for that region,
  * not signing in again, and a retry will never clear it.
+ *
+ * Every kind but `interrupted` is a thunder-context wire code, verbatim.
+ * `interrupted` never travels over HTTP: the renderer has always
+ * synthesised it for a turn whose request died with the old renderer,
+ * and TD-065 lets main say the same thing when a poll 404s because the
+ * server swept the turn.
  */
 export type ChatErrorKind =
   | 'unauthorized'
@@ -84,6 +92,7 @@ export type ChatErrorKind =
   | 'refusal'
   | 'loop_limit'
   | 'cancelled'
+  | 'interrupted'
   | 'unknown'
 
 export interface ChatAskSuccess {

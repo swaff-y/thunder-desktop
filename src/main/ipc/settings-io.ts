@@ -34,10 +34,10 @@ function parseFile(filePath: string): Partial<ThunderSettings> | null {
 }
 
 /**
- * TD-033 rule, applied to the TD-052 fields: trim first, then treat an
+ * TD-033 rule, applied to the chat fields: trim first, then treat an
  * empty result as absent. A whitespace-only value persisted from a
- * fat-fingered Settings save would otherwise be handed to the Bedrock
- * client verbatim and fail as an unhelpful 400.
+ * fat-fingered Settings save would otherwise be used as a request
+ * target verbatim and fail as an unhelpful 400.
  */
 function coerceTrimmed(value: unknown, fallback: string): string {
   if (typeof value !== 'string') return fallback
@@ -53,9 +53,7 @@ function coerce(partial: Partial<ThunderSettings>, defaults: ThunderSettings): T
     downloadFolder: typeof partial.downloadFolder === 'string' && partial.downloadFolder.length > 0
       ? partial.downloadFolder
       : defaults.downloadFolder,
-    mcpUrl: coerceTrimmed(partial.mcpUrl, defaults.mcpUrl),
-    bedrockRegion: coerceTrimmed(partial.bedrockRegion, defaults.bedrockRegion),
-    bedrockModelId: coerceTrimmed(partial.bedrockModelId, defaults.bedrockModelId),
+    contextUrl: coerceTrimmed(partial.contextUrl, defaults.contextUrl),
     chatEnabled:
       typeof partial.chatEnabled === 'boolean' ? partial.chatEnabled : defaults.chatEnabled
   }
@@ -103,14 +101,39 @@ export function ensureSettingsFile(filePath: string, defaults: ThunderSettings):
 }
 
 /**
- * The string-valued settings a migration may rewrite.
- *
- * TD-064 widened this past URLs to the Bedrock pair. Deliberately not
+ * The string-valued settings a migration may rewrite. Deliberately not
  * `keyof ThunderSettings`: `chatEnabled` is a boolean the user toggles,
  * and `downloadFolder` is a path they picked — neither has a
  * "previously shipped default" worth rewriting.
  */
-type MigratableSettingKey = 'apiUrl' | 'mcpUrl' | 'bedrockRegion' | 'bedrockModelId'
+type MigratableSettingKey = 'apiUrl' | 'contextUrl'
+
+/**
+ * TD-065: keys the app no longer reads, left behind in every settings
+ * file written before the cutover.
+ */
+const RETIRED_SETTING_KEYS: ReadonlyArray<string> = ['mcpUrl', 'bedrockRegion', 'bedrockModelId']
+
+/**
+ * Rewrites a settings file that still carries a retired key, dropping
+ * it and filling in anything the current schema adds from `defaults`.
+ * {@link coerce} does both: it builds a fresh record from the fields the
+ * app knows about, so a key it has never heard of cannot survive.
+ *
+ * Deliberately not a rename. A retired value was chosen for a service
+ * this app no longer talks to; carrying it onto the replacement key
+ * would point the chat at an endpoint the user never picked. They get
+ * the shipped default and can re-enter an override if they had one.
+ *
+ * Idempotent, and a no-op when the file is missing or unparseable —
+ * `ensureSettingsFile` handles those cases at the same call site.
+ */
+export function dropRetiredSettings(filePath: string, defaults: ThunderSettings): void {
+  const parsed = parseFile(filePath)
+  if (!parsed) return
+  if (!RETIRED_SETTING_KEYS.some((key) => key in parsed)) return
+  writeSettingsFile(filePath, coerce(parsed, defaults))
+}
 
 /**
  * TD-029: one-time migration. If the stored value at `key` exactly
@@ -124,11 +147,10 @@ type MigratableSettingKey = 'apiUrl' | 'mcpUrl' | 'bedrockRegion' | 'bedrockMode
  * No-ops cleanly when the file is missing or unparseable —
  * `ensureSettingsFile` handles those cases on the same call site.
  *
- * TD-066 generalised this from an `apiUrl`-only helper, and TD-064
- * widened it past URLs. Every one of these fields needs the identical
- * treatment for the identical reason — a persisted file means a new
- * shipped default would otherwise only ever reach a machine that has
- * never launched the app.
+ * TD-066 generalised this from an `apiUrl`-only helper. Every one of
+ * these fields needs the identical treatment for the identical reason —
+ * a persisted file means a new shipped default would otherwise only ever
+ * reach a machine that has never launched the app.
  */
 export function migrateSetting(
   filePath: string,

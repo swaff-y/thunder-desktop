@@ -6,9 +6,14 @@ interface ChatBridge {
   send: ChatSend;
   /**
    * Aborts the in-flight turn in main. `useChat`'s `cancel` calls this so
-   * the agent loop stops burning tokens on an abandoned answer.
+   * the server stops burning tokens on an abandoned answer.
    */
   cancelRequest: () => void;
+  /**
+   * TD-065: drops the conversation on the context server. `useChat`'s
+   * `clear` calls this — the transcript lives in two places now.
+   */
+  clearRequest: () => void;
 }
 
 /**
@@ -43,5 +48,12 @@ export function useChatBridge(): ChatBridge {
     void window.thunder.chat.cancel();
   }, []);
 
-  return useMemo(() => ({ send, cancelRequest }), [send, cancelRequest]);
+  const clearRequest = useCallback(() => {
+    void window.thunder.chat.clear();
+  }, []);
+
+  return useMemo(
+    () => ({ send, cancelRequest, clearRequest }),
+    [send, cancelRequest, clearRequest]
+  );
 }

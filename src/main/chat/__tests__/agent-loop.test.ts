@@ -10,6 +10,12 @@ import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js'
 import type { ContentBlock, MessageParam } from '@anthropic-ai/sdk/resources/messages/index'
 import { McpFailureError } from '../../mcp/errors'
 import {
+  NO_DATA_MESSAGE,
+  SHOW_CHART_ACK,
+  SHOW_CHART_TOOL_NAME,
+  INVALID_INPUT_MESSAGE
+} from '../tools/show-chart'
+import {
   MAX_TOOL_ITERATIONS,
   createAgentLoop,
   type AgentLoop,
@@ -109,11 +115,15 @@ describe('createAgentLoop', () => {
     expect(callTool).not.toHaveBeenCalled()
   })
 
-  it('passes the halo-mcp tool list to the model', async () => {
+  it('passes the halo-mcp tool list plus the client-side chart tool to the model', async () => {
     turns = [textTurn('ok')]
     await build().ask({ question: 'hi' })
 
-    expect(requests[0].tools.map((tool) => tool.name)).toEqual(['list_entities', 'get_record'])
+    expect(requests[0].tools.map((tool) => tool.name)).toEqual([
+      'list_entities',
+      'get_record',
+      SHOW_CHART_TOOL_NAME
+    ])
     expect(requests[0].system).toContain('Halo video catalogue')
   })
 
@@ -303,6 +313,108 @@ describe('createAgentLoop', () => {
     await build().ask({ question: 'list actors', signal: controller.signal })
 
     expect(callTool).toHaveBeenCalledWith('list_entities', {}, controller.signal)
+  })
+
+  it('turns show_chart after a catalogue call into a chart action, without touching halo-mcp', async () => {
+    callTool.mockResolvedValueOnce(
+      structured({ entity_type: 'movie', items: [{ entity_id: 'm1', name: 'Alpha', count: 40 }] })
+    )
+    turns = [
+      toolTurn({ id: 'tu_1', name: 'get_top_entities', input: { entity_type: 'movie' } }),
+      toolTurn({
+        id: 'tu_2',
+        name: SHOW_CHART_TOOL_NAME,
+        input: {
+          title: 'Clicks by movie',
+          metric_label: 'Clicks',
+          bars: [{ name: 'Alpha', value: 40 }]
+        }
+      }),
+      textTurn('Alpha leads on clicks.')
+    ]
+
+    const result = await build().ask({ question: 'chart the clicks by movie' })
+
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(toolResultMessages(requests[2]).at(-1)?.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'tu_2', content: SHOW_CHART_ACK }
+    ])
+    expect(result).toMatchObject({
+      ok: true,
+      action: {
+        kind: 'chart',
+        tool: 'get_top_entities',
+        title: 'Clicks by movie',
+        metricLabel: 'Clicks',
+        bars: [{ name: 'Alpha', value: 40 }]
+      }
+    })
+  })
+
+  it('discards a show_chart with no catalogue call behind it and answers with no action', async () => {
+    turns = [
+      toolTurn({
+        id: 'tu_1',
+        name: SHOW_CHART_TOOL_NAME,
+        input: {
+          title: 'Invented',
+          metric_label: 'Clicks',
+          bars: [{ name: 'Alpha', value: 40 }]
+        }
+      }),
+      textTurn('I need to look those up first.')
+    ]
+
+    const result = await build().ask({ question: 'chart something you made up' })
+
+    expect(callTool).not.toHaveBeenCalled()
+    expect(toolResultMessages(requests[1])[0].content).toEqual([
+      { type: 'tool_result', tool_use_id: 'tu_1', content: NO_DATA_MESSAGE, is_error: true }
+    ])
+    expect(result).toMatchObject({ ok: true, action: { kind: 'none', tool: null } })
+  })
+
+  it('drops a chart the model moved on from, rather than heading it with a later call', async () => {
+    turns = [
+      toolTurn({ id: 'tu_1', name: 'get_top_entities', input: { entity_type: 'movie' } }),
+      toolTurn({
+        id: 'tu_2',
+        name: SHOW_CHART_TOOL_NAME,
+        input: {
+          title: 'Clicks by movie',
+          metric_label: 'Clicks',
+          bars: [{ name: 'Alpha', value: 40 }]
+        }
+      }),
+      toolTurn({ id: 'tu_3', name: 'get_top_entities', input: { entity_type: 'actor' } }),
+      textTurn('And here are the actors.')
+    ]
+
+    const result = await build().ask({ question: 'chart the movies, then list the actors' })
+
+    expect(result).toMatchObject({
+      ok: true,
+      action: { kind: 'list', tool: 'get_top_entities', args: { entity_type: 'actor' } }
+    })
+  })
+
+  it('hands a malformed show_chart back as an error the model can retry', async () => {
+    turns = [
+      toolTurn({ id: 'tu_1', name: 'get_top_entities' }),
+      toolTurn({
+        id: 'tu_2',
+        name: SHOW_CHART_TOOL_NAME,
+        input: { title: 'Bad', metric_label: 'Clicks', bars: [] }
+      }),
+      textTurn('done')
+    ]
+
+    const result = await build().ask({ question: 'chart it' })
+
+    expect(toolResultMessages(requests[2]).at(-1)?.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'tu_2', content: INVALID_INPUT_MESSAGE, is_error: true }
+    ])
+    expect(result).toMatchObject({ ok: true, action: { kind: 'list', tool: 'get_top_entities' } })
   })
 
   it('pushes thinking, the tool name, then idle', async () => {

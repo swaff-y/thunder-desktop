@@ -15,6 +15,7 @@ import { LIST_TOOLS, SINGLE_TOOLS } from '../../shared/chat'
 import type { ChatAction, ChatActionKind } from '../../shared/chat'
 import { isPlainObject } from '../lib/json'
 import { contentText } from '../mcp/errors'
+import type { ChartRequest } from './tools/show-chart'
 
 /** One tool call that ran and did not report an error. */
 export interface ToolCallRecord {
@@ -96,15 +97,34 @@ function titleFor(tool: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-export function deriveAction(calls: readonly ToolCallRecord[]): ChatAction {
+/**
+ * `chart` overrides the tool-name derivation, because it is the model
+ * saying how it wants the result it just fetched presented — but only
+ * ever alongside a halo-mcp call. A chart with nothing behind it is
+ * dropped rather than drawn (TD-059).
+ */
+export function deriveAction(
+  calls: readonly ToolCallRecord[],
+  chart: ChartRequest | null = null
+): ChatAction {
   const last = calls.at(-1)
   if (last === undefined) return NO_ACTION
 
-  return {
-    kind: actionKindFor(last.tool),
+  const base = {
     tool: last.tool,
     args: last.args,
-    title: titleFor(last.tool),
     result: stripPresignedUrls(toolResultPayload(last.result))
   }
+
+  if (chart !== null) {
+    return {
+      ...base,
+      kind: 'chart',
+      title: chart.title,
+      metricLabel: chart.metricLabel,
+      bars: chart.bars
+    }
+  }
+
+  return { ...base, kind: actionKindFor(last.tool), title: titleFor(last.tool) }
 }

@@ -1,4 +1,4 @@
-import type { ChatAction, ChatAskResult } from "../../../../../shared/chat";
+import type { ChartBar, ChatAction, ChatAskResult } from "../../../../../shared/chat";
 
 export const NO_ACTION: ChatAction = {
   kind: "none",
@@ -26,6 +26,15 @@ export function singleAction(
   result: unknown
 ): ChatAction {
   return { kind: "single", tool, args, title: tool, result };
+}
+
+export function chartAction(
+  tool: string,
+  title: string,
+  metricLabel: string,
+  bars: ChartBar[]
+): ChatAction {
+  return { kind: "chart", tool, args: {}, title, result: null, metricLabel, bars };
 }
 
 export function deferredAnswer(): {

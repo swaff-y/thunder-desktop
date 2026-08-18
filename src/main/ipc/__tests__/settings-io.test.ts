@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import {
   ensureSettingsFile,
   getSetting,
-  migrateUrlSetting,
+  migrateSetting,
   readSettings,
   setSetting,
   writeSettings,
@@ -19,6 +19,8 @@ import {
   DEFAULT_DEV_API_URL,
   DEFAULT_DEV_MCP_URL,
   DEFAULT_MCP_URL,
+  LEGACY_BEDROCK_MODEL_ID,
+  LEGACY_BEDROCK_REGION,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   resolveDefaultApiUrl,
@@ -178,14 +180,17 @@ describe('settings-io (TD-018)', () => {
   describe('AI chat fields (TD-052)', () => {
     it('exposes the shipped defaults for the four new fields', () => {
       expect(DEFAULT_MCP_URL).toBe('https://halo-mcp.swaff.name/mcp')
-      expect(DEFAULT_BEDROCK_REGION).toBe('ap-south-1')
-      // The `anthropic.` prefix is load-bearing — Bedrock namespaces
-      // model ids by provider and 400s the bare first-party id.
-      expect(DEFAULT_BEDROCK_MODEL_ID).toBe('global.anthropic.claude-sonnet-5')
-      // Both prefixes are load-bearing: `anthropic.` namespaces the
-      // provider, `global.` selects the cross-region inference profile
-      // without which Bedrock refuses on-demand throughput entirely.
-      expect(DEFAULT_BEDROCK_MODEL_ID).toMatch(/^global\.anthropic\./)
+      expect(DEFAULT_BEDROCK_REGION).toBe('us-east-1')
+      expect(DEFAULT_BEDROCK_MODEL_ID).toBe('anthropic.claude-sonnet-5')
+    })
+
+    // TD-064: the `global.` prefix is an InvokeModel inference-profile
+    // id. `AnthropicBedrockMantle` takes the model id verbatim, so it
+    // 404s — which is what shipped, and what made the chat unusable on
+    // a fresh install.
+    it('namespaces the model by provider and nothing else', () => {
+      expect(DEFAULT_BEDROCK_MODEL_ID).toMatch(/^anthropic\./)
+      expect(DEFAULT_BEDROCK_MODEL_ID).not.toMatch(/^(global|apac|us|eu)\./)
     })
 
     it('falls back to defaults when the four fields are absent from the file', () => {
@@ -388,9 +393,9 @@ describe('settings-io (TD-018)', () => {
     })
   })
 
-  // ─── migrateUrlSetting: apiUrl (TD-029 cutover, TD-051 managed domain) ───
+  // ─── migrateSetting: apiUrl (TD-029 cutover, TD-051 managed domain) ───
 
-  describe('migrateUrlSetting — apiUrl (TD-029, TD-051)', () => {
+  describe('migrateSetting — apiUrl (TD-029, TD-051)', () => {
     const LEGACY = LEGACY_DEV_API_URL
     const LEGACY_PROD = LEGACY_PROD_API_URL
     const PROD: ThunderSettings = {
@@ -401,14 +406,14 @@ describe('settings-io (TD-018)', () => {
 
     it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy prod URL', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY_PROD })
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })
 
     it('rewrites apiUrl to defaults.apiUrl when the stored value is the legacy dev URL', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY })
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY, LEGACY_PROD])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })
@@ -416,16 +421,16 @@ describe('settings-io (TD-018)', () => {
     it('preserves a custom apiUrl that is not in the legacy list', () => {
       const custom = 'https://staging.halo.example/'
       writeSettingsFile(path, { ...PROD, apiUrl: custom })
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(custom)
     })
 
     it('is idempotent — a second run after migration does not re-touch the file', () => {
       writeSettingsFile(path, { ...PROD, apiUrl: LEGACY })
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       const firstMtime = readFileSync(path, 'utf-8')
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       // After the first run the value is no longer in the legacy list,
       // so the second run is a no-op and the on-disk content is
       // byte-identical (no rewrite, no temp-file dance).
@@ -439,7 +444,7 @@ describe('settings-io (TD-018)', () => {
         downloadFolder: '/Users/test/Downloads/Thunder',
         userAgent: 'CustomUA/1.0'
       })
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw).toEqual({
         ...DEFAULTS,
@@ -453,7 +458,7 @@ describe('settings-io (TD-018)', () => {
       // Migration runs after `ensureSettingsFile` in production, so a
       // missing file at this point would mean the seed write itself
       // failed — surface nothing here, just don't throw.
-      expect(() => migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])).not.toThrow()
+      expect(() => migrateSetting(path, PROD, 'apiUrl', [LEGACY])).not.toThrow()
       expect(readdirSync(dir)).toEqual([])
     })
 
@@ -461,13 +466,13 @@ describe('settings-io (TD-018)', () => {
       // `ensureSettingsFile` is responsible for repairing a corrupt
       // file; the migration shouldn't second-guess that policy.
       writeFileSync(path, '{ not json')
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       expect(readFileSync(path, 'utf-8')).toBe('{ not json')
     })
 
     it('no-ops when the stored apiUrl is not a string (defensive)', () => {
       writeFileSync(path, JSON.stringify({ apiUrl: 42, downloadFolder: '/tmp' }))
-      migrateUrlSetting(path, PROD, 'apiUrl', [LEGACY])
+      migrateSetting(path, PROD, 'apiUrl', [LEGACY])
       // File untouched — readSettings will fall back to defaults at
       // the next read regardless.
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as { apiUrl: unknown }
@@ -478,22 +483,22 @@ describe('settings-io (TD-018)', () => {
       const legacyA = 'https://old-a.example/'
       const legacyB = 'https://old-b.example/'
       writeSettingsFile(path, { ...PROD, apiUrl: legacyB })
-      migrateUrlSetting(path, PROD, 'apiUrl', [legacyA, legacyB])
+      migrateSetting(path, PROD, 'apiUrl', [legacyA, legacyB])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(PROD.apiUrl)
     })
   })
 
-  // ─── migrateUrlSetting: mcpUrl (TD-066) ───────────────────────────
+  // ─── migrateSetting: mcpUrl (TD-066) ───────────────────────────
 
-  describe('migrateUrlSetting — mcpUrl (TD-066)', () => {
+  describe('migrateSetting — mcpUrl (TD-066)', () => {
     // What an unpackaged run passes: the shipped default it did *not*
     // resolve to. Mirrors `shippedMcpDefaults` in `ipc/settings.ts`.
     const DEV: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_DEV_MCP_URL }
 
     it('retargets a settings file pinned to the prod MCP default', () => {
       writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
     })
@@ -501,7 +506,7 @@ describe('settings-io (TD-018)', () => {
     it('flips back to prod on a -prod launch', () => {
       const prod: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_MCP_URL }
       writeSettingsFile(path, { ...prod, mcpUrl: DEFAULT_DEV_MCP_URL })
-      migrateUrlSetting(path, prod, 'mcpUrl', [DEFAULT_DEV_MCP_URL])
+      migrateSetting(path, prod, 'mcpUrl', [DEFAULT_DEV_MCP_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
     })
@@ -509,23 +514,23 @@ describe('settings-io (TD-018)', () => {
     it('preserves a custom mcpUrl typed into Settings', () => {
       const custom = 'https://localhost:8787/mcp'
       writeSettingsFile(path, { ...DEV, mcpUrl: custom })
-      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL])
+      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.mcpUrl).toBe(custom)
     })
 
     it('is idempotent', () => {
       writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
       const first = readFileSync(path, 'utf-8')
-      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
       expect(readFileSync(path, 'utf-8')).toBe(first)
     })
 
     it('leaves apiUrl alone while rewriting mcpUrl', () => {
       const custom = 'https://staging.halo.example/'
       writeSettingsFile(path, { ...DEV, apiUrl: custom, mcpUrl: DEFAULT_MCP_URL })
-      migrateUrlSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(custom)
       expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
@@ -533,9 +538,76 @@ describe('settings-io (TD-018)', () => {
 
     it('no-ops on an empty legacy list (the packaged-build case)', () => {
       writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateUrlSetting(path, DEV, 'mcpUrl', [])
+      migrateSetting(path, DEV, 'mcpUrl', [])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
+    })
+  })
+
+  // ─── migrateSetting: the Bedrock pair (TD-064) ────────────────────
+
+  describe('migrateSetting — Bedrock pair (TD-064)', () => {
+    const FIXED: ThunderSettings = {
+      ...DEFAULTS,
+      bedrockRegion: DEFAULT_BEDROCK_REGION,
+      bedrockModelId: DEFAULT_BEDROCK_MODEL_ID
+    }
+
+    it('rewrites the stale region and model that shipped together', () => {
+      writeSettingsFile(path, {
+        ...FIXED,
+        bedrockRegion: LEGACY_BEDROCK_REGION,
+        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
+      })
+      migrateSetting(path, FIXED, 'bedrockRegion', [LEGACY_BEDROCK_REGION])
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.bedrockRegion).toBe(DEFAULT_BEDROCK_REGION)
+      expect(raw.bedrockModelId).toBe(DEFAULT_BEDROCK_MODEL_ID)
+    })
+
+    // The two fields migrate independently — someone who moved region
+    // by hand but never touched the model still gets the model fixed.
+    it('rewrites the model while leaving a hand-set region alone', () => {
+      writeSettingsFile(path, {
+        ...FIXED,
+        bedrockRegion: 'eu-central-1',
+        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
+      })
+      migrateSetting(path, FIXED, 'bedrockRegion', [LEGACY_BEDROCK_REGION])
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.bedrockRegion).toBe('eu-central-1')
+      expect(raw.bedrockModelId).toBe(DEFAULT_BEDROCK_MODEL_ID)
+    })
+
+    it('preserves a hand-set model id', () => {
+      const custom = 'anthropic.claude-opus-5'
+      writeSettingsFile(path, { ...FIXED, bedrockModelId: custom })
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.bedrockModelId).toBe(custom)
+    })
+
+    it('is idempotent', () => {
+      writeSettingsFile(path, { ...FIXED, bedrockModelId: LEGACY_BEDROCK_MODEL_ID })
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      const first = readFileSync(path, 'utf-8')
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      expect(readFileSync(path, 'utf-8')).toBe(first)
+    })
+
+    it('leaves the URL fields untouched while rewriting the Bedrock pair', () => {
+      const custom = 'https://staging.halo.example/'
+      writeSettingsFile(path, {
+        ...FIXED,
+        apiUrl: custom,
+        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
+      })
+      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
+      expect(raw.apiUrl).toBe(custom)
+      expect(raw.mcpUrl).toBe(FIXED.mcpUrl)
     })
   })
 })

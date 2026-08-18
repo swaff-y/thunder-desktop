@@ -102,8 +102,15 @@ export function ensureSettingsFile(filePath: string, defaults: ThunderSettings):
   }
 }
 
-/** The URL-valued settings a migration may rewrite. */
-type UrlSettingKey = 'apiUrl' | 'mcpUrl'
+/**
+ * The string-valued settings a migration may rewrite.
+ *
+ * TD-064 widened this past URLs to the Bedrock pair. Deliberately not
+ * `keyof ThunderSettings`: `chatEnabled` is a boolean the user toggles,
+ * and `downloadFolder` is a path they picked — neither has a
+ * "previously shipped default" worth rewriting.
+ */
+type MigratableSettingKey = 'apiUrl' | 'mcpUrl' | 'bedrockRegion' | 'bedrockModelId'
 
 /**
  * TD-029: one-time migration. If the stored value at `key` exactly
@@ -117,15 +124,16 @@ type UrlSettingKey = 'apiUrl' | 'mcpUrl'
  * No-ops cleanly when the file is missing or unparseable —
  * `ensureSettingsFile` handles those cases on the same call site.
  *
- * TD-066 generalised this from an `apiUrl`-only helper. `mcpUrl` needs
- * the identical treatment for the identical reason — a persisted file
- * means a new shipped default would otherwise only ever reach a machine
- * that has never launched the app.
+ * TD-066 generalised this from an `apiUrl`-only helper, and TD-064
+ * widened it past URLs. Every one of these fields needs the identical
+ * treatment for the identical reason — a persisted file means a new
+ * shipped default would otherwise only ever reach a machine that has
+ * never launched the app.
  */
-export function migrateUrlSetting(
+export function migrateSetting(
   filePath: string,
   defaults: ThunderSettings,
-  key: UrlSettingKey,
+  key: MigratableSettingKey,
   legacyValues: ReadonlyArray<string>
 ): void {
   const parsed = parseFile(filePath)

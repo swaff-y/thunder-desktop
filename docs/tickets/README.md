@@ -103,5 +103,5 @@ could ever have copied phase 8.
 - [TD-060](complete/TD-060-dev-backend-default.md) — `npm run dev` defaults to the dev backend
 - [TD-062](complete/TD-062-bedrock-smoke-client-mismatch.md) — Bedrock smoke test validates a different client than the app
 - [TD-063](complete/TD-063-dev-userdata-isolation.md) — `npm run dev` repoints the packaged app at the dev backend (shared userData)
-- [TD-064](TD-064-bedrock-defaults-stale.md) — Shipped Bedrock defaults don't work against the app's own client
+- [TD-064](complete/TD-064-bedrock-defaults-stale.md) — Shipped Bedrock defaults don't work against the app's own client
 - [TD-066](complete/TD-066-dev-mcp-url-default.md) — `npm run dev` defaults to the dev halo-mcp (dev token + prod MCP reads as "Your session expired")

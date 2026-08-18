@@ -134,8 +134,8 @@ describe('settings IPC validation (TD-052)', () => {
     // account. Bedrock is per-AWS-account rather than per-Halo
     // environment, so its defaults do not move.
     expect(all.mcpUrl).toBe('https://halo-mcp-dev.swaff.name/mcp')
-    expect(all.bedrockRegion).toBe('ap-south-1')
-    expect(all.bedrockModelId).toBe('global.anthropic.claude-sonnet-5')
+    expect(all.bedrockRegion).toBe('us-east-1')
+    expect(all.bedrockModelId).toBe('anthropic.claude-sonnet-5')
   })
 
   // ─── Dev backend (TD-060) ─────────────────────────────────────────
@@ -201,6 +201,43 @@ describe('settings IPC validation (TD-052)', () => {
     registerSettingsHandlers()
     expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(
       'http://localhost:8787/mcp'
+    )
+  })
+
+  // ─── Bedrock defaults (TD-064) ────────────────────────────────────
+
+  // The pair 404s against the app's own client, so unlike the URL
+  // migrations this one has to reach packaged builds too — there is no
+  // deployment where keeping it is the user's intent.
+  it('rewrites the stale Bedrock pair that shipped before TD-064', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({
+        bedrockRegion: 'ap-south-1',
+        bedrockModelId: 'global.anthropic.claude-sonnet-5'
+      })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockRegion')).toBe('us-east-1')
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockModelId')).toBe(
+      'anthropic.claude-sonnet-5'
+    )
+  })
+
+  it('leaves a hand-set Bedrock pair alone', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({
+        bedrockRegion: 'eu-central-1',
+        bedrockModelId: 'anthropic.claude-opus-5'
+      })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockRegion')).toBe('eu-central-1')
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'bedrockModelId')).toBe(
+      'anthropic.claude-opus-5'
     )
   })
 

@@ -15,6 +15,8 @@ import {
   DEFAULT_DEV_API_URL,
   DEFAULT_DEV_MCP_URL,
   DEFAULT_MCP_URL,
+  LEGACY_BEDROCK_MODEL_ID,
+  LEGACY_BEDROCK_REGION,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   resolveDefaultApiUrl,
@@ -24,7 +26,7 @@ import {
 import {
   ensureSettingsFile,
   getSetting,
-  migrateUrlSetting,
+  migrateSetting,
   readSettings,
   setSetting
 } from './settings-io'
@@ -170,7 +172,7 @@ export function registerSettingsHandlers(): void {
   const shippedDefaults = app.isPackaged
     ? []
     : [DEFAULT_API_URL, DEFAULT_DEV_API_URL].filter((url) => url !== defaults().apiUrl)
-  migrateUrlSetting(settingsPath(), defaults(), 'apiUrl', [
+  migrateSetting(settingsPath(), defaults(), 'apiUrl', [
     LEGACY_DEV_API_URL,
     LEGACY_PROD_API_URL,
     ...shippedDefaults
@@ -183,7 +185,17 @@ export function registerSettingsHandlers(): void {
   const shippedMcpDefaults = app.isPackaged
     ? []
     : [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL].filter((url) => url !== defaults().mcpUrl)
-  migrateUrlSetting(settingsPath(), defaults(), 'mcpUrl', shippedMcpDefaults)
+  migrateSetting(settingsPath(), defaults(), 'mcpUrl', shippedMcpDefaults)
+
+  // TD-064: unlike the URL migrations above, this one runs in packaged
+  // builds too. The pair it replaces 404s on every question against the
+  // app's own client, so there is no deployment where leaving it in
+  // place is the user's intent — and no "deliberate override" to
+  // protect, because nobody chose a combination that never worked. A
+  // region or model the user actually typed does not match these
+  // literals and is left alone.
+  migrateSetting(settingsPath(), defaults(), 'bedrockRegion', [LEGACY_BEDROCK_REGION])
+  migrateSetting(settingsPath(), defaults(), 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.settingsGetAll, async () => {
     return readSettings(settingsPath(), defaults())

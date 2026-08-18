@@ -3,6 +3,11 @@
  * stored AWS credentials actually reach Bedrock. Run it with
  * `npm run smoke:bedrock`.
  *
+ * TD-062: builds the same `AnthropicBedrockMantle` client, the same
+ * way, as {@link createBedrockModel} in
+ * `src/main/chat/bedrock-client.ts`. A smoke test pointed at a
+ * different endpoint than the app answers a question nobody asked.
+ *
  * Runs under the `electron` binary rather than bare `node` — and has
  * to. The credentials are sealed with `safeStorage`, which is backed by
  * the OS keychain and only exists inside an Electron process after
@@ -22,7 +27,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import AnthropicBedrock from '@anthropic-ai/bedrock-sdk'
+import { AnthropicBedrockMantle } from '@anthropic-ai/bedrock-sdk'
 
 /** Dev first — that's the profile a developer running this is testing. */
 const APP_DIRS = ['thunder-desktop', 'Thunder Desktop']
@@ -37,6 +42,20 @@ const CREDENTIALS_FILENAME = 'thunder-desktop-aws.enc'
 // below, which mirror `settings-io.ts` and `aws-creds-io.ts`.
 const DEFAULT_BEDROCK_REGION = 'ap-south-1'
 const DEFAULT_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
+
+/**
+ * Where to point someone whose region does not serve their model on the
+ * Messages-API endpoint. `us-east-1` carries the current Anthropic model
+ * line, so it is the answer most likely to work first try.
+ */
+const REFERENCE_REGION = 'us-east-1'
+
+function tryElsewhere(region) {
+  if (region === REFERENCE_REGION) {
+    return 'Pick a region that carries this model, or a model this region carries.'
+  }
+  return `Try ${REFERENCE_REGION}, which carries the current Anthropic model line.`
+}
 
 function readJson(path) {
   try {
@@ -94,38 +113,40 @@ function readCredentials(userData) {
  * stack trace.
  */
 function explain(error, region, modelId) {
-  const name = error?.error?.type ?? error?.name ?? ''
+  const name = error?.type ?? error?.error?.type ?? error?.name ?? ''
   const message = error?.message ?? String(error)
 
-  if (/AccessDenied/i.test(name) || /AccessDenied/i.test(message)) {
+  if (/not_found_error/i.test(name) || error?.status === 404) {
+    return [
+      `The Bedrock Messages-API endpoint in ${region} does not serve "${modelId}".`,
+      'This is the endpoint the app itself calls, so a model id that fails here',
+      'will fail in Settings → AI Chat too. Model availability is per region.',
+      tryElsewhere(region)
+    ].join('\n')
+  }
+  if (/permission_error|AccessDenied/i.test(name) || /AccessDenied/i.test(message)) {
     return [
       `Bedrock denied access to "${modelId}" in ${region}.`,
       'Model access is granted per account AND per region — request it in the',
-      `AWS console (Bedrock → Model access) for ${region}, or check the IAM`,
-      'principal has bedrock:InvokeModel. TD-054 is blocked until this passes.'
+      `AWS console (Bedrock → Model access) for ${region}, and check the IAM`,
+      'principal is allowed to invoke Bedrock models.'
     ].join('\n')
   }
-  if (/on-demand throughput/i.test(message)) {
-    const bare = modelId.replace(/^(global|us|eu|jp|apac)\./, '')
+  if (
+    /invalid_request_error|ValidationException/i.test(name) ||
+    /ValidationException/i.test(message)
+  ) {
     return [
-      `Bedrock will not serve "${modelId}" on on-demand throughput in ${region}.`,
-      'This model is only reachable through a cross-region inference profile,',
-      'so the id needs a routing prefix. Set the Bedrock model ID in',
-      'Settings → AI Chat to one of:',
-      `  global.${bare}   (dynamic routing, no pricing premium)`,
-      `  apac.${bare}     (regional pin for ${region}; ~10% premium)`,
-      'If both are rejected, the account has not been granted access to this',
-      'model — request it in the AWS console (Bedrock → Model access).'
+      `Bedrock rejected the request for "${modelId}" in ${region}.`,
+      'Check the model id is one the Messages API accepts verbatim — it is sent',
+      'through unchanged, not translated.',
+      tryElsewhere(region)
     ].join('\n')
   }
-  if (/ValidationException|ResourceNotFound/i.test(name) || /ValidationException/i.test(message)) {
-    return [
-      `Bedrock rejected the model id "${modelId}" in ${region}.`,
-      'Bedrock namespaces model ids by provider — the "anthropic." prefix is',
-      'required, and the model must be offered in this region.'
-    ].join('\n')
-  }
-  if (/UnrecognizedClient|InvalidSignature|security token/i.test(message)) {
+  if (
+    /authentication_error/i.test(name) ||
+    /UnrecognizedClient|InvalidSignature|security token/i.test(message)
+  ) {
     return [
       'AWS rejected the credentials.',
       'Re-enter them in Settings → AI Chat, or clear them to fall through to',
@@ -133,7 +154,7 @@ function explain(error, region, modelId) {
     ].join('\n')
   }
   if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(message)) {
-    return `Could not reach the Bedrock endpoint for "${region}" — check the region name and your network.`
+    return `Could not reach bedrock-mantle.${region}.api.aws — check the region name and your network.`
   }
   return message
 }
@@ -149,11 +170,11 @@ app.whenReady().then(async () => {
   console.log(`creds:     ${creds ? 'stored (encrypted)' : 'default AWS credential chain'}`)
   console.log('')
 
-  const client = new AnthropicBedrock({
+  const client = new AnthropicBedrockMantle({
     awsRegion: bedrockRegion,
     ...(creds && {
       awsAccessKey: creds.accessKeyId,
-      awsSecretKey: creds.secretAccessKey,
+      awsSecretAccessKey: creds.secretAccessKey,
       ...(creds.sessionToken && { awsSessionToken: creds.sessionToken })
     })
   })

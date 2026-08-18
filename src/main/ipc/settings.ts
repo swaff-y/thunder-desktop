@@ -13,16 +13,18 @@ import {
   DEFAULT_BEDROCK_MODEL_ID,
   DEFAULT_BEDROCK_REGION,
   DEFAULT_DEV_API_URL,
+  DEFAULT_DEV_MCP_URL,
   DEFAULT_MCP_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   resolveDefaultApiUrl,
+  resolveDefaultMcpUrl,
   type ThunderSettings
 } from '../../shared/settings'
 import {
   ensureSettingsFile,
   getSetting,
-  migrateApiUrl,
+  migrateUrlSetting,
   readSettings,
   setSetting
 } from './settings-io'
@@ -58,7 +60,10 @@ export function defaults(): ThunderSettings {
       // passed; packaged builds are always prod.
       apiUrl: resolveDefaultApiUrl({ isPackaged: app.isPackaged, argv: process.argv }),
       downloadFolder: join(app.getPath('downloads'), 'Thunder'),
-      mcpUrl: DEFAULT_MCP_URL,
+      // TD-066: paired with `apiUrl` — halo-mcp forwards the caller's
+      // Halo token, so a dev API URL with a prod MCP URL is a 401 on
+      // every question.
+      mcpUrl: resolveDefaultMcpUrl({ isPackaged: app.isPackaged, argv: process.argv }),
       bedrockRegion: DEFAULT_BEDROCK_REGION,
       bedrockModelId: DEFAULT_BEDROCK_MODEL_ID,
       chatEnabled: false
@@ -165,11 +170,20 @@ export function registerSettingsHandlers(): void {
   const shippedDefaults = app.isPackaged
     ? []
     : [DEFAULT_API_URL, DEFAULT_DEV_API_URL].filter((url) => url !== defaults().apiUrl)
-  migrateApiUrl(settingsPath(), defaults(), [
+  migrateUrlSetting(settingsPath(), defaults(), 'apiUrl', [
     LEGACY_DEV_API_URL,
     LEGACY_PROD_API_URL,
     ...shippedDefaults
   ])
+
+  // TD-066: the same retarget for `mcpUrl`. No legacy list of its own —
+  // `mcpUrl` has only ever shipped the one default, so the untouched
+  // values to flip are exactly the two current ones. Packaged builds
+  // migrate nothing, so a deliberate override there survives a restart.
+  const shippedMcpDefaults = app.isPackaged
+    ? []
+    : [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL].filter((url) => url !== defaults().mcpUrl)
+  migrateUrlSetting(settingsPath(), defaults(), 'mcpUrl', shippedMcpDefaults)
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.settingsGetAll, async () => {
     return readSettings(settingsPath(), defaults())

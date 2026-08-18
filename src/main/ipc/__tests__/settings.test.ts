@@ -130,7 +130,10 @@ describe('settings IPC validation (TD-052)', () => {
 
   it('seeds the AI chat defaults on first launch', async () => {
     const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
-    expect(all.mcpUrl).toBe('https://halo-mcp.swaff.name/mcp')
+    // TD-066: unpackaged, so the MCP URL follows `apiUrl` to the dev
+    // account. Bedrock is per-AWS-account rather than per-Halo
+    // environment, so its defaults do not move.
+    expect(all.mcpUrl).toBe('https://halo-mcp-dev.swaff.name/mcp')
     expect(all.bedrockRegion).toBe('ap-south-1')
     expect(all.bedrockModelId).toBe('global.anthropic.claude-sonnet-5')
   })
@@ -167,5 +170,52 @@ describe('settings IPC validation (TD-052)', () => {
     expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'apiUrl')).toBe(
       'https://halo.example/custom/'
     )
+  })
+
+  // ─── Dev halo-mcp (TD-066) ────────────────────────────────────────
+
+  // The bug this ticket fixes: a settings file written before the dev
+  // MCP default existed pairs a dev `apiUrl` with the prod `mcpUrl`,
+  // and every chat question 401s as "Your session expired."
+  it('flips an untouched prod MCP default to dev on an unpackaged launch', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({
+        apiUrl: 'https://halo-dev.swaff.name/',
+        mcpUrl: 'https://halo-mcp.swaff.name/mcp'
+      })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(
+      'https://halo-mcp-dev.swaff.name/mcp'
+    )
+  })
+
+  it('leaves a hand-set mcpUrl alone', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({ mcpUrl: 'http://localhost:8787/mcp' })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    expect(await invoke(THUNDER_IPC_CHANNELS.settingsGet, 'mcpUrl')).toBe(
+      'http://localhost:8787/mcp'
+    )
+  })
+
+  it('lands apiUrl and mcpUrl on the same environment after a launch', async () => {
+    writeFileSync(
+      join(dir, 'thunder-desktop-settings.json'),
+      JSON.stringify({
+        apiUrl: 'https://halo.swaff.name/',
+        mcpUrl: 'https://halo-mcp.swaff.name/mcp'
+      })
+    )
+    ipcHandlers.clear()
+    registerSettingsHandlers()
+    const all = (await invoke(THUNDER_IPC_CHANNELS.settingsGetAll)) as Record<string, unknown>
+    expect(all.apiUrl).toBe('https://halo-dev.swaff.name/')
+    expect(all.mcpUrl).toBe('https://halo-mcp-dev.swaff.name/mcp')
   })
 })

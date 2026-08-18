@@ -1,0 +1,71 @@
+/**
+ * TCC-003: turn GitHub Packages' misleading 404 into an error that names the
+ * cause. The registry answers an unauthenticated request for a private package
+ * with 404 — the same 404 it returns for a package that does not exist — and
+ * that cannot be fixed from the publishing side.
+ *
+ * Run this BEFORE npm. It is deliberately not an npm `preinstall` script:
+ * npm resolves the dependency tree from the registry before it runs the root
+ * `preinstall`, so a guard wired there fires only once the 404 has already
+ * happened (npm/cli#2660, npm/cli#4067 — verified against npm 10.9).
+ *
+ * Wired instead to the hooks that genuinely run first:
+ *   - `npm run setup`            developer entry point, ahead of `npm ci`
+ *   - `eas-build-pre-install`    thunder only; EAS runs it before npm install
+ *   - the CI install scripts     web-thunder's scripts/*.sh, ahead of `npm ci`
+ *
+ * Kept byte-identical in thunder-desktop, web-thunder and thunder. The package
+ * that would otherwise carry it is the very package this guard exists to
+ * install, so a shared copy is not available at the moment it is needed.
+ */
+
+import { readFileSync } from 'node:fs'
+
+const SCOPE = '@swaff-y/'
+const REGISTRY = 'https://npm.pkg.github.com'
+
+let manifest
+try {
+  manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+} catch {
+  // An unreadable manifest is npm's problem to report, not ours. Blocking the
+  // install here would replace a clear error with a confusing one.
+  process.exit(0)
+}
+
+const scoped = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
+  .filter((name) => name.startsWith(SCOPE))
+  .sort()
+
+// Nothing is fetched from that registry yet, so there is no 404 to prevent and
+// no reason to make anyone set a token. The guard arms itself when the first
+// @swaff-y dependency lands.
+if (scoped.length === 0 || process.env.NODE_AUTH_TOKEN) {
+  process.exit(0)
+}
+
+console.error(
+  [
+    '',
+    'NODE_AUTH_TOKEN is not set.',
+    '',
+    'This repo depends on:',
+    ...scoped.map((name) => `  ${name}`),
+    '',
+    `Those are published private to GitHub Packages (${REGISTRY}),`,
+    'which serves private packages to authenticated requests only. It answers',
+    'an unauthenticated request with 404 — the same 404 it returns for a',
+    'package that does not exist. Without this variable the install fails',
+    'reading "no such package" when it means "no such permission".',
+    '',
+    'Fix: create a PAT with the read:packages scope, then export it:',
+    '',
+    '  export NODE_AUTH_TOKEN=<token>',
+    '',
+    'See thunder-chat-core/docs/consuming.md for the four places this token is',
+    'needed — developer machines, CI, EAS Build and electron-builder.',
+    ''
+  ].join('\n')
+)
+
+process.exit(1)

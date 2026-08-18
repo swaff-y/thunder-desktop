@@ -6,7 +6,9 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  // `.claude/skills` is agent tooling, not app source — plain `.mjs` scripts
+  // that the TypeScript rules (return types especially) cannot be satisfied in.
+  { ignores: ['**/node_modules', '**/dist', '**/out', '.claude/skills'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

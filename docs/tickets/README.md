@@ -83,10 +83,8 @@ could ever have copied phase 8.
 
 - [TD-065](complete/TD-065-context-server-cutover.md) — AI chat: cut over to
   thunder-context. Shipped in #56.
-- [TD-067](TD-067-chat-markdown-renderer.md) — AI chat: render the answer's
-  markdown. The model already emits it and the panel shows literal `**`;
-  thunder-context TC-008 expected this to arrive with IMDb and it arrived
-  early.
+- [TD-067](complete/TD-067-chat-markdown-renderer.md) — AI chat: render the
+  answer's markdown. Shipped in #57.
 
 ## Bugs / polish
 

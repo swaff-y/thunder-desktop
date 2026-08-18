@@ -81,8 +81,8 @@ The Bedrock loop, MCP client and per-user AWS keys move to
 thunder can have the same chat — neither can hold AWS credentials, so neither
 could ever have copied phase 8.
 
-- [TD-065](TD-065-context-server-cutover.md) — AI chat: cut over to
-  thunder-context. Blocked on thunder-context TC-001–TC-006.
+- [TD-065](complete/TD-065-context-server-cutover.md) — AI chat: cut over to
+  thunder-context. Shipped in #56.
 
 ## Bugs / polish
 

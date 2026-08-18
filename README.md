@@ -17,6 +17,10 @@ registry before any `preinstall` hook could warn you — so the check runs ahead
 of npm instead. Export a PAT with the `read:packages` scope as
 `NODE_AUTH_TOKEN`.
 
+`npm run setup` wraps `npm ci`, so it wants a lockfile that matches
+`package.json`. Mid-edit, when you have just changed a dependency, reach for
+`npm install` instead.
+
 The check is inert until this repo actually depends on an `@swaff-y` package.
 Full setup, including electron-builder's packaging step, is in
 [thunder-chat-core/docs/consuming.md](https://github.com/swaff-y/thunder-chat-core/blob/main/docs/consuming.md).

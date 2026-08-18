@@ -28,12 +28,22 @@ let manifest
 try {
   manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 } catch {
-  // An unreadable manifest is npm's problem to report, not ours. Blocking the
-  // install here would replace a clear error with a confusing one.
+  // Fails open, deliberately and for every read or parse failure — not just a
+  // missing file. A manifest npm cannot read is a problem npm reports far
+  // better than we would, and blocking here would replace its clear error with
+  // a confusing one about a token.
   process.exit(0)
 }
 
-const scoped = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
+// Every dependency map, not just the two obvious ones: a dependency declared
+// as peer or optional still resolves against the same registry, and a guard
+// that ignored those would go quietly inert exactly when it was needed.
+const scoped = Object.keys({
+  ...manifest.dependencies,
+  ...manifest.devDependencies,
+  ...manifest.peerDependencies,
+  ...manifest.optionalDependencies
+})
   .filter((name) => name.startsWith(SCOPE))
   .sort()
 

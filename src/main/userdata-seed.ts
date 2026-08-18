@@ -24,7 +24,7 @@
  * `index.ts` owns the `app.setPath` call.
  */
 
-import { copyFileSync, existsSync, mkdirSync, statSync, chmodSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, statSync, chmodSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -36,6 +36,12 @@ import { join } from 'node:path'
 export const SETTINGS_FILENAME = 'thunder-desktop-settings.json'
 export const WINDOW_STATE_FILENAME = 'thunder-desktop-window-state.json'
 export const AUTH_CREDENTIALS_FILENAME = 'thunder-desktop-credentials.enc'
+
+/**
+ * TD-065: retired. Nothing writes or reads this file any more — it is
+ * named only so {@link removeStaleAwsCredentials} can delete what older
+ * versions left behind.
+ */
 export const AWS_CREDENTIALS_FILENAME = 'thunder-desktop-aws.enc'
 
 /**
@@ -47,9 +53,31 @@ export const AWS_CREDENTIALS_FILENAME = 'thunder-desktop-aws.enc'
 export const SEEDED_FILENAMES: ReadonlyArray<string> = [
   SETTINGS_FILENAME,
   WINDOW_STATE_FILENAME,
-  AUTH_CREDENTIALS_FILENAME,
-  AWS_CREDENTIALS_FILENAME
+  AUTH_CREDENTIALS_FILENAME
 ]
+
+/**
+ * TD-065: deletes the encrypted AWS credential file older versions
+ * stored for the local Bedrock client. The chat runs server-side now, so
+ * an IAM key left on disk is a standing grant against the user's AWS
+ * account that nothing reads and — with the Settings form gone — they
+ * have no way to remove themselves.
+ *
+ * Runs unconditionally on every launch rather than behind a
+ * "migrated" flag, for the reason `migrateSetting` does: an idempotent
+ * no-op is cheaper to reason about than a flag that can be lost. A
+ * failure is logged, not thrown; a file we couldn't unlink is not a
+ * reason to refuse to start.
+ */
+export function removeStaleAwsCredentials(userDataDir: string): void {
+  const path = join(userDataDir, AWS_CREDENTIALS_FILENAME)
+  if (!existsSync(path)) return
+  try {
+    unlinkSync(path)
+  } catch (error) {
+    console.warn('[userdata] could not remove the retired AWS credential file', error)
+  }
+}
 
 export const DEV_USERDATA_SUFFIX = '-dev'
 

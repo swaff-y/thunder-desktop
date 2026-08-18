@@ -3,7 +3,6 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
-import { registerAwsCredentialHandlers } from './ipc/aws-creds'
 import { registerBrowserContextMenuHandlers } from './ipc/browser-context-menu'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
 import { registerBrowserDownloadHandlers } from './ipc/browser-download'
@@ -11,7 +10,7 @@ import { registerChatHandlers } from './ipc/chat'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
-import { devUserDataPath, ensureDevUserData } from './userdata-seed'
+import { devUserDataPath, ensureDevUserData, removeStaleAwsCredentials } from './userdata-seed'
 
 // TD-063: unpackaged runs live in `<userData>-dev` so `npm run dev`
 // can't retarget the installed app's `apiUrl` (both resolve `userData`
@@ -48,9 +47,13 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // TD-065: before anything else touches `userData`, so an upgraded
+  // machine never gets through a launch still holding the IAM key the
+  // local Bedrock client used to need.
+  removeStaleAwsCredentials(app.getPath('userData'))
+
   registerSettingsHandlers()
   registerAuthHandlers()
-  registerAwsCredentialHandlers()
   registerChatHandlers()
   registerShellHandlers()
   registerDialogHandlers()

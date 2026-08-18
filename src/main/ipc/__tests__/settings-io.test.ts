@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  dropRetiredSettings,
   ensureSettingsFile,
   getSetting,
   migrateSetting,
@@ -14,25 +15,19 @@ import {
 } from '../settings-io'
 import {
   DEFAULT_API_URL,
-  DEFAULT_BEDROCK_MODEL_ID,
-  DEFAULT_BEDROCK_REGION,
+  DEFAULT_CONTEXT_URL,
   DEFAULT_DEV_API_URL,
-  DEFAULT_DEV_MCP_URL,
-  DEFAULT_MCP_URL,
-  LEGACY_BEDROCK_MODEL_ID,
-  LEGACY_BEDROCK_REGION,
+  DEFAULT_DEV_CONTEXT_URL,
   LEGACY_DEV_API_URL,
   LEGACY_PROD_API_URL,
   resolveDefaultApiUrl,
-  resolveDefaultMcpUrl
+  resolveDefaultContextUrl
 } from '../../../shared/settings'
 
 const DEFAULTS: ThunderSettings = {
   apiUrl: 'https://halo.example/dev/',
   downloadFolder: '/tmp/Thunder',
-  mcpUrl: 'https://halo-mcp.example/mcp',
-  bedrockRegion: 'ap-south-1',
-  bedrockModelId: 'global.anthropic.claude-sonnet-5',
+  contextUrl: 'https://thunder-context.example/v1',
   chatEnabled: false
 }
 
@@ -177,78 +172,50 @@ describe('settings-io (TD-018)', () => {
 
   // ─── AI chat fields (TD-052) ──────────────────────────────────────
 
-  describe('AI chat fields (TD-052)', () => {
-    it('exposes the shipped defaults for the four new fields', () => {
-      expect(DEFAULT_MCP_URL).toBe('https://halo-mcp.swaff.name/mcp')
-      expect(DEFAULT_BEDROCK_REGION).toBe('us-east-1')
-      expect(DEFAULT_BEDROCK_MODEL_ID).toBe('anthropic.claude-sonnet-5')
+  describe('AI chat fields (TD-052, TD-065)', () => {
+    it('exposes the shipped context-server defaults', () => {
+      expect(DEFAULT_CONTEXT_URL).toBe('https://thunder-context.swaff.name/v1')
+      expect(DEFAULT_DEV_CONTEXT_URL).toBe('https://thunder-context-dev.swaff.name/v1')
     })
 
-    // TD-064: the `global.` prefix is an InvokeModel inference-profile
-    // id. `AnthropicBedrockMantle` takes the model id verbatim, so it
-    // 404s — which is what shipped, and what made the chat unusable on
-    // a fresh install.
-    it('namespaces the model by provider and nothing else', () => {
-      expect(DEFAULT_BEDROCK_MODEL_ID).toMatch(/^anthropic\./)
-      expect(DEFAULT_BEDROCK_MODEL_ID).not.toMatch(/^(global|apac|us|eu)\./)
+    // Request paths are appended with a leading slash, so a trailing one
+    // here would produce `.../v1//conversations`.
+    it('ships a context URL with no trailing slash', () => {
+      expect(DEFAULT_CONTEXT_URL).not.toMatch(/\/$/)
+      expect(DEFAULT_DEV_CONTEXT_URL).not.toMatch(/\/$/)
     })
 
-    it('falls back to defaults when the four fields are absent from the file', () => {
+    it('falls back to defaults when the chat fields are absent from the file', () => {
       writeFileSync(path, JSON.stringify({ apiUrl: 'https://a/' }))
       const settings = readSettings(path, DEFAULTS)
-      expect(settings.mcpUrl).toBe(DEFAULTS.mcpUrl)
-      expect(settings.bedrockRegion).toBe(DEFAULTS.bedrockRegion)
-      expect(settings.bedrockModelId).toBe(DEFAULTS.bedrockModelId)
+      expect(settings.contextUrl).toBe(DEFAULTS.contextUrl)
       expect(settings.chatEnabled).toBe(false)
     })
 
-    it('round-trips explicit values for the four fields', () => {
+    it('round-trips explicit values for the chat fields', () => {
       const settings: ThunderSettings = {
         ...DEFAULTS,
-        mcpUrl: 'https://mcp.staging.example/mcp',
-        bedrockRegion: 'us-west-2',
-        bedrockModelId: 'anthropic.claude-opus-5',
+        contextUrl: 'https://thunder-context.staging.example/v1',
         chatEnabled: true
       }
       writeSettingsFile(path, settings)
       expect(readSettings(path, DEFAULTS)).toEqual(settings)
     })
 
-    it('trims surrounding whitespace off the three string fields', () => {
-      writeFileSync(
-        path,
-        JSON.stringify({
-          mcpUrl: '  https://mcp.example/mcp\n',
-          bedrockRegion: ' us-east-1 ',
-          bedrockModelId: '\tanthropic.claude-opus-5  '
-        })
-      )
-      const settings = readSettings(path, DEFAULTS)
-      expect(settings.mcpUrl).toBe('https://mcp.example/mcp')
-      expect(settings.bedrockRegion).toBe('us-east-1')
-      expect(settings.bedrockModelId).toBe('anthropic.claude-opus-5')
+    it('trims surrounding whitespace off contextUrl', () => {
+      writeFileSync(path, JSON.stringify({ contextUrl: '  https://ctx.example/v1\n' }))
+      expect(readSettings(path, DEFAULTS).contextUrl).toBe('https://ctx.example/v1')
     })
 
-    it('falls back rather than persisting a whitespace-only mcpUrl', () => {
-      writeFileSync(path, JSON.stringify({ mcpUrl: '   ' }))
-      expect(readSettings(path, DEFAULTS).mcpUrl).toBe(DEFAULTS.mcpUrl)
+    it('falls back rather than persisting a whitespace-only contextUrl', () => {
+      writeFileSync(path, JSON.stringify({ contextUrl: '   ' }))
+      expect(readSettings(path, DEFAULTS).contextUrl).toBe(DEFAULTS.contextUrl)
     })
 
-    it.each(['bedrockRegion', 'bedrockModelId'] as const)(
-      'falls back rather than persisting a whitespace-only %s',
-      (key) => {
-        writeFileSync(path, JSON.stringify({ [key]: ' \t\n ' }))
-        expect(readSettings(path, DEFAULTS)[key]).toBe(DEFAULTS[key])
-      }
-    )
-
-    it.each(['mcpUrl', 'bedrockRegion', 'bedrockModelId'] as const)(
-      'falls back when %s is not a string',
-      (key) => {
-        writeFileSync(path, JSON.stringify({ [key]: 42 }))
-        expect(readSettings(path, DEFAULTS)[key]).toBe(DEFAULTS[key])
-      }
-    )
+    it('falls back when contextUrl is not a string', () => {
+      writeFileSync(path, JSON.stringify({ contextUrl: 42 }))
+      expect(readSettings(path, DEFAULTS).contextUrl).toBe(DEFAULTS.contextUrl)
+    })
 
     it('preserves chatEnabled: false rather than treating it as absent', () => {
       // A truthiness check here would silently re-enable chat on every
@@ -265,9 +232,9 @@ describe('settings-io (TD-018)', () => {
 
     it('persists a trimmed value written through setSetting', () => {
       writeSettingsFile(path, DEFAULTS)
-      setSetting(path, DEFAULTS, 'bedrockRegion', '  eu-west-1  ')
+      setSetting(path, DEFAULTS, 'contextUrl', '  https://ctx.example/v1  ')
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.bedrockRegion).toBe('eu-west-1')
+      expect(raw.contextUrl).toBe('https://ctx.example/v1')
     })
 
     it('never carries AWS key material — those live in the encrypted store', () => {
@@ -346,36 +313,36 @@ describe('settings-io (TD-018)', () => {
     })
   })
 
-  // ─── resolveDefaultMcpUrl (TD-066 paired with the API URL) ────────
+  // ─── resolveDefaultContextUrl (TD-065, paired with the API URL) ────────
 
-  describe('resolveDefaultMcpUrl (TD-066)', () => {
-    it('defaults an unpackaged run to the dev halo-mcp', () => {
-      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.'] })).toBe(
-        DEFAULT_DEV_MCP_URL
+  describe('resolveDefaultContextUrl (TD-065)', () => {
+    it('defaults an unpackaged run to the dev thunder-context', () => {
+      expect(resolveDefaultContextUrl({ isPackaged: false, argv: ['electron', '.'] })).toBe(
+        DEFAULT_DEV_CONTEXT_URL
       )
     })
 
     it('opts an unpackaged run back into prod with -prod or --prod', () => {
-      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.', '-prod'] })).toBe(
-        DEFAULT_MCP_URL
+      expect(resolveDefaultContextUrl({ isPackaged: false, argv: ['electron', '.', '-prod'] })).toBe(
+        DEFAULT_CONTEXT_URL
       )
-      expect(resolveDefaultMcpUrl({ isPackaged: false, argv: ['electron', '.', '--prod'] })).toBe(
-        DEFAULT_MCP_URL
+      expect(resolveDefaultContextUrl({ isPackaged: false, argv: ['electron', '.', '--prod'] })).toBe(
+        DEFAULT_CONTEXT_URL
       )
     })
 
     it('ignores argv entirely when packaged', () => {
-      expect(resolveDefaultMcpUrl({ isPackaged: true, argv: ['Thunder Desktop', '-prod'] })).toBe(
-        DEFAULT_MCP_URL
+      expect(resolveDefaultContextUrl({ isPackaged: true, argv: ['Thunder Desktop', '-prod'] })).toBe(
+        DEFAULT_CONTEXT_URL
       )
-      expect(resolveDefaultMcpUrl({ isPackaged: true, argv: ['Thunder Desktop'] })).toBe(
-        DEFAULT_MCP_URL
+      expect(resolveDefaultContextUrl({ isPackaged: true, argv: ['Thunder Desktop'] })).toBe(
+        DEFAULT_CONTEXT_URL
       )
     })
 
-    // The whole point of the ticket: halo-mcp forwards the caller's
-    // Halo token, so a launch that resolves one field to dev and the
-    // other to prod 401s on the first question.
+    // thunder-context forwards the caller's Halo token, so a launch that
+    // resolves one field to dev and the other to prod 401s on the first
+    // question.
     it('names the same environment as resolveDefaultApiUrl for any launch', () => {
       const launches = [
         { isPackaged: false, argv: ['electron', '.'] },
@@ -387,8 +354,8 @@ describe('settings-io (TD-018)', () => {
       ]
       for (const launch of launches) {
         const apiIsDev = resolveDefaultApiUrl(launch) === DEFAULT_DEV_API_URL
-        const mcpIsDev = resolveDefaultMcpUrl(launch) === DEFAULT_DEV_MCP_URL
-        expect(mcpIsDev).toBe(apiIsDev)
+        const contextIsDev = resolveDefaultContextUrl(launch) === DEFAULT_DEV_CONTEXT_URL
+        expect(contextIsDev).toBe(apiIsDev)
       }
     })
   })
@@ -489,125 +456,113 @@ describe('settings-io (TD-018)', () => {
     })
   })
 
-  // ─── migrateSetting: mcpUrl (TD-066) ───────────────────────────
+  // ─── migrateSetting: contextUrl (TD-065) ──────────────────────────
 
-  describe('migrateSetting — mcpUrl (TD-066)', () => {
+  describe('migrateSetting — contextUrl (TD-065)', () => {
     // What an unpackaged run passes: the shipped default it did *not*
-    // resolve to. Mirrors `shippedMcpDefaults` in `ipc/settings.ts`.
-    const DEV: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_DEV_MCP_URL }
+    // resolve to. Mirrors `shippedContextDefaults` in `ipc/settings.ts`.
+    const DEV: ThunderSettings = { ...DEFAULTS, contextUrl: DEFAULT_DEV_CONTEXT_URL }
 
-    it('retargets a settings file pinned to the prod MCP default', () => {
-      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+    it('retargets a settings file pinned to the prod context default', () => {
+      writeSettingsFile(path, { ...DEV, contextUrl: DEFAULT_CONTEXT_URL })
+      migrateSetting(path, DEV, 'contextUrl', [DEFAULT_CONTEXT_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
+      expect(raw.contextUrl).toBe(DEFAULT_DEV_CONTEXT_URL)
     })
 
     it('flips back to prod on a -prod launch', () => {
-      const prod: ThunderSettings = { ...DEFAULTS, mcpUrl: DEFAULT_MCP_URL }
-      writeSettingsFile(path, { ...prod, mcpUrl: DEFAULT_DEV_MCP_URL })
-      migrateSetting(path, prod, 'mcpUrl', [DEFAULT_DEV_MCP_URL])
+      const prod: ThunderSettings = { ...DEFAULTS, contextUrl: DEFAULT_CONTEXT_URL }
+      writeSettingsFile(path, { ...prod, contextUrl: DEFAULT_DEV_CONTEXT_URL })
+      migrateSetting(path, prod, 'contextUrl', [DEFAULT_DEV_CONTEXT_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
+      expect(raw.contextUrl).toBe(DEFAULT_CONTEXT_URL)
     })
 
-    it('preserves a custom mcpUrl typed into Settings', () => {
-      const custom = 'https://localhost:8787/mcp'
-      writeSettingsFile(path, { ...DEV, mcpUrl: custom })
-      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL, DEFAULT_DEV_MCP_URL])
+    it('preserves a custom contextUrl typed into Settings', () => {
+      const custom = 'https://localhost:8787/v1'
+      writeSettingsFile(path, { ...DEV, contextUrl: custom })
+      migrateSetting(path, DEV, 'contextUrl', [DEFAULT_CONTEXT_URL, DEFAULT_DEV_CONTEXT_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.mcpUrl).toBe(custom)
+      expect(raw.contextUrl).toBe(custom)
     })
 
     it('is idempotent', () => {
-      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      writeSettingsFile(path, { ...DEV, contextUrl: DEFAULT_CONTEXT_URL })
+      migrateSetting(path, DEV, 'contextUrl', [DEFAULT_CONTEXT_URL])
       const first = readFileSync(path, 'utf-8')
-      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      migrateSetting(path, DEV, 'contextUrl', [DEFAULT_CONTEXT_URL])
       expect(readFileSync(path, 'utf-8')).toBe(first)
     })
 
-    it('leaves apiUrl alone while rewriting mcpUrl', () => {
+    it('leaves apiUrl alone while rewriting contextUrl', () => {
       const custom = 'https://staging.halo.example/'
-      writeSettingsFile(path, { ...DEV, apiUrl: custom, mcpUrl: DEFAULT_MCP_URL })
-      migrateSetting(path, DEV, 'mcpUrl', [DEFAULT_MCP_URL])
+      writeSettingsFile(path, { ...DEV, apiUrl: custom, contextUrl: DEFAULT_CONTEXT_URL })
+      migrateSetting(path, DEV, 'contextUrl', [DEFAULT_CONTEXT_URL])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
       expect(raw.apiUrl).toBe(custom)
-      expect(raw.mcpUrl).toBe(DEFAULT_DEV_MCP_URL)
+      expect(raw.contextUrl).toBe(DEFAULT_DEV_CONTEXT_URL)
     })
 
     it('no-ops on an empty legacy list (the packaged-build case)', () => {
-      writeSettingsFile(path, { ...DEV, mcpUrl: DEFAULT_MCP_URL })
-      migrateSetting(path, DEV, 'mcpUrl', [])
+      writeSettingsFile(path, { ...DEV, contextUrl: DEFAULT_CONTEXT_URL })
+      migrateSetting(path, DEV, 'contextUrl', [])
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.mcpUrl).toBe(DEFAULT_MCP_URL)
+      expect(raw.contextUrl).toBe(DEFAULT_CONTEXT_URL)
     })
   })
 
-  // ─── migrateSetting: the Bedrock pair (TD-064) ────────────────────
+  // ─── dropRetiredSettings (TD-065 cutover) ─────────────────────────
 
-  describe('migrateSetting — Bedrock pair (TD-064)', () => {
-    const FIXED: ThunderSettings = {
-      ...DEFAULTS,
-      bedrockRegion: DEFAULT_BEDROCK_REGION,
-      bedrockModelId: DEFAULT_BEDROCK_MODEL_ID
+  describe('dropRetiredSettings (TD-065)', () => {
+    // The shape every pre-cutover machine has on disk.
+    const legacyFile = {
+      apiUrl: 'https://halo.example/dev/',
+      downloadFolder: '/tmp/Thunder',
+      mcpUrl: 'https://halo-mcp.swaff.name/mcp',
+      bedrockRegion: 'us-east-1',
+      bedrockModelId: 'anthropic.claude-sonnet-5',
+      chatEnabled: true
     }
 
-    it('rewrites the stale region and model that shipped together', () => {
-      writeSettingsFile(path, {
-        ...FIXED,
-        bedrockRegion: LEGACY_BEDROCK_REGION,
-        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
-      })
-      migrateSetting(path, FIXED, 'bedrockRegion', [LEGACY_BEDROCK_REGION])
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
-      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.bedrockRegion).toBe(DEFAULT_BEDROCK_REGION)
-      expect(raw.bedrockModelId).toBe(DEFAULT_BEDROCK_MODEL_ID)
+    it('removes the three retired keys and adds contextUrl', () => {
+      writeFileSync(path, JSON.stringify(legacyFile))
+      dropRetiredSettings(path, DEFAULTS)
+      const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+      expect(raw).not.toHaveProperty('mcpUrl')
+      expect(raw).not.toHaveProperty('bedrockRegion')
+      expect(raw).not.toHaveProperty('bedrockModelId')
+      expect(raw.contextUrl).toBe(DEFAULTS.contextUrl)
     })
 
-    // The two fields migrate independently — someone who moved region
-    // by hand but never touched the model still gets the model fixed.
-    it('rewrites the model while leaving a hand-set region alone', () => {
-      writeSettingsFile(path, {
-        ...FIXED,
-        bedrockRegion: 'eu-central-1',
-        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
-      })
-      migrateSetting(path, FIXED, 'bedrockRegion', [LEGACY_BEDROCK_REGION])
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+    it('keeps the settings the user actually chose', () => {
+      writeFileSync(path, JSON.stringify(legacyFile))
+      dropRetiredSettings(path, DEFAULTS)
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.bedrockRegion).toBe('eu-central-1')
-      expect(raw.bedrockModelId).toBe(DEFAULT_BEDROCK_MODEL_ID)
+      expect(raw.apiUrl).toBe(legacyFile.apiUrl)
+      expect(raw.downloadFolder).toBe(legacyFile.downloadFolder)
+      expect(raw.chatEnabled).toBe(true)
     })
 
-    it('preserves a hand-set model id', () => {
-      const custom = 'anthropic.claude-opus-5'
-      writeSettingsFile(path, { ...FIXED, bedrockModelId: custom })
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
+    // A halo-mcp endpoint is not a thunder-context one; carrying it
+    // across would point the chat at a URL that answers nothing.
+    it('does not resurrect a hand-typed mcpUrl as the contextUrl', () => {
+      writeFileSync(path, JSON.stringify({ ...legacyFile, mcpUrl: 'https://localhost:8787/mcp' }))
+      dropRetiredSettings(path, DEFAULTS)
       const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.bedrockModelId).toBe(custom)
+      expect(raw.contextUrl).toBe(DEFAULTS.contextUrl)
     })
 
-    it('is idempotent', () => {
-      writeSettingsFile(path, { ...FIXED, bedrockModelId: LEGACY_BEDROCK_MODEL_ID })
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
-      const first = readFileSync(path, 'utf-8')
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
-      expect(readFileSync(path, 'utf-8')).toBe(first)
+    it('leaves a file that has already been migrated byte for byte', () => {
+      writeSettingsFile(path, { ...DEFAULTS, contextUrl: 'https://ctx.example/v1' })
+      const before = readFileSync(path, 'utf-8')
+      dropRetiredSettings(path, DEFAULTS)
+      expect(readFileSync(path, 'utf-8')).toBe(before)
     })
 
-    it('leaves the URL fields untouched while rewriting the Bedrock pair', () => {
-      const custom = 'https://staging.halo.example/'
-      writeSettingsFile(path, {
-        ...FIXED,
-        apiUrl: custom,
-        bedrockModelId: LEGACY_BEDROCK_MODEL_ID
-      })
-      migrateSetting(path, FIXED, 'bedrockModelId', [LEGACY_BEDROCK_MODEL_ID])
-      const raw = JSON.parse(readFileSync(path, 'utf-8')) as ThunderSettings
-      expect(raw.apiUrl).toBe(custom)
-      expect(raw.mcpUrl).toBe(FIXED.mcpUrl)
+    it('no-ops when the file is missing', () => {
+      rmSync(path, { force: true })
+      expect(() => dropRetiredSettings(path, DEFAULTS)).not.toThrow()
+      expect(readdirSync(dir)).toEqual([])
     })
   })
 })

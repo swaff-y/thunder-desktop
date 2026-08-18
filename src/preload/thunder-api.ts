@@ -53,20 +53,6 @@ export const THUNDER_IPC_CHANNELS = {
   authClear: 'thunder:auth:clear',
 
   /**
-   * TD-052: encrypted AWS credential store backing Bedrock's SigV4
-   * signing. Handlers are registered in `main/ipc/aws-creds.ts`.
-   *
-   * Note the missing getter — that asymmetry with `auth:*` is
-   * deliberate and load-bearing. IAM keys are a standing grant against
-   * the user's AWS account, so the sandboxed renderer can ask whether
-   * credentials exist (`has`, for the Settings indicator) but has no
-   * path to read them back. Do not add `thunder:aws:get`.
-   */
-  awsSet: 'thunder:aws:set',
-  awsClear: 'thunder:aws:clear',
-  awsHas: 'thunder:aws:has',
-
-  /**
    * TD-018: JSON-backed settings store at `<userData>/thunder-desktop-settings.json`.
    * Main-process handlers are registered in `main/ipc/settings.ts`.
    */
@@ -136,16 +122,19 @@ export const THUNDER_IPC_CHANNELS = {
   dialogShowItemInFolder: 'thunder:dialog:show-item-in-folder',
 
   /**
-   * TD-054: the AI chat's Bedrock agent loop. `ask` and `cancel` are
-   * renderer → main invokes; `status` is a one-way main → renderer push
-   * driving the "Running catalogue query…" spinner. Handlers are
-   * registered in `main/ipc/chat.ts`.
+   * TD-054: the AI chat. `ask`, `cancel` and `clear` are renderer → main
+   * invokes; `status` is a one-way main → renderer push driving the
+   * "Running catalogue query…" spinner. Handlers are registered in
+   * `main/ipc/chat.ts`.
    *
-   * All three no-op while `chatEnabled` is false — no LLM or AWS call
-   * is made, and no status is ever pushed.
+   * `ask` and `cancel` no-op while `chatEnabled` is false — no model
+   * call is made and no status is ever pushed. TD-065's `clear` is the
+   * exception: logout has to drop the server-side transcript whatever
+   * the toggle says.
    */
   chatAsk: 'thunder:chat:ask',
   chatCancel: 'thunder:chat:cancel',
+  chatClear: 'thunder:chat:clear',
   chatStatus: 'thunder:chat:status'
 } as const
 
@@ -164,9 +153,6 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
   THUNDER_IPC_CHANNELS.authSet,
   THUNDER_IPC_CHANNELS.authClear,
-  THUNDER_IPC_CHANNELS.awsSet,
-  THUNDER_IPC_CHANNELS.awsClear,
-  THUNDER_IPC_CHANNELS.awsHas,
   THUNDER_IPC_CHANNELS.settingsGet,
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
@@ -180,7 +166,8 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.dialogOpenDirectory,
   THUNDER_IPC_CHANNELS.dialogShowItemInFolder,
   THUNDER_IPC_CHANNELS.chatAsk,
-  THUNDER_IPC_CHANNELS.chatCancel
+  THUNDER_IPC_CHANNELS.chatCancel,
+  THUNDER_IPC_CHANNELS.chatClear
 ]
 
 /**
@@ -203,18 +190,6 @@ export interface ThunderAuthCredentials {
   email?: string
   /** Present iff "Stay signed in" was checked at login time. */
   password?: string
-}
-
-/**
- * TD-052: shape of the AWS credentials the renderer submits to
- * `window.thunder.aws.set`. Write-only across the boundary — nothing
- * ever returns this shape to the renderer.
- */
-export interface ThunderAwsCredentials {
-  accessKeyId: string
-  secretAccessKey: string
-  /** Present only for temporary (STS / SSO) credentials. */
-  sessionToken?: string
 }
 
 /**
@@ -312,17 +287,6 @@ export interface ThunderApi {
     set: (creds: ThunderAuthCredentials) => Promise<void>
     clear: () => Promise<void>
   }
-  /**
-   * TD-052: write-only AWS credential store. `has` is the renderer's
-   * only read — a boolean for the Settings "configured / not
-   * configured" indicator. There is no getter, by design.
-   */
-  aws: {
-    /** Rejects if the OS keychain is unavailable — nothing is persisted. */
-    set: (creds: ThunderAwsCredentials) => Promise<void>
-    clear: () => Promise<void>
-    has: () => Promise<boolean>
-  }
   settings: {
     get: <K extends keyof ThunderSettings>(key: K) => Promise<ThunderSettings[K]>
     set: <K extends keyof ThunderSettings>(key: K, value: ThunderSettings[K]) => Promise<void>
@@ -390,13 +354,13 @@ export interface ThunderApi {
     }
   }
   /**
-   * TD-054: the AI chat. The whole agent loop runs in main — the
-   * renderer sends a question and receives the finished turn, so a
-   * navigation away from Home mid-answer doesn't kill it.
+   * TD-054: the AI chat. Main owns the turn — the renderer sends a
+   * question and receives the finished answer, so a navigation away from
+   * Home mid-answer doesn't kill it.
    *
-   * Every path no-ops while `chatEnabled` is false: `ask` resolves to a
-   * failure without touching Bedrock, `cancel` does nothing, and no
-   * status is pushed.
+   * `ask` and `cancel` no-op while `chatEnabled` is false: `ask`
+   * resolves to a failure without reaching the server, `cancel` does
+   * nothing, and no status is pushed.
    */
   chat: {
     /**
@@ -406,6 +370,11 @@ export interface ThunderApi {
     ask: (request: ChatAskRequest) => Promise<ChatAskResult>
     /** Aborts the in-flight turn, which then resolves `cancelled`. */
     cancel: () => Promise<void>
+    /**
+     * TD-065: drops the server-side transcript as well as the local one.
+     * Called from `useChat.clear()`, which logout goes through.
+     */
+    clear: () => Promise<void>
     /**
      * Subscribe to spinner state. Returns an unsubscribe function —
      * call it on unmount to avoid a leaked listener.
@@ -427,11 +396,6 @@ export const thunderApi: ThunderApi = {
     get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
     set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),
     clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear)
-  },
-  aws: {
-    set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsSet, creds),
-    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsClear),
-    has: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.awsHas)
   },
   settings: {
     get: (key) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGet, key),
@@ -490,6 +454,7 @@ export const thunderApi: ThunderApi = {
   chat: {
     ask: (request) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatAsk, request),
     cancel: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatCancel),
+    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatClear),
     onStatus: (callback) => {
       const handler = (_event: unknown, status: ChatStatus): void => callback(status)
       ipcRenderer.on(THUNDER_IPC_CHANNELS.chatStatus, handler)

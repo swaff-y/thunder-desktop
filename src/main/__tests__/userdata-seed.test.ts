@@ -18,7 +18,8 @@ import {
   SETTINGS_FILENAME,
   WINDOW_STATE_FILENAME,
   devUserDataPath,
-  ensureDevUserData
+  ensureDevUserData,
+  removeStaleAwsCredentials
 } from '../userdata-seed'
 
 describe('userdata-seed (TD-063)', () => {
@@ -46,13 +47,18 @@ describe('userdata-seed (TD-063)', () => {
     )
   })
 
-  it('seeds settings, window state, and both credential stores', () => {
+  it('seeds settings, window state and the Halo credential store', () => {
     expect(SEEDED_FILENAMES).toEqual([
       SETTINGS_FILENAME,
       WINDOW_STATE_FILENAME,
-      AUTH_CREDENTIALS_FILENAME,
-      AWS_CREDENTIALS_FILENAME
+      AUTH_CREDENTIALS_FILENAME
     ])
+  })
+
+  // TD-065: copying it would hand a fresh dev profile a secret the
+  // cutover exists to get rid of.
+  it('does not seed the retired AWS credential file', () => {
+    expect(SEEDED_FILENAMES).not.toContain(AWS_CREDENTIALS_FILENAME)
   })
 
   // ─── First launch ─────────────────────────────────────────────────
@@ -86,11 +92,11 @@ describe('userdata-seed (TD-063)', () => {
   })
 
   it('carries the source mode across so credential files stay 0600', () => {
-    writeFileSync(join(source, AWS_CREDENTIALS_FILENAME), 'ciphertext', { mode: 0o600 })
+    writeFileSync(join(source, AUTH_CREDENTIALS_FILENAME), 'ciphertext', { mode: 0o600 })
 
     ensureDevUserData(source, target)
 
-    expect(statSync(join(target, AWS_CREDENTIALS_FILENAME)).mode & 0o777).toBe(0o600)
+    expect(statSync(join(target, AUTH_CREDENTIALS_FILENAME)).mode & 0o777).toBe(0o600)
   })
 
   it('does not copy files outside the seed list (Chromium profile stays behind)', () => {
@@ -145,13 +151,51 @@ describe('userdata-seed (TD-063)', () => {
   it('logs and continues when a file cannot be copied — a bad copy is a re-login, not a crash', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // A directory where a file is expected: `copyFileSync` throws EISDIR.
-    mkdirSync(join(source, AUTH_CREDENTIALS_FILENAME), { recursive: true })
-    writeFileSync(join(source, AWS_CREDENTIALS_FILENAME), 'ciphertext')
+    mkdirSync(join(source, WINDOW_STATE_FILENAME), { recursive: true })
+    writeFileSync(join(source, AUTH_CREDENTIALS_FILENAME), 'ciphertext')
 
     expect(ensureDevUserData(source, target)).toBe(true)
 
     expect(warn).toHaveBeenCalled()
     // The later file in the list still made it across.
-    expect(readFileSync(join(target, AWS_CREDENTIALS_FILENAME), 'utf-8')).toBe('ciphertext')
+    expect(readFileSync(join(target, AUTH_CREDENTIALS_FILENAME), 'utf-8')).toBe('ciphertext')
+  })
+
+  // ─── Retired AWS credentials (TD-065) ─────────────────────────────
+
+  describe('removeStaleAwsCredentials', () => {
+    it('deletes the encrypted credential file an upgrade left behind', () => {
+      writeFileSync(join(source, AWS_CREDENTIALS_FILENAME), 'ciphertext', { mode: 0o600 })
+
+      removeStaleAwsCredentials(source)
+
+      expect(existsSync(join(source, AWS_CREDENTIALS_FILENAME))).toBe(false)
+    })
+
+    it('leaves every other file in the directory alone', () => {
+      writeFileSync(join(source, AWS_CREDENTIALS_FILENAME), 'ciphertext')
+      writeFileSync(join(source, AUTH_CREDENTIALS_FILENAME), 'halo-token')
+      writeFileSync(join(source, SETTINGS_FILENAME), '{}')
+
+      removeStaleAwsCredentials(source)
+
+      expect(readFileSync(join(source, AUTH_CREDENTIALS_FILENAME), 'utf-8')).toBe('halo-token')
+      expect(existsSync(join(source, SETTINGS_FILENAME))).toBe(true)
+    })
+
+    // Runs on every launch, so the common case is that there is nothing
+    // to do.
+    it('no-ops when there is no credential file', () => {
+      expect(() => removeStaleAwsCredentials(source)).not.toThrow()
+    })
+
+    it('logs rather than throwing when the file cannot be removed', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      // A non-empty directory in its place: `unlinkSync` throws EPERM.
+      mkdirSync(join(source, AWS_CREDENTIALS_FILENAME, 'nested'), { recursive: true })
+
+      expect(() => removeStaleAwsCredentials(source)).not.toThrow()
+      expect(warn).toHaveBeenCalled()
+    })
   })
 })

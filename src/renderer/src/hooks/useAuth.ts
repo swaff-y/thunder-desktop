@@ -173,6 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // TD-065: before the keychain is wiped, not after. Dropping the
+    // server-side conversation is an authenticated request, and main
+    // reads the token per request — clearing it first would leave the
+    // transcript on the server with nothing able to delete it.
+    clearChat();
     // TD-035: clear the embedded browser's partition (cookies / storage)
     // alongside the keychain so the next user can't see the previous
     // session's data. The webview itself resets on its own — flipping
@@ -190,7 +195,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCachedCreds(null);
     resetClientGuards();
     clearTabHistory();
-    clearChat();
     setState(EMPTY_STATE);
   }, [clearTabHistory, clearChat]);
 

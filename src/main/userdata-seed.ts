@@ -73,7 +73,11 @@ export function devUserDataPath(userDataPath: string): string {
  */
 export function ensureDevUserData(sourceDir: string, targetDir: string): boolean {
   const alreadyExists = existsSync(targetDir)
-  mkdirSync(targetDir, { recursive: true })
+  // 0700 to match the mode Electron gives `userData` itself. The seeded
+  // credential files are 0600, but the profile also accumulates
+  // Chromium state and a 0644 window-state file — a world-traversable
+  // dev profile would be a boundary this app doesn't otherwise relax.
+  mkdirSync(targetDir, { recursive: true, mode: 0o700 })
   if (alreadyExists) return false
 
   for (const filename of SEEDED_FILENAMES) {

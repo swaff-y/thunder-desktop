@@ -79,6 +79,12 @@ describe('userdata-seed (TD-063)', () => {
     )
   })
 
+  it('creates the dev directory 0700, matching the mode Electron gives userData', () => {
+    ensureDevUserData(source, target)
+
+    expect(statSync(target).mode & 0o777).toBe(0o700)
+  })
+
   it('carries the source mode across so credential files stay 0600', () => {
     writeFileSync(join(source, AWS_CREDENTIALS_FILENAME), 'ciphertext', { mode: 0o600 })
 

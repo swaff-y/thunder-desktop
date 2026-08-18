@@ -133,26 +133,53 @@ export function resolveDefaultMcpUrl(options: {
  * granted per account *and* per region, so this and
  * {@link DEFAULT_BEDROCK_MODEL_ID} have to agree with what the account
  * has actually been approved for.
+ *
+ * TD-064: `us-east-1`, because `ap-south-1` serves *nothing* on the
+ * Messages-API endpoint the app calls. Probed against the account's own
+ * credentials with `AnthropicBedrockMantle`: every candidate — Sonnet 5,
+ * Sonnet 4.6, Opus 5, Opus 4.8, Haiku 4.5 — 404s there, while
+ * {@link DEFAULT_BEDROCK_MODEL_ID} answers in `us-east-1`.
+ *
+ * `aws bedrock list-foundation-models --region ap-south-1` disagrees and
+ * lists them all. It is describing the legacy `bedrock-runtime`
+ * InvokeModel surface, which is a different endpoint with a different
+ * catalogue — do not use it to pick this value. Probe the Mantle client
+ * instead (`npm run smoke:bedrock`).
  */
-export const DEFAULT_BEDROCK_REGION = 'ap-south-1'
+export const DEFAULT_BEDROCK_REGION = 'us-east-1'
 
 /**
- * TD-052: Bedrock model id. Two prefixes, both load-bearing:
+ * TD-052: Bedrock model id. The `anthropic.` prefix is load-bearing —
+ * Bedrock namespaces model ids by provider, so the bare first-party id
+ * (`claude-sonnet-5`) 404s.
  *
- * - `anthropic.` — Bedrock namespaces model ids by provider, so the
- *   bare first-party id (`claude-sonnet-5`) is rejected with a 400.
- * - `global.` — a cross-region inference profile. Bedrock will not
- *   serve `anthropic.claude-sonnet-5` on on-demand throughput at all;
- *   `npm run smoke:bedrock` gets back "Invocation of model ID
- *   anthropic.claude-sonnet-5 with on-demand throughput isn't
- *   supported. Retry your request with the ID or ARN of an inference
- *   profile that contains this model."
+ * TD-064: exactly one prefix, not two. The `global.` this shipped with
+ * is a cross-region *inference profile* id, which belongs to the legacy
+ * `bedrock-runtime` InvokeModel path. TD-054 moved the app onto
+ * `AnthropicBedrockMantle` — the Messages-API endpoint — which takes the
+ * model id verbatim, so the extra prefix made every request a 404:
+ * "The model 'global.anthropic.claude-sonnet-5' does not exist".
  *
- * `global.` routes dynamically at no pricing premium. The regional
- * alternative (`apac.` for {@link DEFAULT_BEDROCK_REGION}) pins the
- * request for data residency but costs ~10% more.
+ * Verified by probing all three spellings against the real account:
+ * `global.anthropic.claude-sonnet-5` and bare `claude-sonnet-5` both
+ * 404; `anthropic.claude-sonnet-5` answers.
  */
-export const DEFAULT_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
+export const DEFAULT_BEDROCK_MODEL_ID = 'anthropic.claude-sonnet-5'
+
+/**
+ * TD-064: the region/model pair this app shipped with before the fix.
+ * Retained only so the one-time migration can identify a settings file
+ * still pinned to the broken defaults and rewrite it — same contract,
+ * and the same "do not reference from runtime code" rule, as
+ * {@link LEGACY_DEV_API_URL}.
+ *
+ * The pair never worked against the app's own client, so a stored value
+ * matching one of these is an untouched default rather than a
+ * deliberate override — nobody chose a combination that 404s on every
+ * question.
+ */
+export const LEGACY_BEDROCK_REGION = 'ap-south-1'
+export const LEGACY_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
 
 /**
  * Persisted user-tunable settings.

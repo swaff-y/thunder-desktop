@@ -41,19 +41,23 @@ const CREDENTIALS_FILENAME = 'thunder-desktop-aws.enc'
 // hand — a stale copy here means the smoke test validates a model id
 // the app no longer uses. Same applies to the trim and decrypt logic
 // below, which mirror `settings-io.ts` and `aws-creds-io.ts`.
-const DEFAULT_BEDROCK_REGION = 'ap-south-1'
-const DEFAULT_BEDROCK_MODEL_ID = 'global.anthropic.claude-sonnet-5'
+const DEFAULT_BEDROCK_REGION = 'us-east-1'
+const DEFAULT_BEDROCK_MODEL_ID = 'anthropic.claude-sonnet-5'
 
 /**
  * Where to point someone whose region does not serve their model on the
  * Messages-API endpoint. `us-east-1` carries the current Anthropic model
  * line, so it is the answer most likely to work first try.
+ *
+ * TD-064 made this equal to {@link DEFAULT_BEDROCK_REGION}, so the
+ * advice below has to stay honest when someone is already on it — the
+ * old wording told them to try the region they were failing in.
  */
 const REFERENCE_REGION = 'us-east-1'
 
 function tryElsewhere(region) {
   if (region === REFERENCE_REGION) {
-    return 'Pick a region that carries this model, or a model this region carries.'
+    return `Pick a model ${REFERENCE_REGION} carries, or a region that carries this model.`
   }
   return `Try ${REFERENCE_REGION}, which carries the current Anthropic model line.`
 }

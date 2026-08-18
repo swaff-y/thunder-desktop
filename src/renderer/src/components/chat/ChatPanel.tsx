@@ -7,6 +7,7 @@ import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionRowImage from "./ActionRowImage";
 import ChatError from "./ChatError";
+import ChatMarkdown from "./ChatMarkdown";
 import type { ListRow } from "./list-adapters";
 
 const RUNNING_QUERY = "Running catalogue query…";
@@ -130,7 +131,10 @@ export default function ChatPanel() {
                 {turn.answer !== undefined && (
                   <>
                     <p className="chat-who">Assistant</p>
-                    <p className="chat-said">{turn.answer}</p>
+                    {/* TD-067: the answer is markdown; the question is not —
+                        the user typed that and it is not the model's to
+                        format. */}
+                    <ChatMarkdown text={turn.answer} />
                   </>
                 )}
                 {turn.action !== undefined && turn.id === latestActionId && (
@@ -248,6 +252,78 @@ export default function ChatPanel() {
         }
         .chat-said:last-child {
           margin-bottom: 0;
+        }
+        /* TD-067: markdown supplies its own block elements, so the pre-wrap
+           that kept plain-text newlines would double every gap. */
+        .chat-md {
+          white-space: normal;
+        }
+        .chat-md > :first-child {
+          margin-top: 0;
+        }
+        .chat-md > :last-child {
+          margin-bottom: 0;
+        }
+        .chat-md p {
+          margin: 0 0 var(--space-sm);
+        }
+        .chat-md-heading {
+          display: block;
+          margin: 0 0 var(--space-xs);
+        }
+        .chat-md ul,
+        .chat-md ol {
+          margin: 0 0 var(--space-sm);
+          padding-left: var(--space-lg, 1.5rem);
+        }
+        .chat-md li {
+          margin-bottom: var(--space-xs);
+        }
+        .chat-md a {
+          color: var(--color-accent);
+        }
+        .chat-md code {
+          background: rgba(148, 163, 184, 0.16);
+          border-radius: var(--radius-sm);
+          font-size: 0.9em;
+          padding: 0.1em 0.35em;
+        }
+        .chat-md pre {
+          background: rgba(148, 163, 184, 0.12);
+          border-radius: var(--radius-sm);
+          margin: 0 0 var(--space-sm);
+          overflow-x: auto;
+          padding: var(--space-sm);
+        }
+        .chat-md pre code {
+          background: none;
+          padding: 0;
+        }
+        /* A wide table scrolls inside its own box rather than stretching the
+           transcript and everything beside it. */
+        .chat-md-table-wrap {
+          margin: 0 0 var(--space-sm);
+          overflow-x: auto;
+        }
+        .chat-md table {
+          border-collapse: collapse;
+          font-size: var(--text-body-sm);
+        }
+        .chat-md th,
+        .chat-md td {
+          border: 1px solid var(--color-border);
+          padding: var(--space-xs) var(--space-sm);
+          text-align: left;
+        }
+        .chat-md th {
+          color: var(--color-text-muted);
+          font-weight: 600;
+        }
+        .chat-md blockquote {
+          border-left: 2px solid var(--color-border);
+          color: var(--color-text-muted);
+          margin: 0 0 var(--space-sm);
+          padding-left: var(--space-sm);
         }
         .chat-dots {
           display: inline-flex;

@@ -122,9 +122,11 @@ built app. `npm run dev:prod` points at the prod backend instead of dev.
 - **React owns every text input.** Setting `el.value` is discarded on the next
   render; the native value setter plus a bubbling `input` event is what
   registers. `ask` does this — copy it for any other field.
-- **Answers contain raw markdown.** `**4 movies**` renders as literal
-  asterisks; there is no markdown renderer yet (thunder-context TC-008). Do
-  not report that as a bug.
+- **Answers are markdown, and are rendered** (TD-067). `**4 movies**` comes out
+  bold, and a pipe table comes out as a `<table>` — assert on
+  `.chat-md strong` / `.chat-md table`, not on the raw text. Literal `**` or
+  `|---|` visible in the transcript **is** a bug now; it was expected before
+  TD-067.
 - **The action card belongs to the newest turn only.** A follow-up answered
   from conversation history makes no tool call, so its card is absent — that is
   correct, not a regression.
@@ -143,7 +145,7 @@ built app. `npm run dev:prod` points at the prod backend instead of dev.
 ## Tests
 
 ```bash
-npm run test        # vitest, 419 examples across main + renderer
+npm run test        # vitest, 433 examples across main + renderer
 npm run typecheck   # tsc for the node and web projects
 npm run lint        # eslint; two pre-existing errors are expected
 ```

@@ -14,3 +14,6 @@ out
 !package-lock.json
 
 docs/
+
+# Screenshots taken by .claude/skills/run-thunder-desktop/driver.mjs
+.driver-shots/

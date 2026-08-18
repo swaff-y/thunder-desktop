@@ -8,9 +8,15 @@ import {
   setCredentials,
   type CryptoAdapter
 } from './auth-io'
+import { AUTH_CREDENTIALS_FILENAME } from '../userdata-seed'
 
-/** Exported so the smoke script can resolve the same file outside Electron. */
-export const AUTH_CREDENTIALS_FILENAME = 'thunder-desktop-credentials.enc'
+/**
+ * Re-exported so the smoke script can keep resolving the same file
+ * outside Electron. The constant itself lives in `userdata-seed`
+ * (TD-063) because the dev-profile seed has to enumerate it alongside
+ * the other `userData` files.
+ */
+export { AUTH_CREDENTIALS_FILENAME }
 
 function credentialsPath(): string {
   return join(app.getPath('userData'), AUTH_CREDENTIALS_FILENAME)

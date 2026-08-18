@@ -28,6 +28,7 @@ import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
 import { defaults } from './settings'
+import { SETTINGS_FILENAME } from '../userdata-seed'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { resolveCollisionSafePath } from './browser-download-path'
 import {
@@ -127,7 +128,7 @@ let cachedSettingsPath: string | null = null
 
 function settingsPath(): string {
   if (cachedSettingsPath === null) {
-    cachedSettingsPath = join(app.getPath('userData'), 'thunder-desktop-settings.json')
+    cachedSettingsPath = join(app.getPath('userData'), SETTINGS_FILENAME)
   }
   return cachedSettingsPath
 }

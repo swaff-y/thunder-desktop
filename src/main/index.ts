@@ -11,6 +11,27 @@ import { registerChatHandlers } from './ipc/chat'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShellHandlers } from './ipc/shell'
+import { devUserDataPath, ensureDevUserData } from './userdata-seed'
+
+// TD-063: unpackaged runs live in `<userData>-dev` so `npm run dev`
+// can't retarget the installed app's `apiUrl` (both resolve `userData`
+// to the same directory otherwise — see `userdata-seed.ts`). Runs
+// before `whenReady` because the session/cache paths are derived from
+// `userData` at startup. `-prod` deliberately does not move the run
+// back onto the shared directory: it selects a backend, not a profile.
+//
+// A failure here is logged rather than fatal — the app still launches,
+// just on the shared directory as it did before.
+if (!app.isPackaged) {
+  try {
+    const sharedUserData = app.getPath('userData')
+    const devUserData = devUserDataPath(sharedUserData)
+    ensureDevUserData(sharedUserData, devUserData)
+    app.setPath('userData', devUserData)
+  } catch (error) {
+    console.warn('[userdata] dev profile redirect failed; using the shared directory', error)
+  }
+}
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.ruby-sei.thunder-desktop')

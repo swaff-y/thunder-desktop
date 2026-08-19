@@ -88,6 +88,9 @@ could ever have copied phase 8.
 - [TD-068](complete/TD-068-chat-side-drawer.md) — AI chat: move the chat into
   a right-side drawer ([design.html](../design.html), turn 2, option 2a).
   Shipped in #60.
+- [TD-069](TD-069-action-card-expand-overlay.md) — AI chat: Expand overlay for
+  action cards (the wide table and the record's thumbnail rail, split out of
+  TD-068)
 
 ## Bugs / polish
 

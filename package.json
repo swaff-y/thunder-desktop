@@ -6,6 +6,7 @@
   "author": "swaff-y",
   "homepage": "https://github.com/swaff-y/thunder-desktop",
   "scripts": {
+    "setup": "node scripts/check-registry-auth.mjs && npm ci",
     "format": "prettier --write .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

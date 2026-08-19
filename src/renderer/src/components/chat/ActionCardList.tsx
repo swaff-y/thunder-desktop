@@ -1,6 +1,7 @@
+import { APP_ROUTES } from "./entity-routes";
 import { Link } from "react-router-dom";
-import type { ChatAction } from "../../../../shared/chat";
-import { toListCard, type ListRow } from "./list-adapters";
+import type { ChatAction } from "@swaff-y/thunder-chat-core";
+import { toListCard, type ListRow } from "@swaff-y/thunder-chat-core";
 
 /**
  * TD-057: the design's list card, drawn beneath the answer it belongs to.
@@ -16,7 +17,7 @@ export default function ActionCardList({
   action: ChatAction;
   renderImage?: (row: ListRow) => React.ReactNode;
 }): React.JSX.Element | null {
-  const card = toListCard(action);
+  const card = toListCard(action, APP_ROUTES);
   if (!card) return null;
 
   const shown = card.rows.length;

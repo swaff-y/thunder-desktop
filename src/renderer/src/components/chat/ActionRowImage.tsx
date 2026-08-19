@@ -1,4 +1,4 @@
-import type { ListRow } from "./list-adapters";
+import type { ListRow } from "@swaff-y/thunder-chat-core";
 import { useActionImages } from "./useActionImages";
 
 /**

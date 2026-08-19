@@ -1,6 +1,6 @@
 import { reauthenticate } from "../../api/auth";
 import { OPEN_SETTINGS_EVENT } from "../desktop/SettingsModal";
-import type { ChatError as ChatErrorKind } from "../../hooks/useChat";
+import type { ChatError as ChatErrorKind } from "@swaff-y/thunder-chat-core";
 
 interface ChatErrorProps {
   error: ChatErrorKind;

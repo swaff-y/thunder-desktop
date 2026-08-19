@@ -8,7 +8,7 @@ import type {
   ChatErrorKind,
   ChatHistoryTurn,
   ChatStatus
-} from '../shared/chat'
+} from '@swaff-y/thunder-chat-core'
 import type { ThunderSettings } from '../shared/settings'
 
 export { THUNDER_BROWSER_PARTITION }

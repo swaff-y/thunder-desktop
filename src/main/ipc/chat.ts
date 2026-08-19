@@ -13,9 +13,9 @@
 
 import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
-import { MAX_TURN_TEXT_LENGTH } from '../../shared/chat'
-import type { ChatAskResult, ChatHistoryTurn, ChatStatus } from '../../shared/chat'
-import { createContextClient } from '../context/context-client'
+import { MAX_TURN_TEXT_LENGTH } from '@swaff-y/thunder-chat-core'
+import type { ChatAskResult, ChatHistoryTurn, ChatStatus } from '@swaff-y/thunder-chat-core'
+import { createContextClient } from '@swaff-y/thunder-chat-core'
 import { resolveAuthToken } from './auth'
 import { resolveChatSettings, resolveContextUrl } from './settings'
 import { sendToFocused } from './window-send'

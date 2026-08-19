@@ -13,7 +13,7 @@ import { setCachedCreds, resetClientGuards } from "../api/client";
 import { queryClient } from "../api/cache";
 import { RANDOM_RECORDS_KEY } from "./useRecords";
 import { useTabHistory } from "./useTabHistory";
-import { useChatActions } from "./useChat";
+import { useChatActions } from "@swaff-y/thunder-chat-core";
 import React from "react";
 
 interface JwtPayload {

@@ -1,4 +1,4 @@
-import type { ChartBar, ChatAction, ChatAskResult } from "../../../../../shared/chat";
+import type { ChartBar, ChatAction, ChatAskResult } from "@swaff-y/thunder-chat-core";
 
 export const NO_ACTION: ChatAction = {
   kind: "none",

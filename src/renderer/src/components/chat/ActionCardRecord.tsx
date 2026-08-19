@@ -1,8 +1,9 @@
+import { APP_ROUTES } from "./entity-routes";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ChatAction } from "../../../../shared/chat";
+import type { ChatAction } from "@swaff-y/thunder-chat-core";
 import ImageCarousel, { type CarouselImage } from "../shared/ImageCarousel";
-import { toSingleCard, type Chip } from "./single-adapters";
+import { toSingleCard, type Chip } from "@swaff-y/thunder-chat-core";
 import { useActionImages } from "./useActionImages";
 
 /**
@@ -70,7 +71,7 @@ export default function ActionCardRecord({
   action: ChatAction;
   onBackToList?: () => void;
 }): React.JSX.Element | null {
-  const card = toSingleCard(action);
+  const card = toSingleCard(action, APP_ROUTES);
   const images = useActionImages(card?.image);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);

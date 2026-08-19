@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { ChatProvider, type ChatSend } from "../../../hooks/useChat";
+import { ChatProvider, type ChatSend } from "@swaff-y/thunder-chat-core";
 import ChatPanel from "../ChatPanel";
 import { answer, deferredAnswer, listAction, singleAction } from "./fixtures";
 

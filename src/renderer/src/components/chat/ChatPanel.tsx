@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
-import type { ChatAction, ChatStatus } from "../../../../shared/chat";
-import { useChat, type ChatTurn } from "../../hooks/useChat";
+import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
+import { useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionRowImage from "./ActionRowImage";
 import ChatError from "./ChatError";
 import ChatMarkdown from "./ChatMarkdown";
-import type { ListRow } from "./list-adapters";
+import type { ListRow } from "@swaff-y/thunder-chat-core";
 
 const RUNNING_QUERY = "Running catalogue query…";
 

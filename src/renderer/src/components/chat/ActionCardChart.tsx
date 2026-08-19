@@ -1,4 +1,4 @@
-import type { ChatAction } from "../../../../shared/chat";
+import type { ChatAction } from "@swaff-y/thunder-chat-core";
 
 /**
  * TD-059: the design's chart card — a horizontal bar per row, drawn from

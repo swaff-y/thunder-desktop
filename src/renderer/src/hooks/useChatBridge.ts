@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { ChatStatus } from "../../../shared/chat";
-import type { ChatSend } from "./useChat";
+import type { ChatStatus } from "@swaff-y/thunder-chat-core";
+import type { ChatSend } from "@swaff-y/thunder-chat-core";
 
 interface ChatBridge {
   send: ChatSend;

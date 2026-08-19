@@ -1,6 +1,6 @@
 import { IoRefresh } from "react-icons/io5";
 import { useRandomRecords } from "../hooks/useRecords";
-import { useChat } from "../hooks/useChat";
+import { useChat } from "@swaff-y/thunder-chat-core";
 import { useChatEnabled } from "../hooks/useSettings";
 import HeroCarousel from "../components/desktop/HeroCarousel";
 import VirtualRecordList from "../components/shared/VirtualRecordList";

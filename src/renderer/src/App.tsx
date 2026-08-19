@@ -6,7 +6,7 @@ import { QueryProvider } from './components/QueryProvider'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { CartProvider } from './hooks/useCart'
 import { TabHistoryProvider } from './hooks/useTabHistory'
-import { ChatProvider } from './hooks/useChat'
+import { ChatProvider } from '@swaff-y/thunder-chat-core'
 import { useChatBridge } from './hooks/useChatBridge'
 import { DownloadsProvider } from './browser/useDownloads'
 import Login from './pages/Login'
@@ -22,7 +22,12 @@ import LoadingSpinner from './components/shared/LoadingSpinner'
 function ChatBridgeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { send, cancelRequest, clearRequest } = useChatBridge()
   return (
-    <ChatProvider send={send} cancelRequest={cancelRequest} clearRequest={clearRequest}>
+    <ChatProvider
+      send={send}
+      cancelRequest={cancelRequest}
+      clearRequest={clearRequest}
+      storage={sessionStorage}
+    >
       {children}
     </ChatProvider>
   )

@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ChatError from "../ChatError";
 import { OPEN_SETTINGS_EVENT } from "../../desktop/SettingsModal";
-import type { ChatError as ChatErrorKind } from "../../../hooks/useChat";
+import type { ChatError as ChatErrorKind } from "@swaff-y/thunder-chat-core";
 
 vi.mock("../../../api/auth", () => ({
   reauthenticate: vi.fn(async () => ({ token: "t", apiKey: "k" })),

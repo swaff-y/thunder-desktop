@@ -85,8 +85,9 @@ could ever have copied phase 8.
   thunder-context. Shipped in #56.
 - [TD-067](complete/TD-067-chat-markdown-renderer.md) — AI chat: render the
   answer's markdown. Shipped in #57.
-- [TD-068](TD-068-chat-side-drawer.md) — AI chat: move the chat into a
-  right-side drawer ([design.html](../design.html), turn 2, option 2a)
+- [TD-068](complete/TD-068-chat-side-drawer.md) — AI chat: move the chat into
+  a right-side drawer ([design.html](../design.html), turn 2, option 2a).
+  Shipped in #60.
 
 ## Bugs / polish
 

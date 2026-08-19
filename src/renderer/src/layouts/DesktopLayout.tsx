@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation, useMatch } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useChatEnabled } from "../hooks/useSettings";
 import Sidebar from "../components/desktop/Sidebar";
 import TopBar from "../components/desktop/TopBar";
 import BrowserPage from "../browser/BrowserPage";
+import ChatDrawer from "../components/chat/ChatDrawer";
 import Watch from "../pages/Watch";
 
 interface DesktopLayoutProps {
@@ -29,8 +31,24 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
     if (id) setActiveWatchId(id);
   }, [watchMatch?.params.id]);
 
+  // The drawer is mounted beside the page column so the conversation
+  // outlives navigation, the way BrowserPage and Watch do.
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatEnabled = useChatEnabled();
+  // Turning the chat off in Settings closes the drawer for good — turning it
+  // back on must not spring it open again.
+  if (chatOpen && !chatEnabled) setChatOpen(false);
+
   function clearActiveWatch() {
     setActiveWatchId(null);
+  }
+
+  function openChat(): void {
+    setChatOpen(true);
+  }
+
+  function closeChat(): void {
+    setChatOpen(false);
   }
 
   if (isLogin) {
@@ -43,7 +61,7 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
     <div className="desktop-layout">
       <Sidebar />
       <div className="desktop-main">
-        <TopBar onLogout={logout} />
+        <TopBar onLogout={logout} onAskCatalogue={openChat} />
         {/* TD-035: BrowserPage stays mounted across tab switches; only
             one of it and .desktop-content fills the column at a time.
             TD-038 follow-up: Watch is mounted persistently for the same
@@ -58,6 +76,7 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
           </div>
         )}
       </div>
+      <ChatDrawer open={chatOpen} onClose={closeChat} />
 
       <style>{`
         .desktop-login-wrapper {

@@ -12,6 +12,9 @@ import type { ListRow } from "@swaff-y/thunder-chat-core";
 
 const RUNNING_QUERY = "Running catalogue query…";
 
+/** The drawer focuses the composer on open. */
+export const COMPOSER_INPUT_ID = "chat-question";
+
 /**
  * The one thing a screen reader is told about a turn: that it is running,
  * what it is running, and then the answer itself.
@@ -65,7 +68,7 @@ function TurnAction({
 }
 
 export default function ChatPanel() {
-  const { turns, status, isEmpty, ask, retry, cancel, clear } = useChat();
+  const { turns, status, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLOListElement>(null);
 
@@ -105,53 +108,47 @@ export default function ChatPanel() {
   }
 
   return (
-    <section className="chat-panel" aria-label="Catalogue chat">
-      {/* Idle Home is an invitation, not a window: the header and transcript
-          only earn their space once there is a conversation to show. */}
-      {!isEmpty && (
-        <>
-          <header className="chat-header">
-            <button type="button" className="chat-clear" onClick={clear}>
-              Clear
-            </button>
-          </header>
+    <div className="chat-panel">
+      <header className="chat-header">
+        <button type="button" className="chat-clear" onClick={clear}>
+          Clear
+        </button>
+      </header>
 
-          <ol className="chat-transcript" ref={transcriptRef}>
-            {turns.map((turn) => (
-              <li key={turn.id} className="chat-turn">
-                <p className="chat-who">You</p>
-                <p className="chat-said">{turn.question}</p>
-                {turn.pending && (
-                  <span className="chat-dots" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                )}
-                {turn.answer !== undefined && (
-                  <>
-                    <p className="chat-who">Assistant</p>
-                    {/* TD-067: the answer is markdown; the question is not —
-                        the user typed that and it is not the model's to
-                        format. */}
-                    <ChatMarkdown text={turn.answer} />
-                  </>
-                )}
-                {turn.action !== undefined && turn.id === latestActionId && (
-                  <TurnAction action={turn.action} previousList={previousList} />
-                )}
-                {turn.error !== undefined && (
-                  <ChatError
-                    error={turn.error}
-                    message={turn.message}
-                    onRetry={() => handleRetry(turn)}
-                  />
-                )}
-              </li>
-            ))}
-          </ol>
-        </>
-      )}
+      <ol className="chat-transcript" ref={transcriptRef}>
+        {turns.map((turn) => (
+          <li key={turn.id} className="chat-turn">
+            <p className="chat-who">You</p>
+            <p className="chat-said">{turn.question}</p>
+            {turn.pending && (
+              <span className="chat-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            )}
+            {turn.answer !== undefined && (
+              <>
+                <p className="chat-who">Assistant</p>
+                {/* TD-067: the answer is markdown; the question is not —
+                    the user typed that and it is not the model's to
+                    format. */}
+                <ChatMarkdown text={turn.answer} />
+              </>
+            )}
+            {turn.action !== undefined && turn.id === latestActionId && (
+              <TurnAction action={turn.action} previousList={previousList} />
+            )}
+            {turn.error !== undefined && (
+              <ChatError
+                error={turn.error}
+                message={turn.message}
+                onRetry={() => handleRetry(turn)}
+              />
+            )}
+          </li>
+        ))}
+      </ol>
 
       <p className="visually-hidden" role="status">
         {liveMessage(status, lastAnswer)}
@@ -165,15 +162,12 @@ export default function ChatPanel() {
         </div>
       )}
 
-      <form
-        className={`chat-composer${isEmpty ? " chat-composer--only" : ""}`}
-        onSubmit={handleSubmit}
-      >
-        <label className="chat-label" htmlFor="chat-question">
+      <form className="chat-composer" onSubmit={handleSubmit}>
+        <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
           Ask the catalogue
         </label>
         <input
-          id="chat-question"
+          id={COMPOSER_INPUT_ID}
           className="chat-input"
           type="text"
           autoComplete="off"
@@ -194,13 +188,10 @@ export default function ChatPanel() {
 
       <style>{`
         .chat-panel {
-          background: var(--color-surface);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          box-shadow: var(--shadow-card);
           display: flex;
+          flex: 1;
           flex-direction: column;
-          margin-bottom: var(--space-lg);
+          min-height: 0;
           overflow: hidden;
         }
         .chat-header {
@@ -224,9 +215,10 @@ export default function ChatPanel() {
           opacity: 0.5;
         }
         .chat-transcript {
+          flex: 1;
           list-style: none;
           margin: 0;
-          max-height: 55vh;
+          min-height: 0;
           overflow-y: auto;
           padding: 0;
         }
@@ -369,12 +361,9 @@ export default function ChatPanel() {
           align-items: center;
           border-top: 1px solid var(--color-border);
           display: flex;
+          flex: none;
           gap: var(--space-sm);
           padding: var(--space-md);
-        }
-        /* Idle: the composer is the panel, so it needs no divider above it. */
-        .chat-composer--only {
-          border-top: none;
         }
         .chat-label {
           color: var(--color-text-muted);
@@ -411,6 +400,6 @@ export default function ChatPanel() {
           opacity: 0.5;
         }
       `}</style>
-    </section>
+    </div>
   );
 }

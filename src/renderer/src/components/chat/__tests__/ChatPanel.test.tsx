@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ChatProvider, type ChatSend } from "@swaff-y/thunder-chat-core";
@@ -41,23 +41,22 @@ describe("ChatPanel", () => {
     cancelRequest.mockClear();
   });
 
-  it("shows only the composer while there is no conversation", () => {
+  it("shows the header, an empty transcript and the composer with no conversation", () => {
     renderPanel(vi.fn(async () => answer("unused")));
 
     expect(composer()).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
+    expect(screen.getByRole("list")).toBeEmptyDOMElement();
   });
 
-  it("reveals the header and transcript once a turn exists", async () => {
+  it("fills the transcript once a turn exists", async () => {
     const user = userEvent.setup();
     renderPanel(vi.fn(async () => answer("Nick Cage")));
 
     await user.type(composer(), "who is popular?");
     await user.click(screen.getByRole("button", { name: "Ask" }));
 
-    expect(await screen.findByRole("button", { name: "Clear" })).toBeInTheDocument();
-    expect(screen.getByRole("list")).toBeInTheDocument();
+    expect(await within(screen.getByRole("list")).findByText("Nick Cage")).toBeInTheDocument();
   });
 
   it("does not send an empty or whitespace-only question", async () => {

@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { IoLogOutOutline, IoSettingsOutline } from "react-icons/io5";
 import CartDropdown from "../shared/CartDropdown";
+import { useChatEnabled } from "../../hooks/useSettings";
 import SettingsModal, { OPEN_SETTINGS_EVENT } from "./SettingsModal";
 
 interface TopBarProps {
   onLogout: () => void;
+  onAskCatalogue: () => void;
 }
 
 const isMac = window.thunder.platform === "darwin";
 
-export default function TopBar({ onLogout }: TopBarProps) {
+export default function TopBar({ onLogout, onAskCatalogue }: TopBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const chatEnabled = useChatEnabled();
 
   useEffect(() => {
     function handleOpenSettings(): void {
@@ -23,6 +26,11 @@ export default function TopBar({ onLogout }: TopBarProps) {
   return (
     <header className={`desktop-topbar${isMac ? " desktop-topbar--mac" : ""}`}>
       <div className="topbar-spacer" />
+      {chatEnabled && (
+        <button type="button" className="topbar-ask" onClick={onAskCatalogue}>
+          Ask catalogue
+        </button>
+      )}
       <button
         className="topbar-icon-btn"
         onClick={() => setSettingsOpen(true)}
@@ -55,6 +63,17 @@ export default function TopBar({ onLogout }: TopBarProps) {
         }
         .topbar-spacer {
           flex: 1;
+        }
+        .topbar-ask {
+          -webkit-app-region: no-drag;
+          background: var(--color-accent);
+          border: none;
+          border-radius: var(--radius-md);
+          color: var(--color-text-on-accent);
+          cursor: pointer;
+          font-size: var(--text-body-sm);
+          font-weight: var(--weight-medium);
+          padding: var(--space-sm) var(--space-md);
         }
         .topbar-icon-btn {
           -webkit-app-region: no-drag;

@@ -54,6 +54,65 @@ if (scoped.length === 0 || process.env.NODE_AUTH_TOKEN) {
   process.exit(0)
 }
 
+/**
+ * TCC-007: the variable that is missing is rarely the variable the reader can
+ * set. Every CI below maps some *other* name onto NODE_AUTH_TOKEN, so a build
+ * log told to `export NODE_AUTH_TOKEN` names something nobody sets there — the
+ * same misdirection this guard exists to remove, one layer up.
+ *
+ * Detected from the environment rather than configured, because the file is
+ * kept byte-identical across three repos and none of them may hold a local
+ * opinion about where it is running.
+ */
+function fix() {
+  if (process.env.BUILDKITE) {
+    return [
+      'Fix, in Buildkite: the agent has no GITHUB_PACKAGES_READ_TOKEN, and an',
+      'unset variable interpolates to empty rather than failing, so the build',
+      'gets this far. Add a machine-user PAT with the read:packages scope to',
+      "the agent's secrets or its environment hook under that name; the",
+      'pipeline maps it onto NODE_AUTH_TOKEN. Not a personal token — the build',
+      'breaks the day it is rotated.'
+    ]
+  }
+
+  if (process.env.GITHUB_ACTIONS) {
+    return [
+      'Fix, in GitHub Actions: give the installing step an env block —',
+      '',
+      '  env:',
+      '    NODE_AUTH_TOKEN: ${{ secrets.GITHUB_PACKAGES_READ_TOKEN }}',
+      '',
+      'holding a machine-user PAT with the read:packages scope.'
+    ]
+  }
+
+  if (process.env.EAS_BUILD) {
+    return [
+      "Fix, on EAS Build: Expo's builders are not your machine, so your local",
+      'token is not there. Set it once per project —',
+      '',
+      '  eas secret:create --scope project --name NODE_AUTH_TOKEN \\',
+      '    --value <token> --type string',
+      '',
+      'and check .npmrc is not excluded by .easignore or .gitignore.'
+    ]
+  }
+
+  return [
+    'Fix: create a PAT with the read:packages scope, then export it from your',
+    'shell profile rather than from a repo:',
+    '',
+    '  export NODE_AUTH_TOKEN=<token>',
+    '',
+    'Verify it before blaming the package:',
+    '',
+    '  npm view @swaff-y/thunder-chat-core version',
+    '',
+    'A version number means the token works. A 404 means it does not.'
+  ]
+}
+
 console.error(
   [
     '',
@@ -68,9 +127,7 @@ console.error(
     'package that does not exist. Without this variable the install fails',
     'reading "no such package" when it means "no such permission".',
     '',
-    'Fix: create a PAT with the read:packages scope, then export it:',
-    '',
-    '  export NODE_AUTH_TOKEN=<token>',
+    ...fix(),
     '',
     'See thunder-chat-core/docs/consuming.md for the four places this token is',
     'needed — developer machines, CI, EAS Build and electron-builder.',

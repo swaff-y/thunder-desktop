@@ -35,14 +35,21 @@ export function useChatBridge(): ChatBridge {
     });
   }, []);
 
-  const send = useCallback<ChatSend>(async (question, history, onStatus) => {
-    listenerRef.current = onStatus;
-    try {
-      return await window.thunder.chat.ask({ question, history });
-    } finally {
-      listenerRef.current = null;
-    }
-  }, []);
+  const send = useCallback<ChatSend>(
+    async (question, history, onStatus, _lifecycle, view) => {
+      listenerRef.current = onStatus;
+      try {
+        // TD-070: the store read the view once, when the question was asked.
+        // It travels with the question rather than being re-derived in main,
+        // which has no router. `null` and "not on a page worth naming" are
+        // the same thing on the wire, so it goes as absent.
+        return await window.thunder.chat.ask({ question, history, view: view ?? undefined });
+      } finally {
+        listenerRef.current = null;
+      }
+    },
+    []
+  );
 
   const cancelRequest = useCallback(() => {
     void window.thunder.chat.cancel();

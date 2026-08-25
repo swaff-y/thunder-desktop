@@ -7,7 +7,8 @@ import type {
   ChatAskResult,
   ChatErrorKind,
   ChatHistoryTurn,
-  ChatStatus
+  ChatStatus,
+  ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
 import type { ThunderSettings } from '../shared/settings'
 
@@ -20,7 +21,10 @@ export type {
   ChatAskResult,
   ChatErrorKind,
   ChatHistoryTurn,
-  ChatStatus
+  ChatStatus,
+  // TD-070: `ChatAskRequest.view` is typed with it, so a consumer of this
+  // module can name it without reaching past the preload boundary.
+  ViewContext
 }
 
 /**

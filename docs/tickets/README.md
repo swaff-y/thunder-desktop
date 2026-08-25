@@ -91,6 +91,11 @@ could ever have copied phase 8.
 - [TD-069](TD-069-action-card-expand-overlay.md) — AI chat: Expand overlay for
   action cards (the wide table and the record's thumbnail rail, split out of
   TD-068)
+- [TD-070](TD-070-chat-knows-the-current-page.md) — AI chat: the agent knows
+  what page you are on, so "what actors are on **this** record?" works on a
+  record page. One route map plus the IPC plumbing to carry it; the wire field
+  and the prompt rules are thunder-context TC-016 and the type is
+  thunder-chat-core TCC-006.
 
 ## Bugs / polish
 

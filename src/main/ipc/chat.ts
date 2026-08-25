@@ -14,7 +14,12 @@
 import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { MAX_TURN_TEXT_LENGTH } from '@swaff-y/thunder-chat-core/headless'
-import type { ChatAskResult, ChatHistoryTurn, ChatStatus } from '@swaff-y/thunder-chat-core/headless'
+import type {
+  ChatAskResult,
+  ChatHistoryTurn,
+  ChatStatus,
+  ViewContext
+} from '@swaff-y/thunder-chat-core/headless'
 import { createContextClient } from '@swaff-y/thunder-chat-core/headless'
 import { resolveAuthToken } from './auth'
 import { resolveChatSettings, resolveContextUrl } from './settings'
@@ -27,6 +32,8 @@ import { sendToFocused } from './window-send'
  */
 const MAX_QUESTION_LENGTH = MAX_TURN_TEXT_LENGTH
 const MAX_HISTORY_TURNS = 40
+/** An id or a halo type; anything longer is not one of ours. */
+const MAX_VIEW_FIELD_LENGTH = 200
 
 const DISABLED_RESULT: ChatAskResult = {
   ok: false,
@@ -62,24 +69,67 @@ function isHistoryTurn(value: unknown): value is ChatHistoryTurn {
   return typeof turn.text === 'string' && turn.text.length <= MAX_QUESTION_LENGTH
 }
 
+function isViewField(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= MAX_VIEW_FIELD_LENGTH
+}
+
+/**
+ * TD-070: the view is rebuilt field by field rather than forwarded, for the
+ * same reason the rest of the payload is — whatever the renderer sends,
+ * only the fields named here reach the server. That drops `label`, which
+ * this client deliberately never sets.
+ *
+ * `null` means "the renderer sent something that is not a view", and the
+ * whole request is rejected: a view the server would have ignored is a bug
+ * here, and silently dropping it is how this feature fails invisibly.
+ */
+function parseView(value: unknown): ViewContext | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { kind, type, id } = value as Record<string, unknown>
+
+  switch (kind) {
+    case 'record':
+      return isViewField(id) ? { kind: 'record', id } : null
+    case 'entity':
+      return isViewField(type) && isViewField(id) ? { kind: 'entity', type, id } : null
+    case 'list':
+      return isViewField(type) ? { kind: 'list', type } : null
+    case 'other':
+      return { kind: 'other' }
+    default:
+      return null
+  }
+}
+
 interface ParsedAskRequest {
   question: string
   history: ChatHistoryTurn[]
+  view?: ViewContext
 }
 
 function parseAskRequest(payload: unknown): ParsedAskRequest | null {
   if (typeof payload !== 'object' || payload === null) return null
-  const { question, history } = payload as Record<string, unknown>
+  const { question, history, view } = payload as Record<string, unknown>
 
   if (typeof question !== 'string') return null
   const trimmed = question.trim()
   if (trimmed.length === 0 || trimmed.length > MAX_QUESTION_LENGTH) return null
 
-  if (history === undefined) return { question: trimmed, history: [] }
-  if (!Array.isArray(history) || history.length > MAX_HISTORY_TURNS) return null
-  if (!history.every(isHistoryTurn)) return null
+  let turns: ChatHistoryTurn[] = []
+  if (history !== undefined) {
+    if (!Array.isArray(history) || history.length > MAX_HISTORY_TURNS) return null
+    if (!history.every(isHistoryTurn)) return null
+    turns = history
+  }
 
-  return { question: trimmed, history }
+  // Most pages have no view, and an absent one is the normal case rather
+  // than a missing field.
+  if (view === undefined || view === null) return { question: trimmed, history: turns }
+
+  const parsed = parseView(view)
+  if (parsed === null) return null
+
+  return { question: trimmed, history: turns, view: parsed }
 }
 
 export function registerChatHandlers(): void {
@@ -103,6 +153,9 @@ export function registerChatHandlers(): void {
     try {
       return await context.ask({
         question: request.question,
+        // TD-070: the page the question was asked from. The client omits it
+        // from the body entirely when absent — `null` is a different request.
+        view: request.view,
         signal: controller.signal,
         // A superseded or cancelled turn must not drive the spinner for
         // the question that replaced it.

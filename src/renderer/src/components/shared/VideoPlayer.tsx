@@ -51,9 +51,20 @@ export default function VideoPlayer({
     }
   }, [onFirstPlay]);
 
+  // The prop is the only authority over mute. An expanded MultiWatch cell
+  // shows the native control bar, whose mute button writes the same bit —
+  // without this the active cell could fall silent while its speaker icon
+  // still claimed otherwise. Writing the value back is a no-op when it
+  // already matches, so this does not loop.
   useEffect(() => {
     const video = videoRef.current;
-    if (video) video.muted = muted;
+    if (!video) return;
+    const assertMuted = (): void => {
+      video.muted = muted;
+    };
+    assertMuted();
+    video.addEventListener("volumechange", assertMuted);
+    return () => video.removeEventListener("volumechange", assertMuted);
   }, [muted]);
 
   useEffect(() => {

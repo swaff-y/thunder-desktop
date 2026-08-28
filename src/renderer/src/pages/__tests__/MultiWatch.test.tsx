@@ -49,6 +49,13 @@ function expandedCell(container: HTMLElement): Element | null {
   return container.querySelector(".multi-watch-cell--expanded");
 }
 
+/** Identity, not equality: two fresh elements with the same `src` compare equal. */
+function expectSamePlayers(container: HTMLElement, before: HTMLVideoElement[]): void {
+  const now = videos(container);
+  expect(now).toHaveLength(before.length);
+  before.forEach((video, index) => expect(now[index]).toBe(video));
+}
+
 describe("MultiWatch audio focus", () => {
   it("starts with the first cell audible and the rest muted", () => {
     const container = renderGrid();
@@ -83,6 +90,16 @@ describe("MultiWatch audio focus", () => {
     const container = renderGrid();
     expect(videos(container).every((video) => !video.hasAttribute("controls"))).toBe(true);
   });
+
+  it("takes mute back off the native control bar", () => {
+    const container = renderGrid();
+    const [audible] = videos(container);
+
+    audible.muted = true;
+    audible.dispatchEvent(new Event("volumechange"));
+
+    expect(audible.muted).toBe(false);
+  });
 });
 
 describe("MultiWatch expand", () => {
@@ -95,11 +112,23 @@ describe("MultiWatch expand", () => {
 
     await user.click(screen.getByRole("button", { name: "Expand two" }));
     expect(expandedCell(container)).toBeInTheDocument();
-    expect(videos(container)).toEqual(before);
+    expectSamePlayers(container, before);
 
     await user.click(screen.getByRole("button", { name: "Collapse two" }));
     expect(expandedCell(container)).toBeNull();
-    expect(videos(container)).toEqual(before);
+    expectSamePlayers(container, before);
+  });
+
+  it("takes the background cells out of the tab order while one is expanded", async () => {
+    const user = userEvent.setup();
+    const container = renderGrid();
+    const cells = () => [...container.querySelectorAll(".multi-watch-cell")];
+
+    expect(cells().some((cell) => cell.hasAttribute("inert"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Expand two" }));
+
+    expect(cells().map((cell) => cell.hasAttribute("inert"))).toEqual([true, false, true]);
   });
 
   it("gives the expanded cell the audio and the transport", async () => {

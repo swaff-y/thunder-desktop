@@ -94,10 +94,13 @@ export default function MultiWatch() {
           const isActive = item.id === activeId;
           const isExpanded = item.id === expandedId;
           const isLiked = likedIds.has(item.id);
+          // An expanded cell covers its siblings, whose controls would stay
+          // tabbable behind it without `inert`.
           return (
             <div
               key={item.id}
               className={`multi-watch-cell${isActive ? " multi-watch-cell--active" : ""}${isExpanded ? " multi-watch-cell--expanded" : ""}`}
+              inert={expandedId !== null && !isExpanded}
               onDoubleClick={() => handleExpand(item.id)}
             >
               <VideoPlayer
@@ -186,9 +189,6 @@ export default function MultiWatch() {
         .multi-layout-3 {
           grid-template-columns: 1fr 1fr;
           grid-template-rows: 1fr 1fr;
-        }
-        .multi-layout-3 .multi-watch-cell:first-child {
-          grid-column: 1 / -1;
         }
 
         .multi-layout-4 {

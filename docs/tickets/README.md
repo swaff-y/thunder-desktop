@@ -103,6 +103,20 @@ could ever have copied phase 8.
   and one line of markup — the tokens and the price are thunder-context TC-027
   and the formatted string is thunder-chat-core TCC-008. Shipped in #62.
 
+- [TD-073](TD-073-a-reload-starts-a-new-conversation.md) — AI chat: a reload
+  starts a new conversation, and only the user can tell. The renderer persists
+  the transcript; main held the conversation id in memory, so after a reload
+  the user reads their old turns while the server holds an empty conversation
+  and the next follow-up reaches the model with no context. Bump
+  thunder-chat-core to 0.7.0 and forward `conversation` / `onConversation` —
+  one more IPC channel, shaped exactly like `chatUsage`. The fix itself is
+  thunder-chat-core TCC-009. Not started.
+
+- [TD-074](complete/TD-074-chat-composer-textarea-history-draft.md) — AI chat:
+  the composer is a textarea, keeps history, and survives a close. Multi-line
+  input with `Enter` to send, `Up`/`Down` through the questions already
+  asked, and a draft that only `Clear` empties. Renderer-only. Shipped in #63.
+
 ## Bugs / polish
 
 - [TD-033](TD-033-settings-url-trim.md) — Settings: trim whitespace from API URL

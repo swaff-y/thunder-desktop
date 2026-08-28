@@ -15,9 +15,11 @@ import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { MAX_TURN_TEXT_LENGTH } from '@swaff-y/thunder-chat-core/headless'
 import type {
+  Capabilities,
   ChatAskResult,
   ChatHistoryTurn,
   ChatStatus,
+  TurnUsage,
   ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
 import { createContextClient } from '@swaff-y/thunder-chat-core/headless'
@@ -46,6 +48,14 @@ const INVALID_REQUEST: ChatAskResult = {
   error: 'unknown',
   message: 'The chat request was malformed.'
 }
+
+/**
+ * TD-072: what the service is while the toggle is off. Named rather than
+ * `null`, because `null` is reserved for "we could not read it" — a
+ * consumer that gated on a fabricated `false` would hide a working chat
+ * over one failed fetch.
+ */
+const DISABLED_CAPABILITIES: Capabilities = { chat_enabled: false, tools: [] }
 
 /**
  * The URL and the token arrive as getters, so a Settings change or a
@@ -163,11 +173,27 @@ export function registerChatHandlers(): void {
           if (!controller.signal.aborted) {
             sendToFocused(THUNDER_IPC_CHANNELS.chatStatus, status)
           }
+        },
+        // TD-072: same guard, for a different reason. A superseded turn did
+        // spend its tokens and the server has already counted them into the
+        // conversation total, so the turn that replaced it will report them.
+        // What is dropped here is a stale snapshot, not the money.
+        onUsage: (usage: TurnUsage) => {
+          if (!controller.signal.aborted) {
+            sendToFocused(THUNDER_IPC_CHANNELS.chatUsage, usage)
+          }
         }
       })
     } finally {
       if (inFlight === controller) inFlight = null
     }
+  })
+
+  // TD-072: the model the summary line names on an empty chat, before any
+  // turn exists to carry one.
+  ipcMain.handle(THUNDER_IPC_CHANNELS.chatCapabilities, async () => {
+    if (!resolveChatSettings().chatEnabled) return DISABLED_CAPABILITIES
+    return context.capabilities()
   })
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.chatCancel, async () => {

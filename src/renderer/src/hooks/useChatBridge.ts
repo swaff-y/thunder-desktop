@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { ChatStatus } from "@swaff-y/thunder-chat-core";
+import type { Capabilities, ChatStatus, TurnUsage } from "@swaff-y/thunder-chat-core";
 import type { ChatSend } from "@swaff-y/thunder-chat-core";
 
 interface ChatBridge {
   send: ChatSend;
+  /**
+   * TD-072: read once on mount, for the model the summary line names on a
+   * chat that has not run a turn yet.
+   */
+  loadCapabilities: () => Promise<Capabilities | null>;
   /**
    * Aborts the in-flight turn in main. `useChat`'s `cancel` calls this so
    * the server stops burning tokens on an abandoned answer.
@@ -21,23 +26,33 @@ interface ChatBridge {
  * transcript; this hook owns the wire, so the store stays testable with a
  * plain function in place of `window.thunder`.
  *
- * The status channel is a single subscription held for the life of the
- * component. Each `send` parks its own listener for the duration of the
- * turn, so a status tick that arrives late is dropped rather than
+ * The status and usage channels are each a single subscription held for
+ * the life of the component. Each `send` parks its own listeners for the
+ * duration of the turn, so a tick that arrives late is dropped rather than
  * attributed to the next question.
  */
 export function useChatBridge(): ChatBridge {
-  const listenerRef = useRef<((status: ChatStatus) => void) | null>(null);
+  const statusRef = useRef<((status: ChatStatus) => void) | null>(null);
+  const usageRef = useRef<((usage: TurnUsage) => void) | null>(null);
 
   useEffect(() => {
     return window.thunder.chat.onStatus((status) => {
-      listenerRef.current?.(status);
+      statusRef.current?.(status);
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.thunder.chat.onUsage((usage) => {
+      usageRef.current?.(usage);
     });
   }, []);
 
   const send = useCallback<ChatSend>(
-    async (question, history, onStatus, _lifecycle, view) => {
-      listenerRef.current = onStatus;
+    async (question, history, onStatus, lifecycle, view) => {
+      statusRef.current = onStatus;
+      // TD-072: main polls the turn, so the usage arrives as a message
+      // rather than as a return value. The store supplies the sink.
+      usageRef.current = lifecycle?.onUsage ?? null;
       try {
         // TD-070: the store read the view once, when the question was asked.
         // It travels with the question rather than being re-derived in main,
@@ -45,11 +60,14 @@ export function useChatBridge(): ChatBridge {
         // the same thing on the wire, so it goes as absent.
         return await window.thunder.chat.ask({ question, history, view: view ?? undefined });
       } finally {
-        listenerRef.current = null;
+        statusRef.current = null;
+        usageRef.current = null;
       }
     },
     []
   );
+
+  const loadCapabilities = useCallback(() => window.thunder.chat.capabilities(), []);
 
   const cancelRequest = useCallback(() => {
     void window.thunder.chat.cancel();
@@ -60,7 +78,7 @@ export function useChatBridge(): ChatBridge {
   }, []);
 
   return useMemo(
-    () => ({ send, cancelRequest, clearRequest }),
-    [send, cancelRequest, clearRequest]
+    () => ({ send, loadCapabilities, cancelRequest, clearRequest }),
+    [send, loadCapabilities, cancelRequest, clearRequest]
   );
 }

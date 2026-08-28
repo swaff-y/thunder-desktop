@@ -9,7 +9,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AskOptions, ChatAskResult } from '@swaff-y/thunder-chat-core/headless'
+import type {
+  AskOptions,
+  Capabilities,
+  ChatAskResult,
+  TurnUsage
+} from '@swaff-y/thunder-chat-core/headless'
 
 const ipcHandlers = new Map<
   string,
@@ -34,12 +39,24 @@ const OK: ChatAskResult = {
   truncated: false
 }
 
+const CAPABILITIES: Capabilities = {
+  chat_enabled: true,
+  tools: [],
+  model: {
+    id: 'deepseek.v3.2',
+    input_price_per_mtok: 0.28,
+    output_price_per_mtok: 0.42,
+    currency: 'USD'
+  }
+}
+
 const ask = vi.fn<(options: AskOptions) => Promise<ChatAskResult>>(async () => OK)
 const clearConversation = vi.fn(async () => {})
+const capabilities = vi.fn<() => Promise<Capabilities | null>>(async () => CAPABILITIES)
 
 vi.mock('@swaff-y/thunder-chat-core/headless', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@swaff-y/thunder-chat-core/headless')>()
-  return { ...actual, createContextClient: () => ({ ask, clearConversation }) }
+  return { ...actual, createContextClient: () => ({ ask, clearConversation, capabilities }) }
 })
 
 let chatEnabled = true
@@ -52,6 +69,8 @@ vi.mock('../settings', () => ({
 vi.mock('../auth', () => ({ resolveAuthToken: () => 'token' }))
 
 vi.mock('../window-send', () => ({ sendToFocused: vi.fn() }))
+
+const { sendToFocused } = await import('../window-send')
 
 const { THUNDER_IPC_CHANNELS } = await import('../../../preload/thunder-api')
 const { registerChatHandlers } = await import('../chat')
@@ -142,5 +161,92 @@ describe('chat ask: the view (TD-070)', () => {
     const result = await invokeAsk({ question: 'hi', view: { kind: 'record', id: '1' } })
     expect(result.ok).toBe(false)
     expect(ask).not.toHaveBeenCalled()
+  })
+})
+
+
+/**
+ * TD-072: main polls the turn, so the usage reaches the renderer as a push
+ * or not at all.
+ */
+const USAGE: TurnUsage = {
+  model: 'deepseek.v3.2',
+  rounds: 1,
+  input_tokens: 1200,
+  output_tokens: 300,
+  cache_read_input_tokens: 0,
+  cache_write_input_tokens: 0,
+  cost_usd: 0.004,
+  conversation: { turns: 3, input_tokens: 3600, output_tokens: 900, cost_usd: 0.041 }
+}
+
+function invokeCapabilities(): Promise<Capabilities | null> {
+  const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.chatCapabilities)
+  if (!handler) throw new Error('chat capabilities handler not registered')
+  return Promise.resolve(handler({})) as Promise<Capabilities | null>
+}
+
+const usagePushes = (): unknown[] =>
+  vi
+    .mocked(sendToFocused)
+    .mock.calls.filter(([channel]) => channel === THUNDER_IPC_CHANNELS.chatUsage)
+    .map(([, payload]) => payload)
+
+describe('chat usage (TD-072)', () => {
+  beforeEach(() => {
+    chatEnabled = true
+    vi.clearAllMocks()
+    ask.mockImplementation(async () => OK)
+    capabilities.mockImplementation(async () => CAPABILITIES)
+  })
+
+  it('pushes what a settled turn spent', async () => {
+    ask.mockImplementation(async (options) => {
+      options.onUsage?.(USAGE)
+      return OK
+    })
+
+    await invokeAsk({ question: 'hi' })
+
+    expect(usagePushes()).toEqual([USAGE])
+  })
+
+  it('says nothing for a turn that was superseded', async () => {
+    // The first turn has to still be running when the second arrives —
+    // a turn that already settled is not the one `abort` reaches.
+    let settleFirstTurn: (() => void) | undefined
+    let reportFirstTurn: (() => void) | undefined
+    ask.mockImplementationOnce(async (options) => {
+      reportFirstTurn = () => options.onUsage?.(USAGE)
+      await new Promise<void>((resolve) => {
+        settleFirstTurn = resolve
+      })
+      return OK
+    })
+
+    const first = invokeAsk({ question: 'first' })
+    await invokeAsk({ question: 'second' })
+    reportFirstTurn?.()
+    settleFirstTurn?.()
+    await first
+
+    expect(usagePushes()).toEqual([])
+  })
+
+  it('names the model that would run the next turn', async () => {
+    expect(await invokeCapabilities()).toEqual(CAPABILITIES)
+  })
+
+  it('reports the disabled shape rather than the service while chat is off', async () => {
+    chatEnabled = false
+
+    expect(await invokeCapabilities()).toEqual({ chat_enabled: false, tools: [] })
+    expect(capabilities).not.toHaveBeenCalled()
+  })
+
+  it('passes an unreadable service through as null rather than as disabled', async () => {
+    capabilities.mockImplementation(async () => null)
+
+    expect(await invokeCapabilities()).toBeNull()
   })
 })

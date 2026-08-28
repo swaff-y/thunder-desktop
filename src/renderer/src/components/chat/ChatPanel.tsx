@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
 import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
-import { useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
+import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
@@ -68,7 +68,7 @@ function TurnAction({
 }
 
 export default function ChatPanel() {
-  const { turns, status, ask, retry, cancel, clear } = useChat();
+  const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLOListElement>(null);
 
@@ -83,6 +83,10 @@ export default function ChatPanel() {
   // a different question and would send the reader somewhere they never was.
   const precedingAction = actionTurns.at(-2)?.action;
   const previousList = precedingAction?.kind === "list" ? precedingAction : undefined;
+  // TD-072: every word of it — the `~`, the "USD", the decimals and the
+  // decision to say nothing at all — is the package's. A null is "we do not
+  // know", and a $0.00 in its place would read as free.
+  const usageSummary = formatUsageSummary(usage, model);
 
   // The design's `stick()`: a new turn, and the panel on mount, land at the
   // bottom of the transcript rather than wherever the last scroll left it.
@@ -161,6 +165,11 @@ export default function ChatPanel() {
           <code className="chat-tool-name">{status.tool}</code>
         </div>
       )}
+
+      {/* Not an aria-live region: this changes after every answer, and a
+          reader announcing a new dollar figure on top of the answer is
+          noise. It is ordinary content, reached at rest. */}
+      <p className="chat-usage">{usageSummary}</p>
 
       <form className="chat-composer" onSubmit={handleSubmit}>
         <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
@@ -356,6 +365,17 @@ export default function ChatPanel() {
         .chat-tool-name {
           color: var(--color-accent-light);
           font-size: var(--text-caption);
+        }
+        /* The line first appears the instant the first answer lands, which
+           is the worst possible moment to move the input the user is about
+           to type in — so the row is always there, empty until it isn't. */
+        .chat-usage {
+          color: var(--color-text-muted);
+          font-size: var(--text-caption);
+          margin: 0;
+          min-height: 1.25em;
+          padding: var(--space-xs) var(--space-md) 0;
+          text-align: right;
         }
         .chat-composer {
           align-items: center;

@@ -91,11 +91,17 @@ could ever have copied phase 8.
 - [TD-069](TD-069-action-card-expand-overlay.md) — AI chat: Expand overlay for
   action cards (the wide table and the record's thumbnail rail, split out of
   TD-068)
-- [TD-070](TD-070-chat-knows-the-current-page.md) — AI chat: the agent knows
-  what page you are on, so "what actors are on **this** record?" works on a
-  record page. One route map plus the IPC plumbing to carry it; the wire field
+- [TD-070](complete/TD-070-chat-knows-the-current-page.md) — AI chat: the agent
+  knows what page you are on, so "what actors are on **this** record?" works on
+  a record page. One route map plus the IPC plumbing to carry it; the wire field
   and the prompt rules are thunder-context TC-016 and the type is
-  thunder-chat-core TCC-006.
+  thunder-chat-core TCC-006. Merged in 35c4c0e.
+
+- [TD-072](complete/TD-072-the-chat-says-what-it-cost.md) — AI chat: the chat
+  says what it cost. One line above the composer naming the model and the
+  conversation's estimated spend. One IPC push channel, one capabilities call
+  and one line of markup — the tokens and the price are thunder-context TC-027
+  and the formatted string is thunder-chat-core TCC-008. Shipped in #62.
 
 ## Bugs / polish
 
@@ -118,3 +124,4 @@ could ever have copied phase 8.
 - [TD-063](complete/TD-063-dev-userdata-isolation.md) — `npm run dev` repoints the packaged app at the dev backend (shared userData)
 - [TD-064](complete/TD-064-bedrock-defaults-stale.md) — Shipped Bedrock defaults don't work against the app's own client
 - [TD-066](complete/TD-066-dev-mcp-url-default.md) — `npm run dev` defaults to the dev halo-mcp (dev token + prod MCP reads as "Your session expired")
+- [TD-071](complete/TD-071-multiwatch-audio-focus-and-expand.md) — MultiWatch: one audio track at a time and expand a cell to fullscreen (the two things TH-012 added on mobile and TD-015's port never got). Shipped in #61.

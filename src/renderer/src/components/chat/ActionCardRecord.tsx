@@ -1,9 +1,9 @@
 import { APP_ROUTES } from "./entity-routes";
-import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ChatAction } from "@swaff-y/thunder-chat-core";
 import ImageCarousel, { type CarouselImage } from "../shared/ImageCarousel";
-import { toSingleCard, type Chip } from "@swaff-y/thunder-chat-core";
+import { toSingleCard } from "@swaff-y/thunder-chat-core";
+import { ChipSection, useCopyId } from "./record-parts";
 import { useActionImages } from "./useActionImages";
 
 /**
@@ -15,7 +15,6 @@ import { useActionImages } from "./useActionImages";
  */
 
 const CAROUSEL_HEIGHT = 250;
-const COPIED_MS = 2000;
 
 function slidesFor(
   slides: CarouselImage[],
@@ -27,74 +26,21 @@ function slidesFor(
   return slides;
 }
 
-function ChipTile({ chip }: { chip: Chip }) {
-  return (
-    <span className="card-single-chip-tile" aria-hidden="true">
-      {chip.initial}
-    </span>
-  );
-}
-
-function ChipSection({ heading, chips }: { heading: string; chips: Chip[] }) {
-  if (chips.length === 0) return null;
-
-  return (
-    <div className="card-single-group">
-      <h4 className="card-single-group-head">
-        {heading} ({chips.length})
-      </h4>
-      <ul className="card-single-chips">
-        {chips.map((chip) => (
-          <li key={chip.key}>
-            {chip.to === undefined ? (
-              <span className="card-single-chip">
-                <ChipTile chip={chip} />
-                {chip.name}
-              </span>
-            ) : (
-              <Link className="card-single-chip card-single-chip--link" to={chip.to}>
-                <ChipTile chip={chip} />
-                {chip.name}
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export default function ActionCardRecord({
   action,
   onBackToList,
+  onExpand,
 }: {
   action: ChatAction;
   onBackToList?: () => void;
+  /** TD-069: absent outside the drawer, where there is nowhere to expand into. */
+  onExpand?: () => void;
 }): React.JSX.Element | null {
   const card = toSingleCard(action, APP_ROUTES);
   const images = useActionImages(card?.image);
-  const [copied, setCopied] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { copied, copy } = useCopyId(card?.id ?? "");
 
   if (!card) return null;
-  const { id } = card;
-
-  async function copyId(): Promise<void> {
-    if (!("clipboard" in navigator)) return;
-    try {
-      await navigator.clipboard.writeText(id);
-    } catch (error) {
-      console.error("[ActionCardRecord] copy failed", error);
-      return;
-    }
-    setCopied(true);
-    clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), COPIED_MS);
-  }
-
-  function handleCopy(): void {
-    void copyId();
-  }
 
   return (
     <section className="card-single" aria-label={card.name}>
@@ -104,6 +50,11 @@ export default function ActionCardRecord({
         {onBackToList !== undefined && (
           <button type="button" className="card-single-back" onClick={onBackToList}>
             Back to list
+          </button>
+        )}
+        {onExpand !== undefined && (
+          <button type="button" className="card-single-back" onClick={onExpand}>
+            Expand
           </button>
         )}
       </header>
@@ -159,7 +110,7 @@ export default function ActionCardRecord({
       </div>
 
       <footer className="card-single-foot">
-        <button type="button" className="card-single-button" onClick={handleCopy}>
+        <button type="button" className="card-single-button" onClick={copy}>
           Copy ID
         </button>
         {card.route !== undefined && (
@@ -276,53 +227,6 @@ export default function ActionCardRecord({
         .mono {
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-variant-numeric: tabular-nums;
-        }
-        .card-single-group {
-          border-top: 1px solid var(--color-border);
-          margin-top: var(--space-md);
-          padding-top: var(--space-md);
-        }
-        .card-single-group-head {
-          color: var(--color-text-muted);
-          font-size: var(--text-caption);
-          letter-spacing: 0.08em;
-          margin: 0 0 var(--space-sm);
-          text-transform: uppercase;
-        }
-        .card-single-chips {
-          display: flex;
-          flex-wrap: wrap;
-          gap: var(--space-sm);
-          list-style: none;
-          margin: 0;
-          padding: 0;
-        }
-        .card-single-chip {
-          align-items: center;
-          background: var(--color-bg-alt);
-          border: 1px solid transparent;
-          border-radius: var(--radius-xl);
-          color: var(--color-text);
-          display: flex;
-          font-size: var(--text-caption);
-          gap: var(--space-xs);
-          padding: var(--space-xs) var(--space-sm);
-          text-decoration: none;
-        }
-        .card-single-chip--link:hover,
-        .card-single-chip--link:focus-visible {
-          border-color: var(--color-accent);
-          color: var(--color-text);
-        }
-        .card-single-chip-tile {
-          align-items: center;
-          background: var(--color-accent);
-          border-radius: var(--radius-full);
-          color: var(--color-text-on-accent);
-          display: flex;
-          height: 20px;
-          justify-content: center;
-          width: 20px;
         }
         .card-single-foot {
           align-items: center;

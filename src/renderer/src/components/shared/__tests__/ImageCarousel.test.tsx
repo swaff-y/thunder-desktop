@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ImageCarousel from "../ImageCarousel";
 
 const IMAGES = [
@@ -31,6 +32,30 @@ describe("ImageCarousel", () => {
     const { container } = render(<ImageCarousel images={IMAGES} autoAdvance={false} />);
 
     act(() => vi.advanceTimersByTime(9000));
+    expect(activeIndex(container)).toBe(0);
+  });
+
+  // TD-069: the expanded record's thumbnail rail drives the carousel, so
+  // the index has to be somebody else's to hold. Every existing caller
+  // passes neither prop and keeps the index it always had.
+  it("shows the slide a controlling caller names", () => {
+    const { container, rerender } = render(<ImageCarousel images={IMAGES} index={1} />);
+
+    expect(activeIndex(container)).toBe(1);
+    rerender(<ImageCarousel images={IMAGES} index={0} />);
+    expect(activeIndex(container)).toBe(0);
+  });
+
+  it("reports where its own controls would go rather than going there", async () => {
+    const user = userEvent.setup();
+    const onIndexChange = vi.fn();
+    const { container } = render(
+      <ImageCarousel images={IMAGES} index={0} onIndexChange={onIndexChange} showControls />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Next image" }));
+
+    expect(onIndexChange).toHaveBeenCalledWith(1);
     expect(activeIndex(container)).toBe(0);
   });
 

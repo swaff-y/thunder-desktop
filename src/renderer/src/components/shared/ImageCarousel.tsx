@@ -22,6 +22,14 @@ interface ImageCarouselProps {
    */
   autoAdvance?: boolean;
   showControls?: boolean;
+  /**
+   * TD-069: the slide on screen, when something outside is driving it —
+   * the expanded record's thumbnail rail. Supply both or neither: with no
+   * `index` the carousel keeps its own, which is what every page using it
+   * already relies on.
+   */
+  index?: number;
+  onIndexChange?: (index: number) => void;
 }
 
 function toCssLength(height: number | string): string {
@@ -51,14 +59,27 @@ export default function ImageCarousel({
   height = 240,
   autoAdvance = true,
   showControls = false,
+  index,
+  onIndexChange,
 }: ImageCarouselProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [ownIndex, setOwnIndex] = useState(0);
+  const isControlled = index !== undefined;
+  const currentIndex = isControlled ? index : ownIndex;
+
+  // One setter for both modes, so nothing below has to know which it is.
+  const goTo = useCallback(
+    (next: number) => {
+      if (!isControlled) setOwnIndex(next);
+      onIndexChange?.(next);
+    },
+    [isControlled, onIndexChange]
+  );
 
   const advance = useCallback(
     (step: number) => {
-      setCurrentIndex((prev) => (prev + step + images.length) % images.length);
+      goTo((currentIndex + step + images.length) % images.length);
     },
-    [images.length]
+    [goTo, currentIndex, images.length]
   );
 
   useEffect(() => {
@@ -122,7 +143,7 @@ export default function ImageCarousel({
                 type="button"
                 className={`carousel-dot ${i === activeIndex ? "active" : ""}`}
                 aria-current={i === activeIndex}
-                onClick={() => setCurrentIndex(i)}
+                onClick={() => goTo(i)}
               >
                 <span className="visually-hidden">
                   Image {i + 1} of {images.length}

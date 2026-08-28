@@ -323,3 +323,24 @@ describe("ActionCardRecord", () => {
     expect(container.querySelector(".card-single")).toBeNull();
   });
 });
+
+describe("ActionCardRecord: Expand", () => {
+  it("offers no Expand without a handler to expand into", () => {
+    renderCard(recordAction());
+    expect(screen.queryByRole("button", { name: "Expand" })).not.toBeInTheDocument();
+  });
+
+  it("calls the handler when Expand is clicked", async () => {
+    const user = userEvent.setup();
+    const onExpand = vi.fn();
+    render(
+      <MemoryRouter>
+        <ActionCardRecord action={recordAction()} onExpand={onExpand} />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Expand" }));
+
+    expect(onExpand).toHaveBeenCalled();
+  });
+});

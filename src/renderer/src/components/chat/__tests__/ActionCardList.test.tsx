@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -145,5 +145,35 @@ describe("ActionCardList", () => {
     const { container } = renderCard(listAction("get_record", { id: "rec-1" }, { id: "rec-1" }));
 
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+/**
+ * TD-069: the card is drawn outside the drawer too, and there is nowhere to
+ * expand into there — so the button exists only where the handler does.
+ */
+describe("ActionCardList: Expand", () => {
+  const action = listAction("search_records", { filter: "nig" }, {
+    items: [{ id: "rec-1", name: "Nightjar Sessions", actors: [], views: 12 }],
+    next_cursor: null,
+  });
+
+  it("offers no Expand without a handler to expand into", () => {
+    renderCard(action);
+    expect(screen.queryByRole("button", { name: "Expand" })).not.toBeInTheDocument();
+  });
+
+  it("calls the handler when Expand is clicked", async () => {
+    const user = userEvent.setup();
+    const onExpand = vi.fn();
+    render(
+      <MemoryRouter>
+        <ActionCardList action={action} onExpand={onExpand} />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Expand" }));
+
+    expect(onExpand).toHaveBeenCalled();
   });
 });

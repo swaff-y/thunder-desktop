@@ -9,13 +9,18 @@ import { toListCard, type ListRow } from "@swaff-y/thunder-chat-core";
  * `renderImage` is a slot rather than a fetch: halo-mcp's presigned URLs
  * are stripped before the action is persisted, so real thumbnails need a
  * by-id lookup that arrives with TD-058 and fills this in from outside.
+ *
+ * TD-069: `onExpand` is optional for the same reason — the card is drawn
+ * outside the drawer too, and there is nowhere to expand into there.
  */
 export default function ActionCardList({
   action,
   renderImage,
+  onExpand,
 }: {
   action: ChatAction;
   renderImage?: (row: ListRow) => React.ReactNode;
+  onExpand?: () => void;
 }): React.JSX.Element | null {
   const card = toListCard(action, APP_ROUTES);
   if (!card) return null;
@@ -32,6 +37,11 @@ export default function ActionCardList({
         <span className="card-list-kind">Action · list</span>
         <h3 className="card-list-title">{card.title}</h3>
         <code className="card-list-tool">{card.tool}</code>
+        {onExpand !== undefined && (
+          <button type="button" className="card-list-expand" onClick={onExpand}>
+            Expand
+          </button>
+        )}
       </header>
 
       {shown === 0 ? (
@@ -110,6 +120,19 @@ export default function ActionCardList({
         .card-list-tool {
           color: var(--color-accent-light);
           font-size: var(--text-caption);
+        }
+        .card-list-expand {
+          background: none;
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-xl);
+          color: var(--color-text-muted);
+          cursor: pointer;
+          font-size: var(--text-caption);
+          padding: var(--space-xs) var(--space-md);
+        }
+        .card-list-expand:hover {
+          border-color: var(--color-accent);
+          color: var(--color-text);
         }
         .card-list-column {
           color: var(--color-text-muted);

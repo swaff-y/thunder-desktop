@@ -9,6 +9,14 @@ interface VideoPlayerProps {
   title?: string;
   className?: string;
   onFirstPlay?: () => void;
+  /**
+   * MultiWatch grids four of these and only one may be audible, so mute is a
+   * prop rather than the element's own business. It is re-asserted from an
+   * effect because the native control bar writes the same bit.
+   */
+  muted?: boolean;
+  /** Off for a glanceable grid cell, on everywhere a scrubber makes sense. */
+  controls?: boolean;
   ref?: Ref<VideoPlayerHandle>;
 }
 
@@ -29,6 +37,8 @@ export default function VideoPlayer({
   title,
   className = "",
   onFirstPlay,
+  muted = false,
+  controls = true,
   ref,
 }: VideoPlayerProps) {
   const firedRef = useRef(false);
@@ -40,6 +50,11 @@ export default function VideoPlayer({
       onFirstPlay();
     }
   }, [onFirstPlay]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) video.muted = muted;
+  }, [muted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -110,7 +125,8 @@ export default function VideoPlayer({
         ref={videoRef}
         className="video-element"
         src={src}
-        controls
+        muted={muted}
+        controls={controls}
         autoPlay
         loop
         playsInline

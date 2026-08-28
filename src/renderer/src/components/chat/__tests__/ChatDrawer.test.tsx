@@ -38,6 +38,10 @@ function trigger(): HTMLElement {
   return screen.getByRole("button", { name: "Ask catalogue" });
 }
 
+function composer(): HTMLTextAreaElement {
+  return screen.getByLabelText("Ask the catalogue");
+}
+
 function drawer(): HTMLElement {
   return screen.getByRole("dialog", { name: "Catalogue chat" });
 }
@@ -151,6 +155,24 @@ describe("ChatDrawer", () => {
 
     await user.tab({ shift: true });
     expect(composer).toHaveFocus();
+  });
+
+  // TD-074: the panel restores the draft and puts the caret at the end of it
+  // as it mounts, and the drawer focuses the composer straight after — the
+  // half-typed question has to survive both.
+  it("gives back the half-typed question, focused, when it is reopened", async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+
+    await user.click(trigger());
+    await user.type(composer(), "who is pop");
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(trigger());
+
+    expect(composer()).toHaveValue("who is pop");
+    expect(composer()).toHaveFocus();
+    expect(composer().selectionStart).toBe("who is pop".length);
   });
 
   it("keeps the conversation when it is reopened", async () => {

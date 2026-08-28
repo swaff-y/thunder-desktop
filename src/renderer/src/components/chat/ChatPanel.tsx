@@ -15,6 +15,29 @@ const RUNNING_QUERY = "Running catalogue query…";
 /** The drawer focuses the composer on open. */
 export const COMPOSER_INPUT_ID = "chat-question";
 
+/** The half-typed question outlives the drawer, which unmounts on close. */
+const DRAFT_STORAGE_KEY = "thunder_chat_draft";
+
+function loadDraft(): string {
+  return sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? "";
+}
+
+/**
+ * `Up` recalls a question only from the top line and `Down` only from the
+ * bottom one; anywhere else in a multi-line draft the arrows are the caret's.
+ */
+function caretOnFirstLine(field: HTMLTextAreaElement): boolean {
+  return !field.value.slice(0, field.selectionStart).includes("\n");
+}
+
+function caretOnLastLine(field: HTMLTextAreaElement): boolean {
+  return !field.value.slice(field.selectionEnd).includes("\n");
+}
+
+/** A walk back through the questions: `steps` from the newest, and the
+ *  draft that was on screen before the walk began. */
+type HistoryWalk = { steps: number; typed: string };
+
 /**
  * The one thing a screen reader is told about a turn: that it is running,
  * what it is running, and then the answer itself.
@@ -69,8 +92,11 @@ function TurnAction({
 
 export default function ChatPanel() {
   const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(loadDraft);
+  const [recall, setRecall] = useState<HistoryWalk | null>(null);
   const transcriptRef = useRef<HTMLOListElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const caretToEndRef = useRef(true);
 
   const isPending = status.state !== "idle";
   const lastAnswer = turns.at(-1)?.answer;
@@ -95,16 +121,79 @@ export default function ChatPanel() {
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
   }, [turns]);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  // A restored draft, and a recalled question, are text the user did not just
+  // type — the caret has to be put at the end of it for them.
+  useEffect(() => {
+    if (!caretToEndRef.current) return;
+    caretToEndRef.current = false;
+    const composer = composerRef.current;
+    composer?.setSelectionRange(composer.value.length, composer.value.length);
+  }, [draft]);
+
+  function writeDraft(text: string): void {
+    setDraft(text);
+    sessionStorage.setItem(DRAFT_STORAGE_KEY, text);
+  }
+
+  function submitQuestion(): void {
     const question = draft.trim();
     if (!question || isPending) return;
-    setDraft("");
+    writeDraft("");
+    setRecall(null);
     void ask(question);
   }
 
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>): void {
-    setDraft(event.target.value);
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    submitQuestion();
+  }
+
+  function handleChange(event: React.ChangeEvent<HTMLTextAreaElement>): void {
+    // Typing over a recalled question makes it the user's own draft again,
+    // so the next `Up` starts from the newest question rather than resuming.
+    setRecall(null);
+    writeDraft(event.target.value);
+  }
+
+  // Recalled text is text the user did not type, so the caret is put at the
+  // end of it for them; a null walk is the end of the road back.
+  function showRecalled(text: string, walk: HistoryWalk | null): void {
+    setRecall(walk);
+    caretToEndRef.current = true;
+    writeDraft(text);
+  }
+
+  function recallQuestion(steps: number, typed: string): void {
+    const question = turns.at(-1 - steps)?.question;
+    if (question === undefined) return;
+    showRecalled(question, { steps, typed });
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    // The chat convention, not the textarea's: a bare Enter sends rather than
+    // inserting the newline it would natively, which is Shift+Enter's job.
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitQuestion();
+      return;
+    }
+    if (turns.length === 0) return;
+    if (event.key === "ArrowUp" && caretOnFirstLine(event.currentTarget)) {
+      event.preventDefault();
+      recallQuestion(recall === null ? 0 : recall.steps + 1, recall?.typed ?? draft);
+      return;
+    }
+    if (event.key === "ArrowDown" && recall !== null && caretOnLastLine(event.currentTarget)) {
+      event.preventDefault();
+      if (recall.steps === 0) showRecalled(recall.typed, null);
+      else recallQuestion(recall.steps - 1, recall.typed);
+    }
+  }
+
+  function handleClear(): void {
+    setRecall(null);
+    writeDraft("");
+    clear();
   }
 
   function handleRetry(turn: ChatTurn): void {
@@ -114,7 +203,7 @@ export default function ChatPanel() {
   return (
     <div className="chat-panel">
       <header className="chat-header">
-        <button type="button" className="chat-clear" onClick={clear}>
+        <button type="button" className="chat-clear" onClick={handleClear}>
           Clear
         </button>
       </header>
@@ -175,13 +264,15 @@ export default function ChatPanel() {
         <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
           Ask the catalogue
         </label>
-        <input
+        <textarea
           id={COMPOSER_INPUT_ID}
+          ref={composerRef}
           className="chat-input"
-          type="text"
+          rows={1}
           autoComplete="off"
           value={draft}
           onChange={handleChange}
+          onKeyDown={handleKeyDown}
           disabled={isPending}
         />
         {isPending ? (
@@ -378,7 +469,7 @@ export default function ChatPanel() {
           text-align: right;
         }
         .chat-composer {
-          align-items: center;
+          align-items: flex-end;
           border-top: 1px solid var(--color-border);
           display: flex;
           flex: none;
@@ -388,15 +479,26 @@ export default function ChatPanel() {
         .chat-label {
           color: var(--color-text-muted);
           font-size: var(--text-caption);
+          padding-bottom: var(--space-sm);
         }
+        /* Grows with the draft and stops at six lines, so a long question
+           scrolls inside the composer instead of pushing the drawer past the
+           window. field-sizing does the growing; the single row it starts
+           from is the resting height either way. */
         .chat-input {
           background: var(--color-bg-alt);
           border: 1px solid var(--color-border);
           border-radius: var(--radius-xl);
           color: var(--color-text);
+          field-sizing: content;
           flex: 1;
+          font-family: inherit;
           font-size: var(--text-body-sm);
+          line-height: 1.4;
+          max-height: calc(6 * 1.4em + 2 * var(--space-sm));
+          overflow-y: auto;
           padding: var(--space-sm) var(--space-md);
+          resize: none;
         }
         .chat-input:focus {
           border-color: var(--color-accent);

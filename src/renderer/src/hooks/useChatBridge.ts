@@ -34,6 +34,11 @@ interface ChatBridge {
 export function useChatBridge(): ChatBridge {
   const statusRef = useRef<((status: ChatStatus) => void) | null>(null);
   const usageRef = useRef<((usage: TurnUsage) => void) | null>(null);
+  // Which turn owns the two slots above. A superseded turn settles *after*
+  // the one that replaced it has already claimed them, so it has to prove
+  // the sinks are still its own before clearing them — otherwise it takes
+  // the live turn's spinner and its cost report down with it.
+  const currentTurn = useRef(0);
 
   useEffect(() => {
     return window.thunder.chat.onStatus((status) => {
@@ -49,6 +54,7 @@ export function useChatBridge(): ChatBridge {
 
   const send = useCallback<ChatSend>(
     async (question, history, onStatus, lifecycle, view) => {
+      const turn = ++currentTurn.current;
       statusRef.current = onStatus;
       // TD-072: main polls the turn, so the usage arrives as a message
       // rather than as a return value. The store supplies the sink.
@@ -60,8 +66,10 @@ export function useChatBridge(): ChatBridge {
         // the same thing on the wire, so it goes as absent.
         return await window.thunder.chat.ask({ question, history, view: view ?? undefined });
       } finally {
-        statusRef.current = null;
-        usageRef.current = null;
+        if (currentTurn.current === turn) {
+          statusRef.current = null;
+          usageRef.current = null;
+        }
       }
     },
     []

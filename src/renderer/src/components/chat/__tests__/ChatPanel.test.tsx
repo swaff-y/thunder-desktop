@@ -36,8 +36,23 @@ function renderPanel(send: ChatSend) {
   );
 }
 
-function composer(): HTMLInputElement {
+function composer(): HTMLTextAreaElement {
   return screen.getByLabelText("Ask the catalogue");
+}
+
+function saidLines(): string[] {
+  return [...document.querySelectorAll(".chat-said")].map((said) => said.textContent ?? "");
+}
+
+/** Asks and waits for the turn to settle, which is when the composer comes back. */
+async function askQuestion(
+  user: ReturnType<typeof userEvent.setup>,
+  question: string
+): Promise<void> {
+  await user.click(composer());
+  await user.keyboard(question);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(composer()).toBeEnabled());
 }
 
 describe("ChatPanel", () => {
@@ -315,5 +330,155 @@ describe("ChatPanel usage summary", () => {
     await user.click(screen.getByRole("button", { name: "Clear" }));
 
     await waitFor(() => expect(line()).toBeEmptyDOMElement());
+  });
+});
+
+
+/**
+ * TD-074: the composer is a textarea, so none of Enter, the arrow keys or a
+ * surviving draft come free from the browser — each is asserted here.
+ */
+describe("ChatPanel composer", () => {
+  const DRAFT_STORAGE_KEY = "thunder_chat_draft";
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("keeps the drawer's own height: a one-row textarea, not a growing input", () => {
+    renderPanel(vi.fn(async () => answer("unused")));
+
+    expect(composer().tagName).toBe("TEXTAREA");
+    expect(composer()).toHaveAttribute("rows", "1");
+  });
+
+  it("makes a new line on Shift+Enter and sends the whole question on Enter", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn<ChatSend>(async () => answer("Nick Cage"));
+    renderPanel(send);
+
+    await user.click(composer());
+    await user.keyboard("who is popular?");
+    await user.keyboard("{Shift>}{Enter}{/Shift}");
+    await user.keyboard("in 1999");
+
+    expect(composer()).toHaveValue("who is popular?\nin 1999");
+    expect(send).not.toHaveBeenCalled();
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0][0]).toBe("who is popular?\nin 1999");
+  });
+
+  it("keeps the line breaks of a sent question in the transcript", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await user.click(composer());
+    await user.keyboard("who is popular?");
+    await user.keyboard("{Shift>}{Enter}{/Shift}");
+    await user.keyboard("in 1999{Enter}");
+
+    await waitFor(() => expect(saidLines()).toContain("who is popular?\nin 1999"));
+  });
+
+  it("walks back through the questions on Up and stops at the oldest", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await askQuestion(user, "first");
+    await askQuestion(user, "second");
+    await askQuestion(user, "third");
+
+    await user.click(composer());
+    await user.keyboard("{ArrowUp}");
+    expect(composer()).toHaveValue("third");
+    await user.keyboard("{ArrowUp}");
+    expect(composer()).toHaveValue("second");
+    await user.keyboard("{ArrowUp}");
+    expect(composer()).toHaveValue("first");
+    await user.keyboard("{ArrowUp}");
+    expect(composer()).toHaveValue("first");
+  });
+
+  it("walks forward on Down and ends on what was typed before the first Up", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await askQuestion(user, "first");
+    await askQuestion(user, "second");
+
+    await user.click(composer());
+    await user.keyboard("half typed");
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    expect(composer()).toHaveValue("first");
+
+    await user.keyboard("{ArrowDown}");
+    expect(composer()).toHaveValue("second");
+    await user.keyboard("{ArrowDown}");
+    expect(composer()).toHaveValue("half typed");
+    expect(composer().selectionStart).toBe("half typed".length);
+  });
+
+  it("starts the next recall from the newest question once the recalled one is edited", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await askQuestion(user, "first");
+    await askQuestion(user, "second");
+
+    await user.click(composer());
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    expect(composer()).toHaveValue("first");
+
+    await user.keyboard("!");
+    expect(composer()).toHaveValue("first!");
+
+    await user.keyboard("{ArrowUp}");
+    expect(composer()).toHaveValue("second");
+  });
+
+  it("leaves the caret alone when Up is pressed below the first line", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await askQuestion(user, "first");
+
+    await user.click(composer());
+    await user.keyboard("top");
+    await user.keyboard("{Shift>}{Enter}{/Shift}");
+    await user.keyboard("bottom");
+    await user.keyboard("{ArrowUp}");
+
+    expect(composer()).toHaveValue("top\nbottom");
+  });
+
+  it("gives a half-typed question back when the panel is mounted again", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderPanel(vi.fn(async () => answer("unused")));
+
+    await user.type(composer(), "half typed");
+    expect(sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe("half typed");
+
+    unmount();
+    renderPanel(vi.fn(async () => answer("unused")));
+
+    expect(composer()).toHaveValue("half typed");
+    expect(composer().selectionStart).toBe("half typed".length);
+  });
+
+  it("empties the composer as well as the transcript on Clear", async () => {
+    const user = userEvent.setup();
+    renderPanel(vi.fn(async () => answer("Nick Cage")));
+
+    await askQuestion(user, "who is popular?");
+    await user.type(composer(), "half typed");
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(composer()).toHaveValue("");
+    expect(sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe("");
+    expect(screen.getByRole("list")).toBeEmptyDOMElement();
   });
 });

@@ -6,7 +6,8 @@ interface ChatDrawerProps {
   onClose: () => void;
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * The chat as a right-anchored drawer over the page: the page keeps its own
@@ -28,7 +29,7 @@ function Drawer({ onClose }: { onClose: () => void }): React.JSX.Element {
   // whatever opened the drawer, which is the top bar button.
   useEffect(() => {
     const opener = document.activeElement;
-    panelRef.current?.querySelector<HTMLInputElement>(`#${COMPOSER_INPUT_ID}`)?.focus();
+    panelRef.current?.querySelector<HTMLTextAreaElement>(`#${COMPOSER_INPUT_ID}`)?.focus();
     return () => {
       if (opener instanceof HTMLElement) opener.focus();
     };

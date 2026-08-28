@@ -207,6 +207,13 @@ export default function ActionOverlay({
     onClose();
   }
 
+  // `Back to list` unmounts the button that was clicked, so focus has to be
+  // put somewhere first — the dialog itself, where it landed on open.
+  function handleBackToList(): void {
+    setShowList(true);
+    overlayRef.current?.focus();
+  }
+
   const shown = showList && previousList !== undefined ? previousList : action;
   const canGoBack = action.kind === "single" && previousList !== undefined && !showList;
 
@@ -226,6 +233,7 @@ export default function ActionOverlay({
       ref={overlayRef}
       className="action-overlay"
       role="dialog"
+      aria-modal="true"
       aria-label={head.title}
       tabIndex={-1}
       onKeyDown={handleKeyDown}
@@ -239,11 +247,7 @@ export default function ActionOverlay({
         {list && <h2 className="action-overlay-title">{head.title}</h2>}
         <code className="action-overlay-tool">{head.tool}</code>
         {canGoBack && (
-          <button
-            type="button"
-            className="action-overlay-btn"
-            onClick={() => setShowList(true)}
-          >
+          <button type="button" className="action-overlay-btn" onClick={handleBackToList}>
             Back to list
           </button>
         )}

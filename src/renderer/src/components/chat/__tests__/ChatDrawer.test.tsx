@@ -223,8 +223,11 @@ describe("ChatDrawer: the expand overlay", () => {
     const user = userEvent.setup();
     await openExpanded(user);
 
-    expect(document.querySelector(".chat-transcript")).toHaveAttribute("inert");
-    expect(document.querySelector(".chat-composer")).toHaveAttribute("inert");
+    // jsdom does not enforce what `inert` means, so this is a tripwire for
+    // the attribute going missing rather than a test of the behaviour.
+    for (const selector of [".chat-header", ".chat-transcript", ".chat-composer"]) {
+      expect(document.querySelector(selector)).toHaveAttribute("inert");
+    }
   });
 
   it("closes the overlay on Escape and leaves the drawer open, then closes the drawer", async () => {

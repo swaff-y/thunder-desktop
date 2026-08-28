@@ -54,7 +54,7 @@ export default function ActionCardRecord({
           </button>
         )}
         {onExpand !== undefined && (
-          <button type="button" className="card-single-back" onClick={onExpand}>
+          <button type="button" className="card-single-expand" onClick={onExpand}>
             Expand
           </button>
         )}
@@ -152,7 +152,8 @@ export default function ActionCardRecord({
           color: var(--color-accent-light);
           font-size: var(--text-caption);
         }
-        .card-single-back {
+        .card-single-back,
+        .card-single-expand {
           background: none;
           border: 1px solid var(--color-border);
           border-radius: var(--radius-xl);

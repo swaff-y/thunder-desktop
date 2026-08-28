@@ -159,6 +159,17 @@ describe("ActionOverlay: a record", () => {
     expect(screen.getByText("Action · list")).toBeInTheDocument();
   });
 
+  // The click unmounts the button that was clicked, so focus has to be put
+  // somewhere rather than left to fall back to the document body.
+  it("keeps focus inside itself across the way back", async () => {
+    const user = userEvent.setup();
+    renderOverlay(recordAction(), { previousList: recordsAction() });
+
+    await user.click(screen.getByRole("button", { name: "Back to list" }));
+
+    expect(overlay()).toHaveFocus();
+  });
+
   it("offers no way back when the record did not come out of a list", () => {
     renderOverlay(recordAction());
     expect(screen.queryByRole("button", { name: "Back to list" })).not.toBeInTheDocument();

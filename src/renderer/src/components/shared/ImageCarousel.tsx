@@ -75,11 +75,19 @@ export default function ImageCarousel({
     [isControlled, onIndexChange]
   );
 
+  // Uncontrolled keeps the functional updater it always had, so `advance`
+  // is stable and the auto-advance interval is created once rather than
+  // torn down and rebuilt on every tick.
   const advance = useCallback(
     (step: number) => {
-      goTo((currentIndex + step + images.length) % images.length);
+      const wrap = (from: number): number => (from + step + images.length) % images.length;
+      if (index !== undefined) {
+        onIndexChange?.(wrap(index));
+        return;
+      }
+      setOwnIndex(wrap);
     },
-    [goTo, currentIndex, images.length]
+    [index, onIndexChange, images.length]
   );
 
   useEffect(() => {

@@ -35,13 +35,14 @@ function CurrentViewTracker({ source }: { source: TrackedViewSource }): null {
 // TD-056: the store takes `send` as a prop so it stays testable without IPC;
 // this is the one place the real bridge is attached.
 function ChatBridgeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const { send, cancelRequest, clearRequest } = useChatBridge()
+  const { send, loadCapabilities, cancelRequest, clearRequest } = useChatBridge()
   // TD-070: one source for the life of the app — the store reads it once
   // per ask, so it must not be rebuilt on every render.
   const [viewSource] = useState(createViewSource)
   return (
     <ChatProvider
       send={send}
+      loadCapabilities={loadCapabilities}
       cancelRequest={cancelRequest}
       clearRequest={clearRequest}
       storage={sessionStorage}

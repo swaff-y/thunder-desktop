@@ -2,7 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { ChatProvider, type ChatSend } from "@swaff-y/thunder-chat-core";
+import {
+  ChatProvider,
+  formatUsageSummary,
+  type ChatSend,
+  type ModelInfo,
+  type TurnUsage,
+} from "@swaff-y/thunder-chat-core";
 import ChatPanel from "../ChatPanel";
 import { answer, deferredAnswer, listAction, singleAction } from "./fixtures";
 
@@ -223,5 +229,91 @@ describe("ChatPanel", () => {
     expect(cancelRequest).toHaveBeenCalledTimes(1);
     expect(composer()).toBeEnabled();
     expect(screen.getByText("Stopped.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * TD-072: the words are `formatUsageSummary`'s. These tests assert on what
+ * the package renders, never on a string rebuilt here — a local copy of the
+ * `~`, the "USD" or the decimals is the failure the ticket is guarding.
+ */
+describe("ChatPanel usage summary", () => {
+  const MODEL: ModelInfo = {
+    id: "deepseek.v3.2",
+    input_price_per_mtok: 0.28,
+    output_price_per_mtok: 0.42,
+    currency: "USD",
+  };
+
+  const USAGE: TurnUsage = {
+    model: MODEL.id,
+    rounds: 1,
+    input_tokens: 1200,
+    output_tokens: 300,
+    cache_read_input_tokens: 0,
+    cache_write_input_tokens: 0,
+    cost_usd: 0.004,
+    conversation: { turns: 1, input_tokens: 1200, output_tokens: 300, cost_usd: 0.041 },
+  };
+
+  function line(): HTMLElement | null {
+    return document.querySelector(".chat-usage");
+  }
+
+  async function askOnce(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.type(composer(), "what is popular?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(
+      await within(screen.getByRole("list")).findByText("Nick Cage")
+    ).toBeInTheDocument();
+  }
+
+  const reportingSend: ChatSend = async (_question, _history, _onStatus, lifecycle) => {
+    lifecycle?.onUsage?.(USAGE);
+    return answer("Nick Cage");
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("says nothing before a turn has run", () => {
+    renderPanel(vi.fn(async () => answer("unused")));
+
+    expect(line()).toBeEmptyDOMElement();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+  });
+
+  it("renders the package's own summary once a turn reports", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ChatProvider
+          send={reportingSend}
+          cancelRequest={cancelRequest}
+          loadCapabilities={async () => ({ chat_enabled: true, tools: [], model: MODEL })}
+        >
+          <ChatPanel />
+        </ChatProvider>
+      </MemoryRouter>
+    );
+
+    await askOnce(user);
+
+    const expected = formatUsageSummary(USAGE.conversation, MODEL);
+    expect(expected).not.toBeNull();
+    await waitFor(() => expect(line()).toHaveTextContent(String(expected)));
+  });
+
+  it("forgets what the last conversation cost when the chat is cleared", async () => {
+    const user = userEvent.setup();
+    renderPanel(reportingSend);
+
+    await askOnce(user);
+    await waitFor(() => expect(line()).not.toBeEmptyDOMElement());
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    await waitFor(() => expect(line()).toBeEmptyDOMElement());
   });
 });

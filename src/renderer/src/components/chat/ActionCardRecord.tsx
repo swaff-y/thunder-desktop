@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import type { ChatAction } from "@swaff-y/thunder-chat-core";
 import ImageCarousel, { type CarouselImage } from "../shared/ImageCarousel";
 import { toSingleCard } from "@swaff-y/thunder-chat-core";
-import { ChipSection, useCopyId } from "./record-parts";
+import { ChipSection } from "./record-parts";
+import { useCopyId } from "./useCopyId";
 import { useActionImages } from "./useActionImages";
 
 /**

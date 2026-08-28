@@ -1,42 +1,14 @@
 /**
- * TD-069: the pieces of the single-record card the expanded view draws too.
+ * TD-069: the chips the single-record card draws, and the expanded view
+ * draws too.
  *
  * The overlay is not a second design for a record — it is the same record
- * with room. Extracted rather than copied so the chips and the copy
- * feedback cannot drift into two answers to one question.
+ * with room. Extracted rather than copied so the two cannot drift into two
+ * answers to one question.
  */
 
-import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Chip } from "@swaff-y/thunder-chat-core";
-
-const COPIED_MS = 2000;
-
-/** `Copy ID`'s "it worked", cleared on a timer rather than left standing. */
-export function useCopyId(id: string): { copied: boolean; copy: () => void } {
-  const [copied, setCopied] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  async function copyId(): Promise<void> {
-    if (!("clipboard" in navigator)) return;
-    try {
-      await navigator.clipboard.writeText(id);
-    } catch (error) {
-      console.error("[record-parts] copy failed", error);
-      return;
-    }
-    setCopied(true);
-    clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), COPIED_MS);
-  }
-
-  return {
-    copied,
-    copy: () => {
-      void copyId();
-    },
-  };
-}
 
 function ChipTile({ chip }: { chip: Chip }) {
   return (

@@ -5,7 +5,8 @@ import { toListCard, toSingleCard } from "@swaff-y/thunder-chat-core";
 import ImageCarousel from "../shared/ImageCarousel";
 import ActionRowImage from "./ActionRowImage";
 import { APP_ROUTES } from "./entity-routes";
-import { ChipSection, useCopyId } from "./record-parts";
+import { ChipSection } from "./record-parts";
+import { useCopyId } from "./useCopyId";
 import { useActionImages } from "./useActionImages";
 
 /**

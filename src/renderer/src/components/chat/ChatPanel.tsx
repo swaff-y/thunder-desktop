@@ -230,15 +230,20 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
     void retry(turn.id);
   }
 
+  // Everything the overlay covers is out of reach while it is open —
+  // otherwise Tab walks into a transcript nobody can see, and a reader is
+  // told about turns that are not on screen.
+  const covered = expanded !== null;
+
   return (
     <div className="chat-panel">
-      <header className="chat-header">
+      <header className="chat-header" inert={covered}>
         <button type="button" className="chat-clear" onClick={handleClear}>
           Clear
         </button>
       </header>
 
-      <ol className="chat-transcript" ref={transcriptRef}>
+      <ol className="chat-transcript" ref={transcriptRef} inert={covered}>
         {turns.map((turn) => (
           <li key={turn.id} className="chat-turn">
             <p className="chat-who">You</p>
@@ -294,7 +299,7 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
           noise. It is ordinary content, reached at rest. */}
       <p className="chat-usage">{usageSummary}</p>
 
-      <form className="chat-composer" onSubmit={handleSubmit}>
+      <form className="chat-composer" onSubmit={handleSubmit} inert={covered}>
         <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
           Ask the catalogue
         </label>

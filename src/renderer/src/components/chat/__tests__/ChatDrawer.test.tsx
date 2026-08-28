@@ -219,6 +219,14 @@ describe("ChatDrawer: the expand overlay", () => {
     expect(drawer()).toBeInTheDocument();
   });
 
+  it("puts the transcript and the composer out of reach while it is open", async () => {
+    const user = userEvent.setup();
+    await openExpanded(user);
+
+    expect(document.querySelector(".chat-transcript")).toHaveAttribute("inert");
+    expect(document.querySelector(".chat-composer")).toHaveAttribute("inert");
+  });
+
   it("closes the overlay on Escape and leaves the drawer open, then closes the drawer", async () => {
     const user = userEvent.setup();
     await openExpanded(user);

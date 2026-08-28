@@ -15,9 +15,11 @@ import { ipcMain } from 'electron'
 import { THUNDER_IPC_CHANNELS } from '../../preload/thunder-api'
 import { MAX_TURN_TEXT_LENGTH } from '@swaff-y/thunder-chat-core/headless'
 import type {
+  Capabilities,
   ChatAskResult,
   ChatHistoryTurn,
   ChatStatus,
+  TurnUsage,
   ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
 import { createContextClient } from '@swaff-y/thunder-chat-core/headless'
@@ -46,6 +48,14 @@ const INVALID_REQUEST: ChatAskResult = {
   error: 'unknown',
   message: 'The chat request was malformed.'
 }
+
+/**
+ * TD-072: what `chatCapabilities` answers while the toggle is off — the
+ * same "we did not ask the server" answer `chatAsk` gives. It is a read
+ * body rather than `null`, because `null` is reserved for a fetch that
+ * failed and a renderer must be able to tell the two apart.
+ */
+const DISABLED_CAPABILITIES: Capabilities = { chat_enabled: false, tools: [] }
 
 /**
  * The URL and the token arrive as getters, so a Settings change or a
@@ -163,11 +173,30 @@ export function registerChatHandlers(): void {
           if (!controller.signal.aborted) {
             sendToFocused(THUNDER_IPC_CHANNELS.chatStatus, status)
           }
+        },
+        // TD-072: a superseded turn must not report its total either.
+        // Its tokens were still spent — the server counted them into the
+        // conversation, and the turn that replaced it carries them in its
+        // own `usage.conversation`. What is dropped here is a stale
+        // snapshot, not the money.
+        onUsage: (usage: TurnUsage) => {
+          if (!controller.signal.aborted) {
+            sendToFocused(THUNDER_IPC_CHANNELS.chatUsage, usage)
+          }
         }
       })
     } finally {
       if (inFlight === controller) inFlight = null
     }
+  })
+
+  // TD-072: the model the cost line names, on a chat with no turn in it
+  // yet. `capabilities()` never throws and answers `null` when it could
+  // not read the service — which is not a report that chat is off, so it
+  // is passed through rather than folded into the disabled shape.
+  ipcMain.handle(THUNDER_IPC_CHANNELS.chatCapabilities, async () => {
+    if (!resolveChatSettings().chatEnabled) return DISABLED_CAPABILITIES
+    return context.capabilities()
   })
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.chatCancel, async () => {

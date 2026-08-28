@@ -97,6 +97,12 @@ could ever have copied phase 8.
   and the prompt rules are thunder-context TC-016 and the type is
   thunder-chat-core TCC-006.
 
+- [TD-072](TD-072-the-chat-says-what-it-cost.md) — AI chat: the chat says what
+  it cost. One line above the composer naming the model and the conversation's
+  estimated spend. One IPC push channel, one capabilities call and one line of
+  markup — the tokens and the price are thunder-context TC-027 and the
+  formatted string is thunder-chat-core TCC-008.
+
 ## Bugs / polish
 
 - [TD-033](TD-033-settings-url-trim.md) — Settings: trim whitespace from API URL

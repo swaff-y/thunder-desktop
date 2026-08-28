@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
 import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
-import { useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
+import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
@@ -68,7 +68,7 @@ function TurnAction({
 }
 
 export default function ChatPanel() {
-  const { turns, status, ask, retry, cancel, clear } = useChat();
+  const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLOListElement>(null);
 
@@ -83,6 +83,12 @@ export default function ChatPanel() {
   // a different question and would send the reader somewhere they never was.
   const precedingAction = actionTurns.at(-2)?.action;
   const previousList = precedingAction?.kind === "list" ? precedingAction : undefined;
+  // TD-072: the whole string is the package's, down to the `~` and the word
+  // "estimated". Three clients show this line and a second copy of the
+  // wording is a second thing to get wrong. `null` is "we do not know" — an
+  // older server, a capabilities fetch that failed, a chat with no turns —
+  // and it renders nothing, because `$0.00` there reads as *free*.
+  const summary = formatUsageSummary(usage, model);
 
   // The design's `stick()`: a new turn, and the panel on mount, land at the
   // bottom of the transcript rather than wherever the last scroll left it.
@@ -161,6 +167,14 @@ export default function ChatPanel() {
           <code className="chat-tool-name">{status.tool}</code>
         </div>
       )}
+
+      {/* Not an `aria-live` region: the figure moves on every answer, and a
+          reader announcing a new one after each is noise on top of the
+          answer it just read. The `role="status"` element above stays the
+          only thing that speaks. */}
+      <div className="chat-usage-line">
+        {summary && <p className="chat-usage">{summary}</p>}
+      </div>
 
       <form className="chat-composer" onSubmit={handleSubmit}>
         <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
@@ -356,6 +370,27 @@ export default function ChatPanel() {
         .chat-tool-name {
           color: var(--color-accent-light);
           font-size: var(--text-caption);
+        }
+        /* The height is reserved rather than grown into: the line appears
+           for the first time the instant the first answer lands, and that
+           is the worst moment to move the input under the user's cursor. */
+        .chat-usage-line {
+          flex: none;
+          font-size: var(--text-caption);
+          line-height: 1.4;
+          min-height: 1.4em;
+          padding: 0 var(--space-md);
+        }
+        /* One line, always: a summary that wrapped would take the reserved
+           height with it and move the composer anyway. The tail it drops
+           first is "(estimated)"; the model, the turns and the figure are
+           what the line is for. */
+        .chat-usage {
+          color: var(--color-text-muted);
+          margin: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .chat-composer {
           align-items: center;

@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron'
 import { THUNDER_BROWSER_PARTITION } from '../shared/browser'
 import type {
+  Capabilities,
   ChatAction,
   ChatActionKind,
   ChatAskRequest,
@@ -8,6 +9,7 @@ import type {
   ChatErrorKind,
   ChatHistoryTurn,
   ChatStatus,
+  TurnUsage,
   ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
 import type { ThunderSettings } from '../shared/settings'
@@ -15,6 +17,9 @@ import type { ThunderSettings } from '../shared/settings'
 export { THUNDER_BROWSER_PARTITION }
 export type { ThunderSettings }
 export type {
+  // TD-072: what `chat.capabilities` answers with and what `chat.onUsage`
+  // pushes, for the same reason `ViewContext` is re-exported below.
+  Capabilities,
   ChatAction,
   ChatActionKind,
   ChatAskRequest,
@@ -22,6 +27,7 @@ export type {
   ChatErrorKind,
   ChatHistoryTurn,
   ChatStatus,
+  TurnUsage,
   // TD-070: `ChatAskRequest.view` is typed with it, so a consumer of this
   // module can name it without reaching past the preload boundary.
   ViewContext
@@ -139,7 +145,17 @@ export const THUNDER_IPC_CHANNELS = {
   chatAsk: 'thunder:chat:ask',
   chatCancel: 'thunder:chat:cancel',
   chatClear: 'thunder:chat:clear',
-  chatStatus: 'thunder:chat:status'
+  chatStatus: 'thunder:chat:status',
+
+  /**
+   * TD-072: what the conversation has cost. `usage` is a one-way
+   * main → renderer push for the same reason `status` is — the poll that
+   * learns it runs in main. `capabilities` is a renderer → main invoke,
+   * and it is how the cost line names a model on a chat that has not run
+   * a turn yet.
+   */
+  chatUsage: 'thunder:chat:usage',
+  chatCapabilities: 'thunder:chat:capabilities'
 } as const
 
 /**
@@ -149,9 +165,9 @@ export const THUNDER_IPC_CHANNELS = {
  * so an attacker who somehow obtained a renderer handle still can't
  * drive arbitrary main-process IPC.
  *
- * `menuAction` and `chatStatus` are intentionally excluded — they're
- * one-way main → renderer channels, not invoke-able. Add new channels
- * here as their handlers ship.
+ * `menuAction`, `chatStatus` and `chatUsage` are intentionally excluded —
+ * they're one-way main → renderer channels, not invoke-able. Add new
+ * channels here as their handlers ship.
  */
 export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
@@ -171,7 +187,8 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.dialogShowItemInFolder,
   THUNDER_IPC_CHANNELS.chatAsk,
   THUNDER_IPC_CHANNELS.chatCancel,
-  THUNDER_IPC_CHANNELS.chatClear
+  THUNDER_IPC_CHANNELS.chatClear,
+  THUNDER_IPC_CHANNELS.chatCapabilities
 ]
 
 /**
@@ -384,6 +401,19 @@ export interface ThunderApi {
      * call it on unmount to avoid a leaked listener.
      */
     onStatus: (callback: (status: ChatStatus) => void) => () => void
+    /**
+     * TD-072: subscribe to what a settled turn cost, and to what the
+     * conversation has cost including it. Same shape as `onStatus`, and
+     * silent for the same two reasons: a superseded turn does not report,
+     * and a server predating thunder-context's TC-027 sends no usage at all.
+     */
+    onUsage: (callback: (usage: TurnUsage) => void) => () => void
+    /**
+     * TD-072: what the service can do, and which model would run the next
+     * turn. `null` means the fetch failed — NOT that chat is off, which is
+     * `chat_enabled: false` on a body that was actually read.
+     */
+    capabilities: () => Promise<Capabilities | null>
   }
   /**
    * Generic IPC escape hatch, gated by {@link THUNDER_ALLOWLIST}.
@@ -465,7 +495,15 @@ export const thunderApi: ThunderApi = {
       return (): void => {
         ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.chatStatus, handler)
       }
-    }
+    },
+    onUsage: (callback) => {
+      const handler = (_event: unknown, usage: TurnUsage): void => callback(usage)
+      ipcRenderer.on(THUNDER_IPC_CHANNELS.chatUsage, handler)
+      return (): void => {
+        ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.chatUsage, handler)
+      }
+    },
+    capabilities: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatCapabilities)
   },
   invoke: (channel, ...args) => {
     if (!THUNDER_ALLOWLIST.includes(channel)) {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import type { Capabilities, TurnUsage } from "@swaff-y/thunder-chat-core";
 import { ChatProvider, type ChatSend } from "@swaff-y/thunder-chat-core";
 import ChatPanel from "../ChatPanel";
 import { answer, deferredAnswer, listAction, singleAction } from "./fixtures";
@@ -20,10 +21,17 @@ vi.mock("../useActionImages", () => ({
 
 const cancelRequest = vi.fn();
 
-function renderPanel(send: ChatSend) {
+function renderPanel(
+  send: ChatSend,
+  loadCapabilities?: () => Promise<Capabilities | null>
+) {
   return render(
     <MemoryRouter>
-      <ChatProvider send={send} cancelRequest={cancelRequest}>
+      <ChatProvider
+        send={send}
+        cancelRequest={cancelRequest}
+        loadCapabilities={loadCapabilities}
+      >
         <ChatPanel />
       </ChatProvider>
     </MemoryRouter>
@@ -223,5 +231,90 @@ describe("ChatPanel", () => {
     expect(cancelRequest).toHaveBeenCalledTimes(1);
     expect(composer()).toBeEnabled();
     expect(screen.getByText("Stopped.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * TD-072: the line above the composer. Every one of these asserts on the
+ * string the package produced — the whole point of `formatUsageSummary`
+ * living in thunder-chat-core is that no client owns a second copy of the
+ * decimals, the `~`, the `$` or the word "estimated".
+ */
+describe("ChatPanel — what the conversation cost", () => {
+  const MODEL: Capabilities = {
+    chat_enabled: true,
+    tools: [],
+    model: {
+      id: "deepseek.v3.2",
+      input_price_per_mtok: 0.28,
+      output_price_per_mtok: 0.42,
+      currency: "USD",
+    },
+  };
+
+  const USAGE: TurnUsage = {
+    model: "deepseek.v3.2",
+    rounds: 2,
+    input_tokens: 4000,
+    output_tokens: 900,
+    cache_read_input_tokens: 0,
+    cache_write_input_tokens: 0,
+    cost_usd: 0.0015,
+    conversation: { turns: 3, input_tokens: 9000, output_tokens: 2100, cost_usd: 0.041 },
+  };
+
+  const costing: ChatSend = async (_question, _history, _onStatus, lifecycle) => {
+    lifecycle?.onUsage?.(USAGE);
+    return answer("Nick Cage");
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    cancelRequest.mockClear();
+  });
+
+  it("names the model, the turns and the running total once a turn settles", async () => {
+    const user = userEvent.setup();
+    renderPanel(costing, async () => MODEL);
+
+    await user.type(composer(), "who is popular?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(
+      await screen.findByText("deepseek.v3.2 · 3 turns · ~$0.04 USD (estimated)")
+    ).toBeInTheDocument();
+  });
+
+  it("names the model alone on a chat that has not run a turn", async () => {
+    renderPanel(vi.fn(async () => answer("unused")), async () => MODEL);
+
+    expect(await screen.findByText("deepseek.v3.2")).toBeInTheDocument();
+  });
+
+  it("says nothing at all when there is no usage and no model", () => {
+    const { container } = renderPanel(vi.fn(async () => answer("unused")));
+
+    // Absent is not zero: `$0.00` here would read as *free* rather than as
+    // unknown, which is the one thing this line must never claim.
+    expect(container.querySelector(".chat-usage")).toBeNull();
+    expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument();
+  });
+
+  it("drops the cost when the chat is cleared", async () => {
+    const user = userEvent.setup();
+    renderPanel(costing);
+
+    await user.type(composer(), "who is popular?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("3 turns · ~$0.04 USD (estimated)")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    // The bug a user would notice: a cleared chat still being told it cost
+    // four cents. Clearing starts a new conversation, whose total is zero.
+    await waitFor(() => expect(document.querySelector(".chat-usage")).toBeNull());
+    expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
 });

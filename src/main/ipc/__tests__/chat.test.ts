@@ -6,10 +6,18 @@
  * and nothing logged. These tests exist so the view cannot go that way
  * again, and so a hostile renderer cannot use it as a free-text channel to
  * the model.
+ *
+ * TD-072 adds the cost half: what reaches the renderer on `chatUsage`, and
+ * what `chatCapabilities` answers with on either side of the toggle.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AskOptions, ChatAskResult } from '@swaff-y/thunder-chat-core/headless'
+import type {
+  AskOptions,
+  Capabilities,
+  ChatAskResult,
+  TurnUsage
+} from '@swaff-y/thunder-chat-core/headless'
 
 const ipcHandlers = new Map<
   string,
@@ -34,12 +42,35 @@ const OK: ChatAskResult = {
   truncated: false
 }
 
+const CAPABILITIES: Capabilities = {
+  chat_enabled: true,
+  tools: [{ name: 'search_records' }],
+  model: {
+    id: 'deepseek.v3.2',
+    input_price_per_mtok: 0.28,
+    output_price_per_mtok: 0.42,
+    currency: 'USD'
+  }
+}
+
+const USAGE: TurnUsage = {
+  model: 'deepseek.v3.2',
+  rounds: 2,
+  input_tokens: 4000,
+  output_tokens: 900,
+  cache_read_input_tokens: 0,
+  cache_write_input_tokens: 0,
+  cost_usd: 0.0015,
+  conversation: { turns: 3, input_tokens: 9000, output_tokens: 2100, cost_usd: 0.041 }
+}
+
 const ask = vi.fn<(options: AskOptions) => Promise<ChatAskResult>>(async () => OK)
 const clearConversation = vi.fn(async () => {})
+const capabilities = vi.fn<() => Promise<Capabilities | null>>(async () => CAPABILITIES)
 
 vi.mock('@swaff-y/thunder-chat-core/headless', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@swaff-y/thunder-chat-core/headless')>()
-  return { ...actual, createContextClient: () => ({ ask, clearConversation }) }
+  return { ...actual, createContextClient: () => ({ ask, clearConversation, capabilities }) }
 })
 
 let chatEnabled = true
@@ -51,7 +82,9 @@ vi.mock('../settings', () => ({
 
 vi.mock('../auth', () => ({ resolveAuthToken: () => 'token' }))
 
-vi.mock('../window-send', () => ({ sendToFocused: vi.fn() }))
+const sendToFocused = vi.fn<(channel: string, payload: unknown) => void>()
+
+vi.mock('../window-send', () => ({ sendToFocused }))
 
 const { THUNDER_IPC_CHANNELS } = await import('../../../preload/thunder-api')
 const { registerChatHandlers } = await import('../chat')
@@ -62,6 +95,12 @@ function invokeAsk(payload: unknown): Promise<ChatAskResult> {
   const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.chatAsk)
   if (!handler) throw new Error('chat ask handler not registered')
   return Promise.resolve(handler({}, payload)) as Promise<ChatAskResult>
+}
+
+function invokeCapabilities(): Promise<Capabilities | null> {
+  const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.chatCapabilities)
+  if (!handler) throw new Error('chat capabilities handler not registered')
+  return Promise.resolve(handler({})) as Promise<Capabilities | null>
 }
 
 const askedView = (call = 0): unknown => ask.mock.calls[call]?.[0]?.view
@@ -142,5 +181,77 @@ describe('chat ask: the view (TD-070)', () => {
     const result = await invokeAsk({ question: 'hi', view: { kind: 'record', id: '1' } })
     expect(result.ok).toBe(false)
     expect(ask).not.toHaveBeenCalled()
+  })
+})
+
+describe('chat usage: what the turn cost (TD-072)', () => {
+  beforeEach(() => {
+    chatEnabled = true
+    ask.mockReset()
+    ask.mockImplementation(async () => OK)
+    sendToFocused.mockClear()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('pushes the usage of a turn that ran to the end', async () => {
+    ask.mockImplementationOnce(async (options) => {
+      options.onUsage?.(USAGE)
+      return OK
+    })
+
+    await invokeAsk({ question: 'who is popular?' })
+
+    expect(sendToFocused).toHaveBeenCalledWith(THUNDER_IPC_CHANNELS.chatUsage, USAGE)
+  })
+
+  it('drops the usage of a superseded turn — a stale total, not the money', async () => {
+    let settleFirst: (result: ChatAskResult) => void = () => {}
+    ask.mockImplementationOnce(
+      () =>
+        new Promise<ChatAskResult>((resolve) => {
+          settleFirst = resolve
+        })
+    )
+
+    const first = invokeAsk({ question: 'who is popular?' })
+    // The second question aborts the first, exactly as it does for status.
+    await invokeAsk({ question: 'and who is not?' })
+
+    ask.mock.calls[0][0].onUsage?.(USAGE)
+    settleFirst(OK)
+    await first
+
+    expect(sendToFocused).not.toHaveBeenCalledWith(THUNDER_IPC_CHANNELS.chatUsage, USAGE)
+  })
+})
+
+describe('chat capabilities: which model would run the next turn (TD-072)', () => {
+  beforeEach(() => {
+    chatEnabled = true
+    capabilities.mockClear()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('names the model while chat is on', async () => {
+    expect(await invokeCapabilities()).toEqual(CAPABILITIES)
+  })
+
+  it('answers with the disabled shape, and asks nothing, while chat is off', async () => {
+    chatEnabled = false
+
+    expect(await invokeCapabilities()).toEqual({ chat_enabled: false, tools: [] })
+    expect(capabilities).not.toHaveBeenCalled()
+  })
+
+  it('passes a failed read through as null rather than as chat being off', async () => {
+    capabilities.mockResolvedValueOnce(null)
+
+    expect(await invokeCapabilities()).toBeNull()
   })
 })

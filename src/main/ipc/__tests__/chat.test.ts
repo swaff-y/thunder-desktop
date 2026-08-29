@@ -13,6 +13,7 @@ import type {
   AskOptions,
   Capabilities,
   ChatAskResult,
+  ConversationRef,
   TurnUsage
 } from '@swaff-y/thunder-chat-core/headless'
 
@@ -248,5 +249,96 @@ describe('chat usage (TD-072)', () => {
     capabilities.mockImplementation(async () => null)
 
     expect(await invokeCapabilities()).toBeNull()
+  })
+})
+
+
+/**
+ * TD-073: main holds the context client but nothing that outlives a reload,
+ * so the conversation travels both ways across this boundary — up in the
+ * `ask` payload from the store that persisted it, back down on its own
+ * channel when the client mints a new one.
+ */
+const CONVERSATION: ConversationRef = { id: 'conv-1', baseUrl: 'https://context.example' }
+
+const askedConversation = (call = 0): unknown => ask.mock.calls[call]?.[0]?.conversation
+
+const conversationPushes = (): unknown[] =>
+  vi
+    .mocked(sendToFocused)
+    .mock.calls.filter(([channel]) => channel === THUNDER_IPC_CHANNELS.chatConversation)
+    .map(([, payload]) => payload)
+
+describe('chat conversation (TD-073)', () => {
+  beforeEach(() => {
+    chatEnabled = true
+    vi.clearAllMocks()
+    ask.mockImplementation(async () => OK)
+  })
+
+  it('forwards the conversation the renderer restored', async () => {
+    await invokeAsk({ question: 'show me the first one', conversation: CONVERSATION })
+    expect(askedConversation()).toEqual(CONVERSATION)
+  })
+
+  it('rebuilds it field by field, dropping anything nobody named', async () => {
+    await invokeAsk({
+      question: 'hi',
+      conversation: { ...CONVERSATION, token: 'not yours' }
+    })
+    expect(askedConversation()).toEqual(CONVERSATION)
+  })
+
+  it.each([
+    ['no conversation at all', {}],
+    ['an explicit null', { conversation: null }]
+  ])('starts a fresh one given %s', async (_name, payload) => {
+    await invokeAsk({ question: 'hi', ...payload })
+    expect(askedConversation()).toBeUndefined()
+  })
+
+  it.each([
+    ['a missing id', { baseUrl: 'https://context.example' }],
+    ['a missing baseUrl', { id: 'conv-1' }],
+    ['an empty id', { id: '', baseUrl: 'https://context.example' }],
+    ['a non-string id', { id: 7, baseUrl: 'https://context.example' }],
+    ['an over-long id', { id: 'x'.repeat(2049), baseUrl: 'https://context.example' }],
+    ['a conversation that is not an object', 'conv-1'],
+    ['a conversation that is an array', []]
+  ])('rejects the whole request for %s', async (_name, conversation) => {
+    const result = await invokeAsk({ question: 'hi', conversation })
+    expect(result.ok).toBe(false)
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('pushes a conversation the client has just minted', async () => {
+    ask.mockImplementation(async (options) => {
+      options.onConversation?.(CONVERSATION)
+      return OK
+    })
+
+    await invokeAsk({ question: 'hi' })
+
+    expect(conversationPushes()).toEqual([CONVERSATION])
+  })
+
+  it('says nothing for a turn that was superseded', async () => {
+    let settleFirstTurn: (() => void) | undefined
+    let reportFirstTurn: (() => void) | undefined
+    ask.mockImplementationOnce(async (options) => {
+      reportFirstTurn = () => options.onConversation?.(CONVERSATION)
+      await new Promise<void>((resolve) => {
+        settleFirstTurn = resolve
+      })
+      return OK
+    })
+
+    const first = invokeAsk({ question: 'first' })
+    await invokeAsk({ question: 'second' })
+    reportFirstTurn?.()
+    settleFirstTurn?.()
+    await first
+
+    expect(conversationPushes()).toEqual([])
   })
 })

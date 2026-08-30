@@ -88,12 +88,11 @@ could ever have copied phase 8.
 - [TD-068](complete/TD-068-chat-side-drawer.md) — AI chat: move the chat into
   a right-side drawer ([design.html](../design.html), turn 2, option 2a).
   Shipped in #60.
-- [TD-069](TD-069-action-card-expand-overlay.md) — AI chat: Expand overlay for
-  action cards (the wide table and the record's thumbnail rail, split out of
-  TD-068). Implemented and held open in #65: the overlay's list still draws six
-  rows, because uncapping them needs a `maxRows` option on `toListCard` that
-  thunder-chat-core does not have. Raised there as TCC-010; merge #65 once that
-  ships and is pinned.
+- [TD-069](complete/TD-069-action-card-expand-overlay.md) — AI chat: Expand
+  overlay for action cards (the wide table and the record's thumbnail rail,
+  split out of TD-068). Held open while the overlay's list could only draw the
+  inline six; thunder-chat-core 0.8.0 shipped TCC-010's `maxRows` option, so it
+  now draws the whole page. Shipped in #65.
 - [TD-070](complete/TD-070-chat-knows-the-current-page.md) — AI chat: the agent
   knows what page you are on, so "what actors are on **this** record?" works on
   a record page. One route map plus the IPC plumbing to carry it; the wire field

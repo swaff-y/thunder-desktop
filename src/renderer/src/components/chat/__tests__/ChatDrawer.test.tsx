@@ -5,7 +5,7 @@ import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { ChatProvider, type ChatSend } from "@swaff-y/thunder-chat-core";
 import ChatDrawer from "../ChatDrawer";
-import { answer } from "./fixtures";
+import { answer, listAction } from "./fixtures";
 
 vi.mock("../../../api/auth", () => ({
   reauthenticate: vi.fn(async () => ({ token: "t", apiKey: "k" })),
@@ -188,5 +188,100 @@ describe("ChatDrawer", () => {
 
     expect(transcript().getByText("who is popular?")).toBeInTheDocument();
     expect(transcript().getByText("Nick Cage")).toBeInTheDocument();
+  });
+});
+
+/**
+ * TD-069: the overlay lives inside the drawer, so both answer to Escape.
+ * The overlay answers first and stops there — a reader who expanded a card
+ * and changed their mind wants the table gone, not the conversation.
+ */
+describe("ChatDrawer: the expand overlay", () => {
+  const ROWS = listAction("search_records", { filter: "nig" }, {
+    items: [{ id: "rec-1", name: "Nightjar Sessions", actors: [], views: 12 }],
+    next_cursor: null,
+  });
+
+  async function openExpanded(user: ReturnType<typeof userEvent.setup>) {
+    renderDrawer(vi.fn(async () => answer("here they are", ROWS)));
+    await user.click(trigger());
+    await user.type(composer(), "show me records");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    return screen.getByRole("dialog", { name: "Records starting with 'nig'" });
+  }
+
+  it("covers the transcript with the expanded action", async () => {
+    const user = userEvent.setup();
+    const overlay = await openExpanded(user);
+
+    expect(within(overlay).getByRole("table")).toBeInTheDocument();
+    expect(drawer()).toBeInTheDocument();
+  });
+
+  it("draws the whole page where the card behind it drew six", async () => {
+    const user = userEvent.setup();
+    const page = Array.from({ length: 8 }, (_, index) => ({
+      id: `rec-${index + 1}`,
+      name: `Night ${index + 1}`,
+      actors: [],
+      views: (index + 1) * 10,
+    }));
+    renderDrawer(
+      vi.fn(async () =>
+        answer(
+          "here they are",
+          listAction("search_records", { filter: "nig" }, { items: page, next_cursor: null })
+        )
+      )
+    );
+    await user.click(trigger());
+    await user.type(composer(), "show me records");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Showing 6 of 8")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand" }));
+    const overlay = screen.getByRole("dialog", { name: "Records starting with 'nig'" });
+
+    expect(within(overlay).getAllByRole("row")).toHaveLength(page.length + 1);
+    expect(within(overlay).getByText("8 results")).toBeInTheDocument();
+    // The card underneath keeps its own preview, and its own count line.
+    expect(screen.getByText("Showing 6 of 8")).toBeInTheDocument();
+  });
+
+  it("puts the transcript and the composer out of reach while it is open", async () => {
+    const user = userEvent.setup();
+    await openExpanded(user);
+
+    // jsdom does not enforce what `inert` means, so this is a tripwire for
+    // the attribute going missing rather than a test of the behaviour.
+    for (const selector of [".chat-header", ".chat-transcript", ".chat-composer"]) {
+      expect(document.querySelector(selector)).toHaveAttribute("inert");
+    }
+  });
+
+  it("closes the overlay on Escape and leaves the drawer open, then closes the drawer", async () => {
+    const user = userEvent.setup();
+    await openExpanded(user);
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("dialog", { name: "Records starting with 'nig'" })
+    ).not.toBeInTheDocument();
+    expect(drawer()).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the Expand button it came out of", async () => {
+    const user = userEvent.setup();
+    const overlay = await openExpanded(user);
+
+    await user.click(within(overlay).getByRole("button", { name: "Close" }));
+
+    expect(screen.getByRole("button", { name: "Expand" })).toHaveFocus();
   });
 });

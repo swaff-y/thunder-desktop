@@ -3,6 +3,7 @@ import { Spinner } from "react-bootstrap";
 import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
 import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
+import ActionOverlay from "./ActionOverlay";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionRowImage from "./ActionRowImage";
@@ -60,9 +61,12 @@ function renderRowImage(row: ListRow): React.ReactNode {
 function TurnAction({
   action,
   previousList,
+  onExpand,
 }: {
   action: ChatAction;
   previousList: ChatAction | undefined;
+  /** TD-069: absent outside the drawer, where there is nowhere to expand into. */
+  onExpand?: (action: ChatAction) => void;
 }): React.JSX.Element | null {
   const [showList, setShowList] = useState(false);
 
@@ -70,30 +74,55 @@ function TurnAction({
     setShowList(true);
   }
 
+  // Whatever the card is showing is what expands — a card the reader sent
+  // back to its list expands into that list, not the record behind it.
+  function expandHandler(shown: ChatAction): (() => void) | undefined {
+    return onExpand === undefined ? undefined : () => onExpand(shown);
+  }
+
   if (showList && previousList !== undefined) {
-    return <ActionCardList action={previousList} renderImage={renderRowImage} />;
+    return (
+      <ActionCardList
+        action={previousList}
+        renderImage={renderRowImage}
+        onExpand={expandHandler(previousList)}
+      />
+    );
   }
   if (action.kind === "chart") {
     return <ActionCardChart action={action} />;
   }
   if (action.kind === "list") {
-    return <ActionCardList action={action} renderImage={renderRowImage} />;
+    return (
+      <ActionCardList
+        action={action}
+        renderImage={renderRowImage}
+        onExpand={expandHandler(action)}
+      />
+    );
   }
   if (action.kind === "single") {
     return (
       <ActionCardRecord
         action={action}
         onBackToList={previousList === undefined ? undefined : handleBackToList}
+        onExpand={expandHandler(action)}
       />
     );
   }
   return null;
 }
 
-export default function ChatPanel() {
+/**
+ * TD-069: the drawer passes this so the cards grow an `Expand` button and
+ * the overlay has somewhere to draw. Off by default — `ChatPanel` renders
+ * outside the drawer too, and an overlay there would cover the page.
+ */
+export default function ChatPanel({ expandable = false }: { expandable?: boolean } = {}) {
   const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState(loadDraft);
   const [recall, setRecall] = useState<HistoryWalk | null>(null);
+  const [expanded, setExpanded] = useState<ChatAction | null>(null);
   const transcriptRef = useRef<HTMLOListElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const caretToEndRef = useRef(true);
@@ -191,6 +220,7 @@ export default function ChatPanel() {
   }
 
   function handleClear(): void {
+    setExpanded(null);
     setRecall(null);
     writeDraft("");
     clear();
@@ -200,15 +230,20 @@ export default function ChatPanel() {
     void retry(turn.id);
   }
 
+  // Everything the overlay covers is out of reach while it is open —
+  // otherwise Tab walks into a transcript nobody can see, and a reader is
+  // told about turns that are not on screen.
+  const covered = expanded !== null;
+
   return (
     <div className="chat-panel">
-      <header className="chat-header">
+      <header className="chat-header" inert={covered}>
         <button type="button" className="chat-clear" onClick={handleClear}>
           Clear
         </button>
       </header>
 
-      <ol className="chat-transcript" ref={transcriptRef}>
+      <ol className="chat-transcript" ref={transcriptRef} inert={covered}>
         {turns.map((turn) => (
           <li key={turn.id} className="chat-turn">
             <p className="chat-who">You</p>
@@ -230,7 +265,11 @@ export default function ChatPanel() {
               </>
             )}
             {turn.action !== undefined && turn.id === latestActionId && (
-              <TurnAction action={turn.action} previousList={previousList} />
+              <TurnAction
+                action={turn.action}
+                previousList={previousList}
+                onExpand={expandable ? setExpanded : undefined}
+              />
             )}
             {turn.error !== undefined && (
               <ChatError
@@ -260,7 +299,7 @@ export default function ChatPanel() {
           noise. It is ordinary content, reached at rest. */}
       <p className="chat-usage">{usageSummary}</p>
 
-      <form className="chat-composer" onSubmit={handleSubmit}>
+      <form className="chat-composer" onSubmit={handleSubmit} inert={covered}>
         <label className="chat-label" htmlFor={COMPOSER_INPUT_ID}>
           Ask the catalogue
         </label>
@@ -286,6 +325,17 @@ export default function ChatPanel() {
         )}
       </form>
 
+      {/* Covers the transcript and the composer and nothing else — the
+          drawer's own header stays reachable, so `Widen` still works and
+          widens the overlay with it. */}
+      {expanded !== null && (
+        <ActionOverlay
+          action={expanded}
+          previousList={previousList}
+          onClose={() => setExpanded(null)}
+        />
+      )}
+
       <style>{`
         .chat-panel {
           display: flex;
@@ -293,6 +343,7 @@ export default function ChatPanel() {
           flex-direction: column;
           min-height: 0;
           overflow: hidden;
+          position: relative;
         }
         .chat-header {
           align-items: center;

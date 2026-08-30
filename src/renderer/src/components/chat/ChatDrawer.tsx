@@ -90,7 +90,7 @@ function Drawer({ onClose }: { onClose: () => void }): React.JSX.Element {
           </button>
         </header>
 
-        <ChatPanel />
+        <ChatPanel expandable />
       </div>
 
       <style>{`

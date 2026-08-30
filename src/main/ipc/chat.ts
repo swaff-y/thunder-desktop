@@ -19,6 +19,7 @@ import type {
   ChatAskResult,
   ChatHistoryTurn,
   ChatStatus,
+  ConversationRef,
   TurnUsage,
   ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
@@ -36,6 +37,12 @@ const MAX_QUESTION_LENGTH = MAX_TURN_TEXT_LENGTH
 const MAX_HISTORY_TURNS = 40
 /** An id or a halo type; anything longer is not one of ours. */
 const MAX_VIEW_FIELD_LENGTH = 200
+/**
+ * TD-073: a conversation id and the base URL it was minted against. Bounded
+ * for the same reason every other string here is — the field is opaque to
+ * this process, so length is the only thing it can check.
+ */
+const MAX_CONVERSATION_FIELD_LENGTH = 2048
 
 const DISABLED_RESULT: ChatAskResult = {
   ok: false,
@@ -111,15 +118,36 @@ function parseView(value: unknown): ViewContext | null {
   }
 }
 
+/**
+ * TD-073: the conversation the renderer restored beside its transcript.
+ * Validated rather than trusted, like every other field of this payload,
+ * and rejected the same way: a malformed one means the renderer sent
+ * something that is not a conversation, and asking anyway would start a
+ * fresh one behind turns the user can still read.
+ */
+function isConversationRef(value: unknown): value is ConversationRef {
+  if (typeof value !== 'object' || value === null) return false
+  const { id, baseUrl } = value as Record<string, unknown>
+  return (
+    typeof id === 'string' &&
+    id.length > 0 &&
+    id.length <= MAX_CONVERSATION_FIELD_LENGTH &&
+    typeof baseUrl === 'string' &&
+    baseUrl.length > 0 &&
+    baseUrl.length <= MAX_CONVERSATION_FIELD_LENGTH
+  )
+}
+
 interface ParsedAskRequest {
   question: string
   history: ChatHistoryTurn[]
   view?: ViewContext
+  conversation?: ConversationRef
 }
 
 function parseAskRequest(payload: unknown): ParsedAskRequest | null {
   if (typeof payload !== 'object' || payload === null) return null
-  const { question, history, view } = payload as Record<string, unknown>
+  const { question, history, view, conversation } = payload as Record<string, unknown>
 
   if (typeof question !== 'string') return null
   const trimmed = question.trim()
@@ -132,14 +160,22 @@ function parseAskRequest(payload: unknown): ParsedAskRequest | null {
     turns = history
   }
 
+  let ref: ConversationRef | undefined
+  if (conversation !== undefined && conversation !== null) {
+    if (!isConversationRef(conversation)) return null
+    ref = { id: conversation.id, baseUrl: conversation.baseUrl }
+  }
+
   // Most pages have no view, and an absent one is the normal case rather
   // than a missing field.
-  if (view === undefined || view === null) return { question: trimmed, history: turns }
+  let parsedView: ViewContext | undefined
+  if (view !== undefined && view !== null) {
+    const parsed = parseView(view)
+    if (parsed === null) return null
+    parsedView = parsed
+  }
 
-  const parsed = parseView(view)
-  if (parsed === null) return null
-
-  return { question: trimmed, history: turns, view: parsed }
+  return { question: trimmed, history: turns, view: parsedView, conversation: ref }
 }
 
 export function registerChatHandlers(): void {
@@ -181,6 +217,18 @@ export function registerChatHandlers(): void {
         onUsage: (usage: TurnUsage) => {
           if (!controller.signal.aborted) {
             sendToFocused(THUNDER_IPC_CHANNELS.chatUsage, usage)
+          }
+        },
+        // TD-073: main holds the client but nothing that survives a reload,
+        // so the conversation the renderer restored is what this turn
+        // continues. Absent on the first question of a fresh install.
+        conversation: request.conversation,
+        // The other direction, and the same guard as `onUsage` for the same
+        // reason: a superseded turn's conversation must not overwrite the
+        // one the turn that replaced it is answering against.
+        onConversation: (conversation: ConversationRef) => {
+          if (!controller.signal.aborted) {
+            sendToFocused(THUNDER_IPC_CHANNELS.chatConversation, conversation)
           }
         }
       })

@@ -90,7 +90,10 @@ could ever have copied phase 8.
   Shipped in #60.
 - [TD-069](TD-069-action-card-expand-overlay.md) — AI chat: Expand overlay for
   action cards (the wide table and the record's thumbnail rail, split out of
-  TD-068)
+  TD-068). Implemented and held open in #65: the overlay's list still draws six
+  rows, because uncapping them needs a `maxRows` option on `toListCard` that
+  thunder-chat-core does not have. Raised there as TCC-010; merge #65 once that
+  ships and is pinned.
 - [TD-070](complete/TD-070-chat-knows-the-current-page.md) — AI chat: the agent
   knows what page you are on, so "what actors are on **this** record?" works on
   a record page. One route map plus the IPC plumbing to carry it; the wire field
@@ -103,14 +106,14 @@ could ever have copied phase 8.
   and one line of markup — the tokens and the price are thunder-context TC-027
   and the formatted string is thunder-chat-core TCC-008. Shipped in #62.
 
-- [TD-073](TD-073-a-reload-starts-a-new-conversation.md) — AI chat: a reload
-  starts a new conversation, and only the user can tell. The renderer persists
+- [TD-073](complete/TD-073-a-reload-starts-a-new-conversation.md) — AI chat: a
+  reload starts a new conversation, and only the user can tell. The renderer persists
   the transcript; main held the conversation id in memory, so after a reload
   the user reads their old turns while the server holds an empty conversation
   and the next follow-up reaches the model with no context. Bump
   thunder-chat-core to 0.7.0 and forward `conversation` / `onConversation` —
   one more IPC channel, shaped exactly like `chatUsage`. The fix itself is
-  thunder-chat-core TCC-009. Not started.
+  thunder-chat-core TCC-009. Shipped in #64.
 
 - [TD-074](complete/TD-074-chat-composer-textarea-history-draft.md) — AI chat:
   the composer is a textarea, keeps history, and survives a close. Multi-line

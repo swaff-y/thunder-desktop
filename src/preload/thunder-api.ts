@@ -9,6 +9,7 @@ import type {
   ChatErrorKind,
   ChatHistoryTurn,
   ChatStatus,
+  ConversationRef,
   TurnUsage,
   ViewContext
 } from '@swaff-y/thunder-chat-core/headless'
@@ -26,10 +27,22 @@ export type {
   ChatErrorKind,
   ChatHistoryTurn,
   ChatStatus,
+  // TD-073: the conversation a question continues, carried both ways.
+  ConversationRef,
   TurnUsage,
   // TD-070: `ChatAskRequest.view` is typed with it, so a consumer of this
   // module can name it without reaching past the preload boundary.
   ViewContext
+}
+
+/**
+ * TD-073: `ChatAskRequest` plus the conversation the question continues.
+ * The package's own request type has no such field — the id is persisted by
+ * the renderer's store and travels to main on every question, because main
+ * holds the client but nothing that survives a reload.
+ */
+export interface ThunderChatAskRequest extends ChatAskRequest {
+  conversation?: ConversationRef
 }
 
 /**
@@ -154,7 +167,16 @@ export const THUNDER_IPC_CHANNELS = {
    * any turn exists to carry one.
    */
   chatUsage: 'thunder:chat:usage',
-  chatCapabilities: 'thunder:chat:capabilities'
+  chatCapabilities: 'thunder:chat:capabilities',
+
+  /**
+   * TD-073: a conversation the context client has just minted, pushed the
+   * same way `usage` is. Only the renderer's store outlives a reload, so
+   * only it can persist the id beside the transcript it identifies. A
+   * conversation the renderer supplied and the client adopted is never
+   * pushed back — it already has that one.
+   */
+  chatConversation: 'thunder:chat:conversation'
 } as const
 
 /**
@@ -164,9 +186,9 @@ export const THUNDER_IPC_CHANNELS = {
  * so an attacker who somehow obtained a renderer handle still can't
  * drive arbitrary main-process IPC.
  *
- * `menuAction`, `chatStatus` and `chatUsage` are intentionally excluded —
- * they're one-way main → renderer channels, not invoke-able. Add new
- * channels here as their handlers ship.
+ * `menuAction`, `chatStatus`, `chatUsage` and `chatConversation` are
+ * intentionally excluded — they're one-way main → renderer channels, not
+ * invoke-able. Add new channels here as their handlers ship.
  */
 export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
@@ -387,7 +409,7 @@ export interface ThunderApi {
      * Never rejects — failures come back as `{ ok: false, error }` so
      * the renderer branches on a field rather than a message.
      */
-    ask: (request: ChatAskRequest) => Promise<ChatAskResult>
+    ask: (request: ThunderChatAskRequest) => Promise<ChatAskResult>
     /** Aborts the in-flight turn, which then resolves `cancelled`. */
     cancel: () => Promise<void>
     /**
@@ -407,6 +429,13 @@ export interface ThunderApi {
      * correct answer rather than a zero. Returns an unsubscribe function.
      */
     onUsage: (callback: (usage: TurnUsage) => void) => () => void
+    /**
+     * TD-073: subscribe to a conversation main has just minted, so the store
+     * can persist it beside the turns it identifies. Fires only for a new
+     * conversation, never for one the renderer supplied. Returns an
+     * unsubscribe function.
+     */
+    onConversation: (callback: (conversation: ConversationRef) => void) => () => void
     /**
      * TD-072: what the service can do, and which model would run the next
      * turn. `null` when the service could not be read — a failed fetch is
@@ -501,6 +530,14 @@ export const thunderApi: ThunderApi = {
       ipcRenderer.on(THUNDER_IPC_CHANNELS.chatUsage, handler)
       return (): void => {
         ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.chatUsage, handler)
+      }
+    },
+    onConversation: (callback) => {
+      const handler = (_event: unknown, conversation: ConversationRef): void =>
+        callback(conversation)
+      ipcRenderer.on(THUNDER_IPC_CHANNELS.chatConversation, handler)
+      return (): void => {
+        ipcRenderer.removeListener(THUNDER_IPC_CHANNELS.chatConversation, handler)
       }
     },
     capabilities: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.chatCapabilities)

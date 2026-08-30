@@ -219,6 +219,36 @@ describe("ChatDrawer: the expand overlay", () => {
     expect(drawer()).toBeInTheDocument();
   });
 
+  it("draws the whole page where the card behind it drew six", async () => {
+    const user = userEvent.setup();
+    const page = Array.from({ length: 8 }, (_, index) => ({
+      id: `rec-${index + 1}`,
+      name: `Night ${index + 1}`,
+      actors: [],
+      views: (index + 1) * 10,
+    }));
+    renderDrawer(
+      vi.fn(async () =>
+        answer(
+          "here they are",
+          listAction("search_records", { filter: "nig" }, { items: page, next_cursor: null })
+        )
+      )
+    );
+    await user.click(trigger());
+    await user.type(composer(), "show me records");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Showing 6 of 8")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand" }));
+    const overlay = screen.getByRole("dialog", { name: "Records starting with 'nig'" });
+
+    expect(within(overlay).getAllByRole("row")).toHaveLength(page.length + 1);
+    expect(within(overlay).getByText("8 results")).toBeInTheDocument();
+    // The card underneath keeps its own preview, and its own count line.
+    expect(screen.getByText("Showing 6 of 8")).toBeInTheDocument();
+  });
+
   it("puts the transcript and the composer out of reach while it is open", async () => {
     const user = userEvent.setup();
     await openExpanded(user);

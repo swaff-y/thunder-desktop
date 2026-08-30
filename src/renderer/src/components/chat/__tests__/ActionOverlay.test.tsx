@@ -87,6 +87,23 @@ describe("ActionOverlay: a list", () => {
     ).toBeInTheDocument();
   });
 
+  // The reason `Expand` exists: the inline card takes the adapter's six-row
+  // default, and this is the view that asked for the rest of the page.
+  it("draws every row of the page, past the six the inline card stops at", () => {
+    const page = Array.from({ length: 8 }, (_, index) => ({
+      id: `rec-${index + 1}`,
+      name: `Night ${index + 1}`,
+      actors: [],
+      views: (index + 1) * 10,
+    }));
+    renderOverlay(recordsAction(page));
+
+    expect(screen.getAllByRole("row")).toHaveLength(page.length + 1);
+    expect(screen.getByText("Night 7")).toBeInTheDocument();
+    expect(screen.getByText("Night 8")).toBeInTheDocument();
+    expect(screen.getByText("8 results")).toBeInTheDocument();
+  });
+
   it("keeps the count line", () => {
     renderOverlay(recordsAction());
     expect(screen.getByText("3 results")).toBeInTheDocument();

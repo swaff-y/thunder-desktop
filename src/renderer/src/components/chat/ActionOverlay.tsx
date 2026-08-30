@@ -24,6 +24,14 @@ import { useActionImages } from "./useActionImages";
 
 const CAROUSEL_HEIGHT = 300;
 
+/**
+ * The inline card takes the adapter's six-row default; this is the view
+ * that was the reason for `Expand`, so it takes the whole page. TCC-010
+ * made the cap the caller's, which is why this is an option rather than a
+ * slice of `action.result` taken here.
+ */
+const EVERY_ROW = { maxRows: Infinity };
+
 function OverlayList({ card }: { card: ListCard }): React.JSX.Element {
   if (card.rows.length === 0) {
     return <p className="action-overlay-empty">{card.emptyMessage}</p>;
@@ -219,7 +227,7 @@ export default function ActionOverlay({
 
   // The header names the card, not the action: the action carries the raw
   // tool call, and the adapters are what turn it into a sentence.
-  const list = shown.kind === "list" ? toListCard(shown, APP_ROUTES) : null;
+  const list = shown.kind === "list" ? toListCard(shown, APP_ROUTES, EVERY_ROW) : null;
   const single = shown.kind === "single" ? toSingleCard(shown, APP_ROUTES) : null;
   const head = list
     ? { kind: "list", title: list.title, tool: list.tool }

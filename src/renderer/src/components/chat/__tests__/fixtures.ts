@@ -1,4 +1,9 @@
-import type { ChartBar, ChatAction, ChatAskResult } from "@swaff-y/thunder-chat-core";
+import type {
+  ChartBar,
+  ChatAction,
+  ChatAskResult,
+  UploadTarget,
+} from "@swaff-y/thunder-chat-core";
 
 export const NO_ACTION: ChatAction = {
   kind: "none",
@@ -35,6 +40,14 @@ export function chartAction(
   bars: ChartBar[]
 ): ChatAction {
   return { kind: "chart", tool, args: {}, title, result: null, metricLabel, bars };
+}
+
+export function uploadAction(
+  target: UploadTarget | undefined,
+  result: unknown,
+  title = "Upload an image"
+): ChatAction {
+  return { kind: "upload", tool: "upload_action", args: {}, title, result, target };
 }
 
 export function deferredAnswer(): {

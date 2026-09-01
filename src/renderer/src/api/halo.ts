@@ -1,3 +1,4 @@
+import axios from "axios";
 import client, { getAuthHeaders, getCachedCreds } from "./client";
 import type {
   PaginatedResponse,
@@ -129,12 +130,55 @@ export function fetchRecord(recordId: string) {
 
 // Single entity of any halo type — `entityType` is halo's singular path
 // segment ("actor", "movie", "series", "tag", "image", "franchise").
-export function fetchEntity(entityType: string, id: string) {
+export function fetchEntity(entityType: string, id: string, signal?: AbortSignal) {
   return client
     .get<{ data: EntityDetail }>(
-      `v1/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}`
+      `v1/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}`,
+      { signal }
     )
     .then((r) => r.data.data);
+}
+
+/**
+ * Mints a presigned PUT URL for an entity's picture.
+ *
+ * **This deletes the current image.** Halo sets `url = nil`, flips `status`
+ * to `processing` and bumps `image_version` the moment the URL is issued —
+ * before a single byte is uploaded, and nothing undoes it. Call it only once
+ * the bytes are in hand: a card that mints on mount has destroyed an avatar
+ * for someone who was only reading.
+ */
+export function requestUploadUrl(entityType: string, id: string, signal?: AbortSignal) {
+  return client
+    .post<{ data: { id: string; uploadUrl: string } }>(
+      `v1/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}/upload`,
+      undefined,
+      { signal }
+    )
+    .then((r) => r.data.data);
+}
+
+/**
+ * Sends the bytes to S3 — deliberately bare `axios`, not `client`.
+ *
+ * The presigned URL *is* the authorisation, and an extra `Authorization` or
+ * `x-api-key` header is a 403 rather than a stronger request. Axios reads
+ * `Content-Length` off the `Blob`, which S3 also requires: it rejects
+ * chunked encoding on a presigned PUT.
+ */
+export function putUpload(
+  uploadUrl: string,
+  file: Blob,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return axios
+    .put(uploadUrl, file, {
+      headers: { "Content-Type": "application/octet-stream" },
+      signal,
+      onUploadProgress: (event) => onProgress?.(event.loaded, event.total ?? file.size),
+    })
+    .then(() => undefined);
 }
 
 // Video proxy URL builder

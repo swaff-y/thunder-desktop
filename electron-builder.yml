@@ -5,6 +5,11 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!src/*'
+  # Tickets, code reviews and design notes are internal. They were being
+  # copied into app.asar — 119 files, readable by anyone who opens the
+  # bundle — and a docs reshuffle mid-build failed the packaging step with
+  # ENOENT on a path the file walker had already listed.
+  - '!docs/'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'

@@ -119,15 +119,17 @@ could ever have copied phase 8.
   input with `Enter` to send, `Up`/`Down` through the questions already
   asked, and a draft that only `Clear` empties. Renderer-only. Shipped in #63.
 
-- [TD-075](TD-075-chat-upload-card-drop-zone.md) — AI chat: the upload card,
-  with a drop zone. thunder-context TC-028 has the chat offer an upload after it
-  creates something, and answer a yes with `kind: 'upload'` carrying a
+- [TD-075](complete/TD-075-chat-upload-card-drop-zone.md) — AI chat: the upload
+  card, with a drop zone. thunder-context TC-028 has the chat offer an upload
+  after it creates something, and answer a yes with `kind: 'upload'` carrying a
   **target, not a URL**. The renderer mints its own presigned URL against Halo
   — and mints it only once a file has been dropped, because
   `POST /v1/{type}/{id}/upload` deletes the current image before a single byte
   is uploaded. Flow and types come from `@swaff-y/thunder-chat-core@0.9.0`
-  (TCC-011); this repo supplies the ports, the drop zone and the pixels.
-  Not started.
+  (TCC-011); this repo supplied the ports, the drop zone and the pixels. The
+  ticket's open question — whether large video is reachable here — is answered
+  in the card: it is, so it refuses anything over 500 MB rather than streaming
+  a 4GB file through a PUT with no resume. Shipped in #66.
 
 ## Bugs / polish
 

@@ -6,6 +6,7 @@ import ActionCardChart from "./ActionCardChart";
 import ActionOverlay from "./ActionOverlay";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
+import ActionCardUpload from "./ActionCardUpload";
 import ActionRowImage from "./ActionRowImage";
 import ChatError from "./ChatError";
 import ChatMarkdown from "./ChatMarkdown";
@@ -109,6 +110,9 @@ function TurnAction({
         onExpand={expandHandler(action)}
       />
     );
+  }
+  if (action.kind === "upload") {
+    return <ActionCardUpload action={action} />;
   }
   return null;
 }

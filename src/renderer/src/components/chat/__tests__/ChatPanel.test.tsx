@@ -10,7 +10,14 @@ import {
   type TurnUsage,
 } from "@swaff-y/thunder-chat-core";
 import ChatPanel from "../ChatPanel";
-import { answer, deferredAnswer, listAction, singleAction } from "./fixtures";
+import {
+  answer,
+  deferredAnswer,
+  listAction,
+  singleAction,
+  TOM_HARDY_IMAGES,
+  webImagesAction,
+} from "./fixtures";
 
 const reauthenticate = vi.fn(async () => ({ token: "t", apiKey: "k" }));
 
@@ -168,6 +175,20 @@ describe("ChatPanel", () => {
     expect(await screen.findByText("Nightjar Sessions")).toBeInTheDocument();
     expect(screen.queryByText("Mara Vale")).not.toBeInTheDocument();
     expect(screen.getByText("Mara Vale is the only one.")).toBeInTheDocument();
+  });
+
+  it("draws the web images card rather than falling through to nothing", async () => {
+    const user = userEvent.setup();
+    const send = vi
+      .fn<ChatSend>()
+      .mockResolvedValue(answer("Here are five.", webImagesAction("gifs of Tom Hardy")));
+    renderPanel(send);
+
+    await user.type(composer(), "find me some gifs of Tom Hardy");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByRole("heading", { name: "Images from the web" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img")).toHaveLength(TOM_HARDY_IMAGES.length);
   });
 
   it("takes a record card back to the list it came out of", async () => {

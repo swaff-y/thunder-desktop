@@ -7,6 +7,7 @@ import ActionOverlay from "./ActionOverlay";
 import ActionCardList from "./ActionCardList";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionCardUpload from "./ActionCardUpload";
+import ActionCardWebImages from "./ActionCardWebImages";
 import ActionRowImage from "./ActionRowImage";
 import ChatError from "./ChatError";
 import ChatMarkdown from "./ChatMarkdown";
@@ -113,6 +114,9 @@ function TurnAction({
   }
   if (action.kind === "upload") {
     return <ActionCardUpload action={action} />;
+  }
+  if (action.kind === "web_images") {
+    return <ActionCardWebImages action={action} />;
   }
   return null;
 }

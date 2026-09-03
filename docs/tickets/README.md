@@ -131,6 +131,18 @@ could ever have copied phase 8.
   in the card: it is, so it refuses anything over 500 MB rather than streaming
   a 4GB file through a PUT with no resume. Shipped in #66.
 
+- [TD-077](TD-077-chat-web-images-card.md) — AI chat: the web-images card.
+  thunder-context TC-031 adds a sixth kind, `web_images` — five pictures the
+  model found on the **public web** through a second MCP server — and it is
+  deployed everywhere, so the chat answers a "find me some gifs" question today
+  with a sentence and no card. **These images are not ours**, which is the whole
+  of what makes this card different: every other one fetches by id through
+  `useActionImages`, and there is no id here. A tile can 404 at any time, on
+  hosts nobody vetted, so it degrades rather than breaking the grid; and a
+  search is metered in web-mcp, so the card renders from the transcript and
+  never re-runs one. Types from `@swaff-y/thunder-chat-core@0.10.0` (TCC-012).
+  Not started.
+
 ## Bugs / polish
 
 - [TD-033](TD-033-settings-url-trim.md) — Settings: trim whitespace from API URL

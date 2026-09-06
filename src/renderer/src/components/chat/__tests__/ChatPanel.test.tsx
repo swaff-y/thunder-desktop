@@ -10,6 +10,7 @@ import {
   type TurnUsage,
 } from "@swaff-y/thunder-chat-core";
 import ChatPanel from "../ChatPanel";
+import { BrowserNavProvider } from "../../../browser/BrowserNavContext";
 import {
   answer,
   deferredAnswer,
@@ -36,9 +37,11 @@ const cancelRequest = vi.fn();
 function renderPanel(send: ChatSend) {
   return render(
     <MemoryRouter>
-      <ChatProvider send={send} cancelRequest={cancelRequest}>
-        <ChatPanel />
-      </ChatProvider>
+      <BrowserNavProvider>
+        <ChatProvider send={send} cancelRequest={cancelRequest}>
+          <ChatPanel />
+        </ChatProvider>
+      </BrowserNavProvider>
     </MemoryRouter>
   );
 }

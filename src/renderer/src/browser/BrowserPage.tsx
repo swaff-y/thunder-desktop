@@ -1,18 +1,16 @@
-import { useBrowserNav } from './useBrowserNav'
+import { INITIAL_URL, useBrowserNavState } from './BrowserNavContext'
 import { useDownloads } from './useDownloads'
 import BrowserChrome from './BrowserChrome'
 import EmbeddedWebview from './EmbeddedWebview'
 import DetectedAssetsPanel from './DetectedAssetsPanel'
 import DownloadsDrawer from './DownloadsDrawer'
 
-const INITIAL_URL = 'https://www.google.com'
-
 interface BrowserPageProps {
   visible: boolean
 }
 
 export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.Element {
-  const nav = useBrowserNav(INITIAL_URL)
+  const nav = useBrowserNavState()
   const downloads = useDownloads()
 
   return (

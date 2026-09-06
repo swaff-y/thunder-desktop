@@ -20,6 +20,11 @@ vi.mock("../useActionImages", () => ({
 }));
 
 const openExternal = vi.fn();
+const openInBrowserTab = vi.fn();
+
+vi.mock("../../../browser/BrowserNavContext", () => ({
+  useOpenInBrowserTab: () => openInBrowserTab,
+}));
 
 function tiles(): HTMLImageElement[] {
   return screen.getAllByRole("img");
@@ -31,6 +36,7 @@ beforeEach(() => {
   fetchEntity.mockClear();
   useActionImages.mockClear();
   openExternal.mockClear();
+  openInBrowserTab.mockClear();
   Object.defineProperty(window, "thunder", {
     configurable: true,
     value: { shell: { openExternal } },
@@ -122,13 +128,14 @@ describe("ActionCardWebImages", () => {
     }
   });
 
-  it("opens the full-size image outside the renderer", async () => {
+  it("opens the full-size image in the app's own Browser tab", async () => {
     const user = userEvent.setup();
     render(<ActionCardWebImages action={webImagesAction("gifs of Tom Hardy")} />);
 
     await user.click(screen.getAllByRole("button")[0]);
 
-    expect(openExternal).toHaveBeenCalledWith(TOM_HARDY_IMAGES[0].image_url);
+    expect(openInBrowserTab).toHaveBeenCalledWith(TOM_HARDY_IMAGES[0].image_url);
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it("draws nothing when the adapter will not vouch for the action", () => {

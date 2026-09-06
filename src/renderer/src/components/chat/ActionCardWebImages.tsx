@@ -4,6 +4,7 @@ import {
   type ChatAction,
   type WebImageCandidate,
 } from "@swaff-y/thunder-chat-core";
+import { useOpenInBrowserTab } from "../../browser/BrowserNavContext";
 
 /** TC-031 returns five; the grid is laid out for that and no more. */
 const MAX_TILES = 5;
@@ -30,6 +31,8 @@ function shortTitle(title: string | undefined): string | undefined {
  *
  * The hosts are strangers' and rot on their own schedule, so a tile that
  * cannot load removes itself and lets the grid close up around it.
+ *
+ * TD-080: a tile opens in this app's own Browser tab, not the OS browser.
  */
 export default function ActionCardWebImages({
   action,
@@ -143,17 +146,19 @@ export default function ActionCardWebImages({
  */
 function WebImageTile({ candidate }: { candidate: WebImageCandidate }): React.JSX.Element | null {
   const [failed, setFailed] = useState(false);
+  const openInBrowserTab = useOpenInBrowserTab();
 
   function handleError(): void {
     setFailed(true);
   }
 
   /**
-   * A stranger's URL never navigates the renderer. `openExternal` is
-   * allowlisted in main (TD-021) and hands the full-size image to the OS.
+   * TD-080: a stranger's URL still never navigates the renderer — it goes
+   * to the Browser tab's sandboxed <webview>, which is where the app's
+   * Back button, TD-047's Save image and TD-026's download folder live.
    */
   function handleOpen(): void {
-    void window.thunder?.shell.openExternal(candidate.imageUrl);
+    openInBrowserTab(candidate.imageUrl);
   }
 
   if (failed) return null;

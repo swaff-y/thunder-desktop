@@ -39,7 +39,13 @@ export interface BrowserNav {
   goBack: () => void
   goForward: () => void
   reload: () => void
-  loadURL: (raw: string) => void
+  /**
+   * Returns whether the URL was accepted. TD-080's `openInBrowserTab`
+   * needs to know, because a rejected URL must leave the user where
+   * they are with `validationError` showing rather than switching them
+   * to a tab that never navigated.
+   */
+  loadURL: (raw: string) => boolean
   attachWebview: (el: WebviewTag | null) => void
   /**
    * TD-039: when the host (Browser tab) becomes hidden, cancel any
@@ -328,11 +334,11 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
     [webContentsId]
   )
 
-  const loadURL = useCallback((raw: string) => {
+  const loadURL = useCallback((raw: string): boolean => {
     const trimmed = raw.trim()
     if (trimmed.length === 0) {
       setValidationError('Enter a URL.')
-      return
+      return false
     }
     const candidate = SCHEME_RE.test(trimmed) ? trimmed : `https://${trimmed}`
     let parsed: URL
@@ -340,18 +346,29 @@ export function useBrowserNav(initialUrl: string): BrowserNav {
       parsed = new URL(candidate)
     } catch {
       setValidationError('Not a valid URL.')
-      return
+      return false
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       setValidationError(`Unsupported scheme: ${parsed.protocol}`)
-      return
+      return false
     }
     setValidationError(null)
     setLoadError(null)
     const next = parsed.toString()
     setUrl(next)
     setInputUrl(next)
-    webviewRef.current?.loadURL(next)
+    // TD-080: a load can now arrive while the tab is hidden, so the
+    // guest is TD-039-suspended on about:blank. Loading into it would
+    // be undone a moment later by the resume path restoring the
+    // snapshot; rewriting the snapshot is what makes the new URL the
+    // page the user finds when the tab comes forward.
+    const suspended = suspendedStateRef.current
+    if (suspended) {
+      suspendedStateRef.current = { ...suspended, url: next }
+    } else {
+      webviewRef.current?.loadURL(next)
+    }
+    return true
   }, [])
 
   return {

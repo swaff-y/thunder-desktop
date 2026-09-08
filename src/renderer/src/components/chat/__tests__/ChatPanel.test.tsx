@@ -17,6 +17,7 @@ import {
   listAction,
   singleAction,
   TOM_HARDY_IMAGES,
+  unknownKindAction,
   webImagesAction,
 } from "./fixtures";
 
@@ -48,6 +49,11 @@ function renderPanel(send: ChatSend) {
 
 function composer(): HTMLTextAreaElement {
   return screen.getByLabelText("Ask the catalogue");
+}
+
+/** The card draws lists of its own, so the transcript is taken by class. */
+function transcript(): HTMLElement {
+  return document.querySelector(".chat-transcript") as HTMLElement;
 }
 
 function saidLines(): string[] {
@@ -254,6 +260,134 @@ describe("ChatPanel", () => {
 
     expect(await screen.findByText("Action · Record")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Back to list" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * TD-078: `Action::NONE` is a real action object, so "the latest turn with
+   * an action" and "the latest turn with a card" are different turns the
+   * moment an answer needs no tool — and the first answer was erasing the
+   * card the transcript was already showing.
+   */
+  describe("a turn that draws no card", () => {
+    function actorsList() {
+      return listAction("list_entities", { entity_type: "actor", filter: "mar" }, {
+        items: [{ id: "a-2", name: "Mara Vale", clicks: 88 }],
+        next_cursor: null,
+      });
+    }
+
+    it("leaves the web images grid on the turn that fetched it", async () => {
+      const user = userEvent.setup();
+      const send = vi
+        .fn<ChatSend>()
+        .mockResolvedValueOnce(answer("Here are five.", webImagesAction("gifs of Tom Hardy")))
+        .mockResolvedValueOnce(answer("The same five as before."));
+      renderPanel(send);
+
+      await askQuestion(user, "find me some gifs of Tom Hardy");
+      expect(await screen.findByRole("heading", { name: "Images from the web" })).toBeVisible();
+
+      await askQuestion(user, "show me those again");
+
+      expect(screen.getByRole("heading", { name: "Images from the web" })).toBeVisible();
+      expect(screen.getAllByRole("img")).toHaveLength(TOM_HARDY_IMAGES.length);
+      // Scoped to the transcript: the live region repeats the newest answer.
+      expect(within(transcript()).getByText("The same five as before.")).toBeInTheDocument();
+    });
+
+    it("still moves the card on when the newer turn draws one of its own", async () => {
+      const user = userEvent.setup();
+      const send = vi
+        .fn<ChatSend>()
+        .mockResolvedValueOnce(answer("Here are five.", webImagesAction("gifs of Tom Hardy")))
+        .mockResolvedValueOnce(
+          answer("And five more.", webImagesAction("more gifs", TOM_HARDY_IMAGES, "Newer images"))
+        );
+      renderPanel(send);
+
+      await askQuestion(user, "find me some gifs of Tom Hardy");
+      await askQuestion(user, "more please");
+
+      expect(await screen.findByRole("heading", { name: "Newer images" })).toBeVisible();
+      expect(
+        screen.queryByRole("heading", { name: "Images from the web" })
+      ).not.toBeInTheDocument();
+    });
+
+    it("leaves a list card alone", async () => {
+      const user = userEvent.setup();
+      const send = vi
+        .fn<ChatSend>()
+        .mockResolvedValueOnce(answer("Mara Vale is the only one.", actorsList()))
+        .mockResolvedValueOnce(answer("Four, as I said."));
+      renderPanel(send);
+
+      await askQuestion(user, "actors starting with mar");
+      expect(await screen.findByText("Mara Vale")).toBeInTheDocument();
+
+      await askQuestion(user, "what did you just say?");
+
+      expect(screen.getByText("Mara Vale")).toBeInTheDocument();
+    });
+
+    it("does not cost a record card its way back to the list", async () => {
+      const user = userEvent.setup();
+      const send = vi
+        .fn<ChatSend>()
+        .mockResolvedValueOnce(
+          answer(
+            "One record matches.",
+            listAction("search_records", { filter: "nig" }, {
+              items: [{ id: "rec-1", name: "Nightjar Sessions", actors: [], views: 12 }],
+              next_cursor: null,
+            })
+          )
+        )
+        .mockResolvedValueOnce(answer("Twelve views."))
+        .mockResolvedValueOnce(
+          answer(
+            "Here it is.",
+            singleAction("get_record", { id: "rec-1" }, {
+              id: "rec-1",
+              name: "Nightjar Sessions",
+              views: 12,
+              actors: [],
+            })
+          )
+        );
+      renderPanel(send);
+
+      await askQuestion(user, "records starting with nig");
+      expect(await screen.findByText("Records starting with 'nig'")).toBeInTheDocument();
+
+      await askQuestion(user, "how many views did that get?");
+      await askQuestion(user, "open it");
+      expect(await screen.findByText("Action · Record")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Back to list" }));
+
+      expect(screen.getByText("Records starting with 'nig'")).toBeInTheDocument();
+      expect(screen.queryByText("Action · Record")).not.toBeInTheDocument();
+    });
+
+    it("does not let a kind it has no branch for evict the card above it", async () => {
+      const user = userEvent.setup();
+      const send = vi
+        .fn<ChatSend>()
+        .mockResolvedValueOnce(answer("Mara Vale is the only one.", actorsList()))
+        .mockResolvedValueOnce(answer("A shape from a newer server.", unknownKindAction()));
+      renderPanel(send);
+
+      await askQuestion(user, "actors starting with mar");
+      expect(await screen.findByText("Mara Vale")).toBeInTheDocument();
+
+      await askQuestion(user, "and their timeline?");
+
+      expect(screen.getByText("Mara Vale")).toBeInTheDocument();
+      expect(
+        screen.queryByText("A kind this build has never heard of")
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("cancels the in-flight request and re-enables the composer when Stop is clicked", async () => {

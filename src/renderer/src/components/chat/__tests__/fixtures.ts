@@ -120,6 +120,21 @@ export function webImagesAction(
   };
 }
 
+/**
+ * A kind no build has a branch for. thunder-context adds them ahead of the
+ * renderers, and the one that has not landed yet must not evict the card
+ * above it.
+ */
+export function unknownKindAction(): ChatAction {
+  return {
+    kind: "timeline" as ChatAction["kind"],
+    tool: "get_timeline",
+    args: {},
+    title: "A kind this build has never heard of",
+    result: null,
+  };
+}
+
 export function deferredAnswer(): {
   promise: Promise<ChatAskResult>;
   resolve: (result: ChatAskResult) => void;

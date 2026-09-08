@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useLocation, useMatch } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useChatEnabled } from "../hooks/useSettings";
@@ -24,13 +24,12 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
   // Persist the most recently visited /watch/:id so the Watch component
   // (and its <video> element) stays mounted across tab switches; the
   // playback position is preserved as long as it isn't unmounted.
-  const [activeWatchId, setActiveWatchId] = useState<string | null>(
-    watchMatch?.params.id ?? null
-  );
-  useEffect(() => {
-    const id = watchMatch?.params.id;
-    if (id) setActiveWatchId(id);
-  }, [watchMatch?.params.id]);
+  const watchId = watchMatch?.params.id ?? null;
+  const [activeWatchId, setActiveWatchId] = useState<string | null>(watchId);
+  // Set during render, not in an effect: an effect runs after paint, so the
+  // layout would draw the previous record once before correcting itself.
+  // Leaving /watch/:id keeps the id — only clearActiveWatch drops it.
+  if (watchId !== null && watchId !== activeWatchId) setActiveWatchId(watchId);
 
   // The drawer is mounted beside the page column so the conversation
   // outlives navigation, the way BrowserPage and Watch do.
@@ -40,7 +39,7 @@ export default function DesktopLayout({ children }: DesktopLayoutProps): React.J
   // back on must not spring it open again.
   if (chatOpen && !chatEnabled) setChatOpen(false);
 
-  function clearActiveWatch() {
+  function clearActiveWatch(): void {
     setActiveWatchId(null);
   }
 

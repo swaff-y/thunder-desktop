@@ -184,11 +184,14 @@ could ever have copied phase 8.
   thing the renderer has never had — a way to ask the persistent webview to
   load a URL. Shipped in #68.
 
-- [TD-081](TD-081-filter-actors-by-gender.md) — Filter the actors list by
-  gender. HALO-265 gave actors a `gender` and `GET /v1/actor` a `gender=`
-  parameter; nothing here can send it. An All/Male/Female toggle beside the
+- [TD-081](complete/TD-081-filter-actors-by-gender.md) — Filter the actors list
+  by gender. HALO-265 gave actors a `gender` and `GET /v1/actor` a `gender=`
+  parameter; nothing here could send it. An All/Male/Female toggle beside the
   TD-049 search box, gated by a new `genderFilterable` flag on `CategoryConfig`
   so the other three categories are untouched. Defaults to **All** and sends
   nothing: the migration made every actor `female`, so `?gender=male` is a
   20-page post-filter walk for a guaranteed empty answer until something calls
-  `PATCH /v1/actor/{id}`. Companions: thunder TH-042, web-thunder THW-33.
+  `PATCH /v1/actor/{id}`. The ticket assumed the empty state already guarded on
+  `hasNextPage`; it did not, and that guard is what stops a short post-filtered
+  page reading as the end of the list. Companions: thunder TH-042, web-thunder
+  THW-33. Shipped in #69.

@@ -167,15 +167,38 @@ could ever have copied phase 8.
 - [TD-064](complete/TD-064-bedrock-defaults-stale.md) — Shipped Bedrock defaults don't work against the app's own client
 - [TD-066](complete/TD-066-dev-mcp-url-default.md) — `npm run dev` defaults to the dev halo-mcp (dev token + prod MCP reads as "Your session expired")
 - [TD-071](complete/TD-071-multiwatch-audio-focus-and-expand.md) — MultiWatch: one audio track at a time and expand a cell to fullscreen (the two things TH-012 added on mobile and TD-015's port never got). Shipped in #61.
-- [TD-078](TD-078-a-tool-less-turn-steals-the-card.md) — AI chat: a turn that called no tool steals the card. `Action::NONE` is a real action object, so a tool-less turn wins `latestActionId`, draws nothing, and erases the card the transcript was already showing — and occupies `at(-2)`, so a record card loses "Back to list". Same predicate as TH-029 and THW-32.
+- [TD-076](complete/TD-076-desktop-layout-lint-errors.md) — `npm run lint` was
+  not green, and had not been for some time: `DesktopLayout` wrote
+  `activeWatchId` from an effect that ran after paint, so the layout drew the
+  previous record once before correcting itself. Derived during render
+  instead, the same shape the `chatOpen` line beside it already used. `main`
+  turned out to hold four errors rather than the two the ticket named — the
+  `NoopObserver` in `CategoryList.test.tsx` grew two more after it was
+  written — and "exits 0" took both. The ~4000 `prettier/prettier` warnings
+  are untouched and still want their own ticket. Shipped in #70.
 
-- [TD-079](TD-079-upload-refused-while-processing.md) — AI chat: the upload
-  card mints against a `processing` subject and dies there. Halo answers
+- [TD-078](complete/TD-078-a-tool-less-turn-steals-the-card.md) — AI chat: a
+  turn that called no tool steals the card. `Action::NONE` is a real action
+  object, so a tool-less turn wins `latestActionId`, draws nothing, and erases
+  the card the transcript was already showing — and occupies `at(-2)`, so a
+  record card loses "Back to list". Fixed by making `CARDS` the one list of
+  kinds this build draws, read by both the dispatch and the predicate: two
+  lists that have to agree is how `upload` and `web_images` each spent a
+  while silently evicting cards. Same predicate still open as TH-029 and
+  THW-32. Shipped in #71.
+
+- [TD-079](complete/TD-079-upload-refused-while-processing.md) — AI chat: the
+  upload card mints against a `processing` subject and dies there. Halo answers
   `POST /v1/{type}/{id}/upload` with *Record is not in a replaceable state
   (current: processing)*; `toUploadCard` reads anything but `processed` as
   "nothing to destroy, go ahead", and minting itself sets `processing`, so
   **Try again** re-mints into the same 400 forever. The port throws away Halo's
   sentence too, leaving the user with *Request failed with status code 400*.
+  Now a non-destructive `GET` runs before every mint, retry included: a
+  `processing` subject gets a waiting state on the package's own backoff
+  rather than a mint, and a read outage still mints, because refusing to
+  write is not the safe answer. `uploadFailure` recovers Halo's sentence on
+  the two upload ports only. Shipped in #72.
 
 - [TD-080](complete/TD-080-web-image-opens-in-the-app-browser.md) — AI chat: clicking a
   TD-077 web image leaves the app. `openExternal` hands the full-size image to

@@ -177,9 +177,18 @@ could ever have copied phase 8.
   **Try again** re-mints into the same 400 forever. The port throws away Halo's
   sentence too, leaving the user with *Request failed with status code 400*.
 
-- [TD-080](TD-080-web-image-opens-in-the-app-browser.md) — AI chat: clicking a
+- [TD-080](complete/TD-080-web-image-opens-in-the-app-browser.md) — AI chat: clicking a
   TD-077 web image leaves the app. `openExternal` hands the full-size image to
   the OS browser, so the user loses the app and loses TD-047's **Save image**
   with it. Opens it on the TD-021 Browser tab instead, which needs the one
   thing the renderer has never had — a way to ask the persistent webview to
-  load a URL.
+  load a URL. Shipped in #68.
+
+- [TD-081](TD-081-filter-actors-by-gender.md) — Filter the actors list by
+  gender. HALO-265 gave actors a `gender` and `GET /v1/actor` a `gender=`
+  parameter; nothing here can send it. An All/Male/Female toggle beside the
+  TD-049 search box, gated by a new `genderFilterable` flag on `CategoryConfig`
+  so the other three categories are untouched. Defaults to **All** and sends
+  nothing: the migration made every actor `female`, so `?gender=male` is a
+  20-page post-filter walk for a guaranteed empty answer until something calls
+  `PATCH /v1/actor/{id}`. Companions: thunder TH-042, web-thunder THW-33.

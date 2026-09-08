@@ -1,6 +1,7 @@
 import axios from "axios";
 import client, { getAuthHeaders, getCachedCreds } from "./client";
 import type {
+  ActorGender,
   PaginatedResponse,
   CategoryItem,
   ContentRecord,
@@ -23,16 +24,20 @@ interface PaginationParams {
   lastEvaluatedKey?: string | null;
   limit?: number;
   filter?: string;
+  gender?: ActorGender | null;
 }
 
-function buildListUrl(
+export function buildListUrl(
   basePath: string,
-  { lastEvaluatedKey, limit = 50, filter }: PaginationParams
+  { lastEvaluatedKey, limit = 50, filter, gender }: PaginationParams
 ): string {
   const params = new URLSearchParams({ limit: String(limit) });
   if (lastEvaluatedKey) params.set("start_key", lastEvaluatedKey);
   const trimmed = filter?.trim();
   if (trimmed) params.set("filter", trimmed);
+  // Only `/v1/actor` takes `gender`; this helper cannot tell which path it is
+  // building, so the caller gates it on `config.genderFilterable`.
+  if (gender === "male" || gender === "female") params.set("gender", gender);
   return `${basePath}?${params}`;
 }
 

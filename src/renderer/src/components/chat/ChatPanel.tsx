@@ -55,6 +55,44 @@ function renderRowImage(row: ListRow): React.ReactNode {
   return <ActionRowImage row={row} />;
 }
 
+/** What a card needs from the turn it belongs to. */
+interface CardContext {
+  action: ChatAction;
+  previousList: ChatAction | undefined;
+  onBackToList: () => void;
+  /** Whatever the card is showing is what expands — a card the reader sent
+   *  back to its list expands into that list, not the record behind it. */
+  expandHandler: (shown: ChatAction) => (() => void) | undefined;
+}
+
+/**
+ * The kinds this build draws a card for, and how. TD-078: `Action::NONE` is
+ * a real action object — a turn that called no tool still carries one — so
+ * "the turn with the latest action" and "the turn with the latest card" are
+ * different questions. This is the only list that answers the second, and
+ * both the dispatch below and `actionTurns` read it, because two lists that
+ * have to agree is how an unrenderable kind starts evicting the card above it.
+ */
+const CARDS: Partial<Record<ChatAction["kind"], (context: CardContext) => React.JSX.Element>> = {
+  chart: ({ action }) => <ActionCardChart action={action} />,
+  list: ({ action, expandHandler }) => (
+    <ActionCardList action={action} renderImage={renderRowImage} onExpand={expandHandler(action)} />
+  ),
+  single: ({ action, previousList, onBackToList, expandHandler }) => (
+    <ActionCardRecord
+      action={action}
+      onBackToList={previousList === undefined ? undefined : onBackToList}
+      onExpand={expandHandler(action)}
+    />
+  ),
+  upload: ({ action }) => <ActionCardUpload action={action} />,
+  web_images: ({ action }) => <ActionCardWebImages action={action} />,
+};
+
+function drawsCard(action: ChatAction | undefined): boolean {
+  return action !== undefined && CARDS[action.kind] !== undefined;
+}
+
 /**
  * The card for the turn that owns the latest action. A single-record card
  * that followed a list keeps a way back to it — the list is the answer to
@@ -76,49 +114,19 @@ function TurnAction({
     setShowList(true);
   }
 
-  // Whatever the card is showing is what expands — a card the reader sent
-  // back to its list expands into that list, not the record behind it.
   function expandHandler(shown: ChatAction): (() => void) | undefined {
     return onExpand === undefined ? undefined : () => onExpand(shown);
   }
 
-  if (showList && previousList !== undefined) {
-    return (
-      <ActionCardList
-        action={previousList}
-        renderImage={renderRowImage}
-        onExpand={expandHandler(previousList)}
-      />
-    );
-  }
-  if (action.kind === "chart") {
-    return <ActionCardChart action={action} />;
-  }
-  if (action.kind === "list") {
-    return (
-      <ActionCardList
-        action={action}
-        renderImage={renderRowImage}
-        onExpand={expandHandler(action)}
-      />
-    );
-  }
-  if (action.kind === "single") {
-    return (
-      <ActionCardRecord
-        action={action}
-        onBackToList={previousList === undefined ? undefined : handleBackToList}
-        onExpand={expandHandler(action)}
-      />
-    );
-  }
-  if (action.kind === "upload") {
-    return <ActionCardUpload action={action} />;
-  }
-  if (action.kind === "web_images") {
-    return <ActionCardWebImages action={action} />;
-  }
-  return null;
+  const shown = showList && previousList !== undefined ? previousList : action;
+  const card = CARDS[shown.kind];
+  if (card === undefined) return null;
+  return card({
+    action: shown,
+    previousList,
+    onBackToList: handleBackToList,
+    expandHandler,
+  });
 }
 
 /**
@@ -138,8 +146,10 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
   const isPending = status.state !== "idle";
   const lastAnswer = turns.at(-1)?.answer;
   // Design 2a: only the latest action gets a card — earlier turns keep
-  // their text, so the transcript never stacks stale result sets.
-  const actionTurns = turns.filter((turn) => turn.action !== undefined);
+  // their text, so the transcript never stacks stale result sets. The turn
+  // that holds it is the last one that would actually draw something, not
+  // the last one carrying an action; see `CARDS`.
+  const actionTurns = turns.filter((turn) => drawsCard(turn.action));
   const latestActionId = actionTurns.at(-1)?.id;
   // "Back to list" belongs to the list the card came out of — the action
   // immediately before it. An older list further up the transcript answered

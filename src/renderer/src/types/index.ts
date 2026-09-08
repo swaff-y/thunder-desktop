@@ -1,3 +1,6 @@
+/** The only two values `GET /v1/actor?gender=` accepts — the stored `m`/`f` is a 400. */
+export type ActorGender = "male" | "female";
+
 export interface CategoryItem {
   id: string;
   name: string;
@@ -6,6 +9,8 @@ export interface CategoryItem {
   imageKey?: string;
   imageVersion?: number | string;
   status: "processing" | "processed";
+  /** Actors only; `null` is a row halo could not read a gender off. */
+  gender?: ActorGender | null;
 }
 
 /** Halo's per-slot processing state — `url` is only set on `processed`. */
@@ -87,13 +92,14 @@ export interface CategoryConfig {
   apiPath: string;
   idParam: string;
   filterable: boolean;
+  genderFilterable: boolean;
 }
 
 export const CATEGORIES: CategoryConfig[] = [
-  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true },
-  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true },
-  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true },
-  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true },
+  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true },
+  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false },
+  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false },
+  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false },
 ];
 
 export function getCategoryConfig(

@@ -17,9 +17,11 @@ vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
 }));
 
+// The list only needs the sentinel to exist; nothing here scrolls, so the
+// observer never has to fire.
 class NoopObserver {
-  observe(): void {}
-  disconnect(): void {}
+  observe = vi.fn();
+  disconnect = vi.fn();
 }
 vi.stubGlobal("IntersectionObserver", NoopObserver);
 

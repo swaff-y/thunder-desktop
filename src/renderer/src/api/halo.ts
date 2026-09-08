@@ -144,6 +144,40 @@ export function fetchEntity(entityType: string, id: string, signal?: AbortSignal
     .then((r) => r.data.data);
 }
 
+/** The shape of a Halo refusal, narrowed to the two places it says why. */
+interface HaloErrorBody {
+  message?: unknown;
+  errors?: { invalid_fields?: Record<string, unknown> }[];
+}
+
+function haloReason(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  const body = data as HaloErrorBody;
+  const invalid = Object.values(body.errors?.[0]?.invalid_fields ?? {}).filter(
+    (value): value is string => typeof value === "string"
+  );
+  if (invalid.length > 0) return invalid.join(" ");
+  return typeof body.message === "string" ? body.message : undefined;
+}
+
+/**
+ * Halo's own words for a refusal, dug out of the body axios throws away.
+ *
+ * A failed upload's copy is `error.message` verbatim, so an unwrapped axios
+ * error reads *Request failed with status code 400* while the sentence that
+ * would tell the reader what to do — *Record is not in a replaceable state
+ * (current: processing)* — sits unread in `response.data`.
+ *
+ * Only the two upload ports use it. A blanket interceptor in `client.ts`
+ * would rewrite the message of every failed call in the app, and the 401
+ * redirect lives there.
+ */
+export function uploadFailure(error: unknown): Error {
+  const reason = axios.isAxiosError(error) ? haloReason(error.response?.data) : undefined;
+  if (reason !== undefined) return new Error(reason);
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Mints a presigned PUT URL for an entity's picture.
  *
@@ -160,7 +194,12 @@ export function requestUploadUrl(entityType: string, id: string, signal?: AbortS
       undefined,
       { signal }
     )
-    .then((r) => r.data.data);
+    .then(
+      (r) => r.data.data,
+      (error: unknown) => {
+        throw uploadFailure(error);
+      }
+    );
 }
 
 /**
@@ -183,7 +222,12 @@ export function putUpload(
       signal,
       onUploadProgress: (event) => onProgress?.(event.loaded, event.total ?? file.size),
     })
-    .then(() => undefined);
+    .then(
+      () => undefined,
+      (error: unknown) => {
+        throw uploadFailure(error);
+      }
+    );
 }
 
 // Video proxy URL builder

@@ -1,14 +1,18 @@
-import { useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   createUploadFlow,
   imageTargetFor,
+  PROCESSING_POLL_MAX_MS,
+  PROCESSING_POLL_MIN_MS,
+  PROCESSING_TIMEOUT_MS,
   toUploadCard,
   type ChatAction,
   type UploadCard,
   type UploadFile,
   type UploadPorts,
   type UploadState,
+  type UploadTarget,
 } from "@swaff-y/thunder-chat-core";
 import { fetchEntity, putUpload, requestUploadUrl } from "../../api/halo";
 import { useActionImages } from "./useActionImages";
@@ -49,6 +53,50 @@ function rejectionFor(file: File, entityType: string): string | undefined {
 }
 
 /**
+ * TD-079: waits until Halo will accept a mint, and answers whether to go
+ * ahead.
+ *
+ * `POST /upload` refuses a subject that is mid-pipeline — and minting is
+ * itself what puts one there, so an attempt that dies after minting turns
+ * every retry into a guaranteed 400. This `GET` is allowed where the mint is
+ * not because **reading is not destructive**: it is the only way to know
+ * before writing, and the file's other comments all argue for touching
+ * nothing.
+ *
+ * The cadence is the package's, so the card and `createUploadFlow`'s own
+ * post-upload poll wait the same way.
+ *
+ * A read that throws answers `true`. A read outage is not a reason to refuse
+ * to write — the mint may well succeed, and if it does not, the 400 says so.
+ */
+async function readyToMint(
+  target: UploadTarget,
+  signal: AbortSignal,
+  onProcessing: () => void
+): Promise<boolean> {
+  let waited = 0;
+  let gap: number = PROCESSING_POLL_MIN_MS;
+  let announced = false;
+  for (;;) {
+    try {
+      const subject = await HALO_PORTS.read(target, signal);
+      if (subject.status !== "processing") return true;
+    } catch {
+      return !signal.aborted;
+    }
+    if (!announced) {
+      announced = true;
+      onProcessing();
+    }
+    if (waited >= PROCESSING_TIMEOUT_MS) return false;
+    await HALO_PORTS.wait(gap);
+    if (signal.aborted) return false;
+    waited += gap;
+    gap = Math.min(gap * 2, PROCESSING_POLL_MAX_MS);
+  }
+}
+
+/**
  * TC-028's upload card: a drop zone, and the five destructive steps behind
  * it run by `createUploadFlow` (TCC-011).
  *
@@ -75,6 +123,12 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
   const [isOver, setIsOver] = useState(false);
   const barId = useId();
 
+  const [waiting, setWaiting] = useState(false);
+  const preflightRef = useRef<AbortController | null>(null);
+  // A poll left running past the card is a read every few seconds for a
+  // result nobody will see, and an upload nobody can cancel behind it.
+  useEffect(() => () => preflightRef.current?.abort(), []);
+
   const [flow] = useState(() => createUploadFlow({ target, replacesExisting }, HALO_PORTS));
   const state = useSyncExternalStore(flow.subscribe, () => flow.state);
 
@@ -95,6 +149,31 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
     });
   }
 
+  /**
+   * Every path to the network goes through here, retry included — that is
+   * what breaks the mint-then-fail loop, where the failure the card reports
+   * is the one the card's own last attempt caused.
+   */
+  async function onceSettled(run: () => Promise<UploadState>): Promise<void> {
+    // The newest attempt owns the wait. Two can overlap — the drop zone is
+    // only hidden once the first read comes back `processing`, so a second
+    // drop before that lands here while the first is still reading — and a
+    // loser that cleared the ref would leave Cancel pointing at nothing.
+    preflightRef.current?.abort();
+    const preflight = new AbortController();
+    preflightRef.current = preflight;
+    const ready = await readyToMint(target, preflight.signal, () => setWaiting(true));
+    if (preflightRef.current !== preflight) return;
+    preflightRef.current = null;
+    setWaiting(false);
+    if (preflight.signal.aborted) return;
+    if (!ready) {
+      setNotice(`${subjectFor(target)} is still processing. Try again once it finishes.`);
+      return;
+    }
+    settle(await run());
+  }
+
   async function begin(files: FileList | null): Promise<void> {
     const file = files?.[0];
     if (files === null || file === undefined) return;
@@ -110,7 +189,7 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
         ? `Uploading ${file.name}. The other ${files.length - 1} were ignored — one file at a time.`
         : undefined
     );
-    settle(await flow.start(file));
+    await onceSettled(() => flow.start(file));
   }
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -142,7 +221,15 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
   }
 
   async function handleRetry(): Promise<void> {
-    settle(await flow.retry());
+    setNotice(undefined);
+    await onceSettled(() => flow.retry());
+  }
+
+  /** Nothing has been minted yet, so there is nothing for the flow to undo. */
+  function handleWaitCancel(): void {
+    preflightRef.current?.abort();
+    preflightRef.current = null;
+    setWaiting(false);
   }
 
   return (
@@ -153,7 +240,20 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
       </header>
 
       <div className="card-upload-body">
-        {(state.phase === "idle" || state.phase === "failed" || state.phase === "cancelled") && (
+        {waiting && (
+          <>
+            <p className="card-upload-status" role="status">
+              <span className="card-upload-spinner" aria-hidden="true" />
+              {subjectFor(target)} is still processing. Waiting for Halo…
+            </p>
+            <button type="button" className="card-upload-quiet" onClick={handleWaitCancel}>
+              Cancel
+            </button>
+          </>
+        )}
+
+        {!waiting &&
+          (state.phase === "idle" || state.phase === "failed" || state.phase === "cancelled") && (
           <label
             className={isOver ? "card-upload-zone card-upload-zone--over" : "card-upload-zone"}
             onDragOver={handleDragOver}
@@ -235,7 +335,7 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
           </>
         )}
 
-        {state.phase === "failed" && (
+        {state.phase === "failed" && !waiting && (
           <div className="card-upload-alert" role="alert">
             <p>{state.message}</p>
             <button type="button" onClick={handleRetry}>
@@ -244,7 +344,7 @@ function UploadCardBody({ card }: { card: UploadCard }): React.JSX.Element {
           </div>
         )}
 
-        {state.phase === "cancelled" && (
+        {state.phase === "cancelled" && !waiting && (
           <div className="card-upload-alert" role="alert">
             <p>
               {state.at === "confirming"

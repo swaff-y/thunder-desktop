@@ -219,13 +219,17 @@ could ever have copied phase 8.
   page reading as the end of the list. Companions: thunder TH-042, web-thunder
   THW-33. Shipped in #69.
 
-- [TD-082](TD-082-web-image-gifs-do-not-animate.md) — AI chat: a TD-077 web
-  image that is a gif is drawn as a still. The tile prefers `thumbnailUrl`,
-  and a search engine's thumbnail of a gif is a single-frame JPEG — every
-  `thumbnail_url` in the card's own fixtures is one. Prefer the full-size
-  `imageUrl` when the extension says animated, and turn TD-077's
-  delete-on-error into a ladder (full size → thumbnail → remove) so a gif on
-  a hotlink-blocking host degrades to the still it shows today instead of
-  vanishing. Renderer-only; the wire carries no MIME type, so reading the
-  extension is the patch and a web-mcp flag is the fix. Companions: thunder
-  TH-043, web-thunder THW-34.
+- [TD-082](complete/TD-082-web-image-gifs-do-not-animate.md) — AI chat: a
+  TD-077 web image that is a gif is drawn as a still. The tile preferred
+  `thumbnailUrl`, and a search engine's thumbnail of a gif is a single-frame
+  JPEG — every `thumbnail_url` in the card's own fixtures is one. Now
+  `isAnimated` reads the extension off `imageUrl`'s pathname, where a query
+  string cannot hide it, and a `.gif`/`.webp` renders the animated original
+  while every other format keeps the cheap thumbnail. TD-077's
+  delete-on-error became a ladder — full size → thumbnail → remove — so a gif
+  on a hotlink-blocking host degrades to the still it showed before instead
+  of vanishing, and the handler advances its own rung only, so a broken URL
+  firing `onError` twice cannot skip a source. The wire still carries no MIME
+  type: reading the extension is the patch, a web-mcp flag is the fix, and
+  every `.webp` pays a full-size fetch until then. Companions: thunder
+  TH-043, web-thunder THW-34. Shipped in #73.

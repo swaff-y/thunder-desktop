@@ -218,3 +218,14 @@ could ever have copied phase 8.
   `hasNextPage`; it did not, and that guard is what stops a short post-filtered
   page reading as the end of the list. Companions: thunder TH-042, web-thunder
   THW-33. Shipped in #69.
+
+- [TD-082](TD-082-web-image-gifs-do-not-animate.md) — AI chat: a TD-077 web
+  image that is a gif is drawn as a still. The tile prefers `thumbnailUrl`,
+  and a search engine's thumbnail of a gif is a single-frame JPEG — every
+  `thumbnail_url` in the card's own fixtures is one. Prefer the full-size
+  `imageUrl` when the extension says animated, and turn TD-077's
+  delete-on-error into a ladder (full size → thumbnail → remove) so a gif on
+  a hotlink-blocking host degrades to the still it shows today instead of
+  vanishing. Renderer-only; the wire carries no MIME type, so reading the
+  extension is the patch and a web-mcp flag is the fix. Companions: thunder
+  TH-043, web-thunder THW-34.

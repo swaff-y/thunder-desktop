@@ -21,6 +21,39 @@ function shortTitle(title: string | undefined): string | undefined {
 }
 
 /**
+ * The extensions a still thumbnail would flatten. There is no MIME type on
+ * the wire, so the path is all the renderer has to go on, and a static
+ * `.webp` pays a full-size fetch it did not need until web-mcp sends one.
+ */
+const ANIMATED_EXTENSIONS = [".gif", ".webp"] as const;
+
+/**
+ * TD-082: a search engine re-encodes what it caches, so its thumbnail of a
+ * gif is a single frame. The extension lives on the pathname, where a query
+ * string cannot hide it; a URL that will not parse is not animated.
+ */
+function isAnimated(url: string): boolean {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return ANIMATED_EXTENSIONS.some((extension) => pathname.endsWith(extension));
+}
+
+/**
+ * The URLs a tile will try, best first: the animated original before the
+ * still it would be flattened to, and the cheap thumbnail before the
+ * full-resolution bytes everywhere else.
+ */
+function sourceLadder(candidate: WebImageCandidate): string[] {
+  const { imageUrl, thumbnailUrl } = candidate;
+  const ordered = isAnimated(imageUrl) ? [imageUrl, thumbnailUrl] : [thumbnailUrl, imageUrl];
+  return [...new Set(ordered.filter((url): url is string => url !== undefined))];
+}
+
+/**
  * TD-077: the pictures the model found on the public web, drawn from the
  * transcript and nothing else.
  *
@@ -30,7 +63,8 @@ function shortTitle(title: string | undefined): string | undefined {
  * the turn back into view re-renders and never re-runs.
  *
  * The hosts are strangers' and rot on their own schedule, so a tile that
- * cannot load removes itself and lets the grid close up around it.
+ * cannot load falls to its next source, and one with none left removes
+ * itself and lets the grid close up around it.
  *
  * TD-080: a tile opens in this app's own Browser tab, not the OS browser.
  */
@@ -141,15 +175,20 @@ export default function ActionCardWebImages({
 }
 
 /**
- * The tile owns whether its own image loaded: a failure renders nothing at
- * all, which is what lets the grid reflow rather than hold a broken glyph.
+ * The tile owns which of its URLs is loading: a failure demotes to the next
+ * rung of the ladder, and running off the end renders nothing at all, which
+ * is what lets the grid reflow rather than hold a broken glyph.
  */
 function WebImageTile({ candidate }: { candidate: WebImageCandidate }): React.JSX.Element | null {
-  const [failed, setFailed] = useState(false);
+  const [rung, setRung] = useState(0);
   const openInBrowserTab = useOpenInBrowserTab();
 
+  const sources = sourceLadder(candidate);
+  const src = sources[rung];
+
+  /** A broken URL can fire onError more than once; only its own rung moves. */
   function handleError(): void {
-    setFailed(true);
+    setRung((current) => (current === rung ? current + 1 : current));
   }
 
   /**
@@ -161,7 +200,7 @@ function WebImageTile({ candidate }: { candidate: WebImageCandidate }): React.JS
     openInBrowserTab(candidate.imageUrl);
   }
 
-  if (failed) return null;
+  if (src === undefined) return null;
 
   const label = shortTitle(candidate.title);
 
@@ -170,7 +209,7 @@ function WebImageTile({ candidate }: { candidate: WebImageCandidate }): React.JS
       <button type="button" className="card-web-open" onClick={handleOpen} title={label}>
         <img
           className="card-web-img"
-          src={candidate.thumbnailUrl ?? candidate.imageUrl}
+          src={src}
           alt={label ?? ""}
           style={{ aspectRatio: candidate.aspectRatio ?? SQUARE }}
           onError={handleError}

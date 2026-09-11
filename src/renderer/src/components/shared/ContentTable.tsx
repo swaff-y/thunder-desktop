@@ -7,9 +7,10 @@ import CategoryAutocomplete from "./CategoryAutocomplete";
 interface ContentTableProps {
   record: ContentRecord;
   onUpdate?: (body: RecordPatchBody) => Promise<void>;
+  onEditingChange?: (editing: boolean) => void;
 }
 
-export default function ContentTable({ record, onUpdate }: ContentTableProps) {
+export default function ContentTable({ record, onUpdate, onEditingChange }: ContentTableProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -24,10 +25,12 @@ export default function ContentTable({ record, onUpdate }: ContentTableProps) {
     setDraftActors([...(record.actors ?? [])]);
     setDraftTags([...(record.tags ?? [])]);
     setEditing(true);
+    onEditingChange?.(true);
   };
 
   const cancelEditing = () => {
     setEditing(false);
+    onEditingChange?.(false);
   };
 
   const refsEqual = (a: RecordRef | undefined, b: RecordRef | null) =>
@@ -59,6 +62,7 @@ export default function ContentTable({ record, onUpdate }: ContentTableProps) {
       if (tagsChanged) body.tags = cleanRefs(draftTags);
       await onUpdate(body);
       setEditing(false);
+      onEditingChange?.(false);
     } catch {
       // Stay in edit mode so the user can retry
     } finally {

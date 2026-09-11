@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { IoHeartOutline, IoHeart } from "react-icons/io5";
+import { IoHeartOutline, IoHeart, IoRefreshOutline } from "react-icons/io5";
 import { useRecord } from "../hooks/useRecord";
 import { useTabHistory } from "../hooks/useTabHistory";
 import {
@@ -25,9 +25,10 @@ interface WatchProps {
 export default function Watch({ id, onBack }: WatchProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: record, isLoading, isError, error, refetch } = useRecord(id);
+  const { data: record, isLoading, error, isFetching, refetch } = useRecord(id);
   const { resolveWatchBackTarget } = useTabHistory();
   const [liked, setLiked] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const watchedRef = useRef(false);
   const playerRef = useRef<VideoPlayerHandle | null>(null);
 
@@ -44,7 +45,7 @@ export default function Watch({ id, onBack }: WatchProps) {
   }
 
   if (isLoading) return <LoadingSpinner fullScreen message="Loading..." />;
-  if (isError || !record)
+  if (!record)
     return (
       <div>
         <BackButton onClick={handleBack} />
@@ -56,6 +57,10 @@ export default function Watch({ id, onBack }: WatchProps) {
     );
 
   const authUrl = buildAuthProxyUrl(id);
+
+  const handleReload = () => {
+    refetch();
+  };
 
   const handleLike = () => {
     if (liked) return;
@@ -83,15 +88,37 @@ export default function Watch({ id, onBack }: WatchProps) {
       <div className="watch-info-desktop">
         <div className="watch-title-row">
           <h2 className="watch-title-desktop">{record.name}</h2>
-          <button
-            className="discrete-btn"
-            onClick={handleLike}
-            title={liked ? "Liked" : "Like"}
-          >
-            {liked ? <IoHeart size={18} /> : <IoHeartOutline size={18} />}
-          </button>
+          <div className="watch-title-actions">
+            <button
+              type="button"
+              className="discrete-btn"
+              onClick={handleLike}
+              title={liked ? "Liked" : "Like"}
+            >
+              {liked ? <IoHeart size={18} /> : <IoHeartOutline size={18} />}
+            </button>
+            <button
+              type="button"
+              className="discrete-btn"
+              onClick={handleReload}
+              disabled={isFetching || isEditing}
+              aria-busy={isFetching}
+              title="Reload record"
+              aria-label="Reload record"
+            >
+              <IoRefreshOutline
+                size={18}
+                className={isFetching ? "reload-icon spinning" : "reload-icon"}
+                aria-hidden
+              />
+            </button>
+          </div>
         </div>
-        <ContentTable record={record} onUpdate={handleUpdate} />
+        <ContentTable
+          record={record}
+          onUpdate={handleUpdate}
+          onEditingChange={setIsEditing}
+        />
       </div>
 
       <style>{`
@@ -138,9 +165,35 @@ export default function Watch({ id, onBack }: WatchProps) {
           transition: background 0.2s, color 0.2s;
           backdrop-filter: blur(4px);
         }
-        .discrete-btn:hover {
+        .watch-title-actions {
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+        }
+        .discrete-btn:hover:not(:disabled) {
           background: rgba(255, 255, 255, 0.2);
           color: #fff;
+        }
+        .discrete-btn:focus-visible {
+          outline: 2px solid var(--color-accent);
+          outline-offset: 2px;
+        }
+        .discrete-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        .reload-icon.spinning {
+          animation: reload-spin 0.8s linear infinite;
+        }
+        @keyframes reload-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reload-icon.spinning {
+            animation: none;
+          }
         }
       `}</style>
     </div>

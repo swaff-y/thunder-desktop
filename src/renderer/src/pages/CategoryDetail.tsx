@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { IoInformationCircleOutline, IoCopy, IoCheckmark } from 'react-icons/io5'
+import { IoInformationCircleOutline, IoCopy, IoCheckmark, IoRefreshOutline } from 'react-icons/io5'
 import { useCategoryRecords } from '../hooks/useRecords'
 import { getCategoryConfig } from '../types'
 import VirtualRecordList from '../components/shared/VirtualRecordList'
@@ -56,10 +56,15 @@ export default function CategoryDetail() {
     isError,
     error,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     fetchNextPage,
     refetch
   } = useCategoryRecords(config?.apiPath ?? '', id!, !!config)
+
+  function handleReload() {
+    refetch()
+  }
 
   const sentinelRef = useRef<HTMLDivElement>(null)
 
@@ -85,7 +90,7 @@ export default function CategoryDetail() {
 
   if (!config) return <ErrorState message={`Unknown category: ${category}`} />
   if (isLoading) return <LoadingSpinner fullScreen />
-  if (isError)
+  if (isError && !data)
     return (
       <ErrorState message={error?.message || 'Failed to load records'} onRetry={() => refetch()} />
     )
@@ -106,6 +111,21 @@ export default function CategoryDetail() {
           aria-controls="entity-id-panel"
         >
           <IoInformationCircleOutline size={18} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="id-info-btn"
+          onClick={handleReload}
+          disabled={isFetching}
+          aria-busy={isFetching}
+          aria-label="Reload records"
+          title="Reload records"
+        >
+          <IoRefreshOutline
+            size={18}
+            className={isFetching ? 'reload-icon spinning' : 'reload-icon'}
+            aria-hidden
+          />
         </button>
       </div>
       <div id="entity-id-panel" className="entity-id-panel" data-visible={isIdVisible}>
@@ -167,7 +187,11 @@ export default function CategoryDetail() {
           cursor: pointer;
           transition: background 0.2s, color 0.2s, border-color 0.2s;
         }
-        .id-info-btn:hover,
+        .id-info-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        .id-info-btn:hover:not(:disabled),
         .id-info-btn:focus-visible {
           background: rgba(14, 165, 233, 0.08);
           color: var(--color-accent);
@@ -176,6 +200,19 @@ export default function CategoryDetail() {
         .id-info-btn:focus-visible {
           outline: 2px solid var(--color-accent);
           outline-offset: 2px;
+        }
+        .reload-icon.spinning {
+          animation: reload-spin 0.8s linear infinite;
+        }
+        @keyframes reload-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reload-icon.spinning {
+            animation: none;
+          }
         }
         .entity-id-panel {
           display: flex;

@@ -234,12 +234,18 @@ could ever have copied phase 8.
   every `.webp` pays a full-size fetch until then. Companions: thunder
   TH-043, web-thunder THW-34. Shipped in #73.
 
-- [TD-083](TD-083-reload-button-on-view-pages.md) — A reload button on the
-  view pages. Watch and the entity detail pages render whatever the React
-  Query cache holds — `staleTime` is five minutes and the IDB persister
+- [TD-083](complete/TD-083-reload-button-on-view-pages.md) — A reload button
+  on the view pages. Watch and the entity detail pages rendered whatever the
+  React Query cache held — `staleTime` is five minutes and the IDB persister
   hydrates at launch — so a record edited in Halo, on another device, or by
-  the TD-075 upload card keeps showing its old name, series and image until
-  the cache rolls over. `refetch()` is already destructured on both pages
-  for `ErrorState`'s retry; this surfaces it on the success path, disabled
-  while fetching and while the ContentTable is mid-edit. Companions: thunder
-  TH-044, web-thunder THW-35.
+  the TD-075 upload card kept showing its old name, series and image until
+  the cache rolled over. `refetch()` was already destructured on both pages
+  for `ErrorState`'s retry; it now has a button on the success path too,
+  spinning and disabled while `isFetching`. `ContentTable` gained an optional
+  `onEditingChange`, so Watch can lock the button mid-edit and a refetch
+  cannot quietly change the `record` the save diffs against. On an entity
+  detail page the infinite query replays every loaded page in order and holds
+  the scroll depth. Both pages stopped blanking on a failed reload — Watch
+  guards on `!record` and CategoryDetail on `isError && !data`, so an errored
+  refetch leaves the page showing what the reader was already looking at.
+  Companions: thunder TH-044, web-thunder THW-35. Shipped in #74.

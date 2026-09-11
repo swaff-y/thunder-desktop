@@ -233,3 +233,13 @@ could ever have copied phase 8.
   type: reading the extension is the patch, a web-mcp flag is the fix, and
   every `.webp` pays a full-size fetch until then. Companions: thunder
   TH-043, web-thunder THW-34. Shipped in #73.
+
+- [TD-083](TD-083-reload-button-on-view-pages.md) — A reload button on the
+  view pages. Watch and the entity detail pages render whatever the React
+  Query cache holds — `staleTime` is five minutes and the IDB persister
+  hydrates at launch — so a record edited in Halo, on another device, or by
+  the TD-075 upload card keeps showing its old name, series and image until
+  the cache rolls over. `refetch()` is already destructured on both pages
+  for `ErrorState`'s retry; this surfaces it on the success path, disabled
+  while fetching and while the ContentTable is mid-edit. Companions: thunder
+  TH-044, web-thunder THW-35.

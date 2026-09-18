@@ -16,6 +16,7 @@ import ContentTable from "../components/shared/ContentTable";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
 import BackButton from "../components/shared/BackButton";
+import CopyIdButton from "../components/shared/CopyIdButton";
 
 interface WatchProps {
   id: string;
@@ -87,7 +88,10 @@ export default function Watch({ id, onBack }: WatchProps) {
       </div>
       <div className="watch-info-desktop">
         <div className="watch-title-row">
-          <h2 className="watch-title-desktop">{record.name}</h2>
+          <div className="watch-title-group">
+            <h2 className="watch-title-desktop">{record.name}</h2>
+            <CopyIdButton id={id} label="Copy record ID" className="discrete-btn" />
+          </div>
           <div className="watch-title-actions">
             <button
               type="button"
@@ -164,6 +168,12 @@ export default function Watch({ id, onBack }: WatchProps) {
           cursor: pointer;
           transition: background 0.2s, color 0.2s;
           backdrop-filter: blur(4px);
+        }
+        .watch-title-group {
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          min-width: 0;
         }
         .watch-title-actions {
           display: flex;

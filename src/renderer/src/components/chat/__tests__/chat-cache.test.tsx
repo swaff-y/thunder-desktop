@@ -7,17 +7,28 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ChatAction, ChatTurn } from "@swaff-y/thunder-chat-core";
 import { invalidationsFor, WRITE_TOOLS } from "../chat-cache";
 import ChatWriteTracker from "../ChatWriteTracker";
 
 const turns: ChatTurn[] = [];
+let redraw: (() => void) | undefined;
 
-vi.mock("@swaff-y/thunder-chat-core", () => ({
-  useChat: () => ({ turns }),
-}));
+// `useChat` hands out a fresh `turns` array on every store update; `redraw`
+// stands in for the store pushing one, so the tracker sees the same
+// empty-then-hydrated timing `ChatProvider` really has.
+vi.mock("@swaff-y/thunder-chat-core", async () => {
+  const { useReducer } = await import("react");
+  return {
+    useChat: () => {
+      const [, force] = useReducer((n: number) => n + 1, 0);
+      redraw = force;
+      return { turns: [...turns] };
+    },
+  };
+});
 
 const COLLECTIONS = [["records"], ["category"], ["randomRecords"], ["userRecords"]];
 
@@ -86,26 +97,40 @@ describe("invalidationsFor", () => {
   });
 });
 
-function writeTurn(id: string): ChatTurn {
+function writeTurn(id: string, patch: Partial<ChatTurn> = {}): ChatTurn {
   return {
     id,
     question: "rename this record to Foo",
     answer: "Renamed.",
     action: action("update_record", { id: "rec-1", name: "Foo" }),
+    ...patch,
   } as ChatTurn;
-}
-
-function renderTracker(client: QueryClient) {
-  return render(
-    <QueryClientProvider client={client}>
-      <ChatWriteTracker />
-    </QueryClientProvider>
-  );
 }
 
 describe("ChatWriteTracker", () => {
   let client: QueryClient;
   let invalidate: ReturnType<typeof vi.spyOn>;
+
+  function draw() {
+    render(
+      <QueryClientProvider client={client}>
+        <ChatWriteTracker />
+      </QueryClientProvider>
+    );
+  }
+
+  /** `turns` is a new array on every store update, so the effect re-runs. */
+  function setTurns(next: ChatTurn[]) {
+    turns.length = 0;
+    turns.push(...next);
+    act(() => {
+      redraw?.();
+    });
+  }
+
+  function invalidatedKeys() {
+    return invalidate.mock.calls.map(([arg]) => (arg as { queryKey: unknown }).queryKey);
+  }
 
   beforeEach(() => {
     turns.length = 0;
@@ -113,61 +138,59 @@ describe("ChatWriteTracker", () => {
     invalidate = vi.spyOn(client, "invalidateQueries").mockImplementation(async () => {});
   });
 
-  it("invalidates the turn's keys once it settles", () => {
-    const { rerender } = renderTracker(client);
+  it("invalidates the turn's keys once the turn it watched settles", () => {
+    draw();
+    setTurns([writeTurn("turn-1", { pending: true, answer: undefined, action: undefined })]);
     expect(invalidate).not.toHaveBeenCalled();
 
-    turns.push(writeTurn("turn-1"));
-    rerender(
-      <QueryClientProvider client={client}>
-        <ChatWriteTracker />
-      </QueryClientProvider>
-    );
+    setTurns([writeTurn("turn-1")]);
 
-    expect(invalidate.mock.calls.map(([arg]) => (arg as { queryKey: unknown }).queryKey)).toEqual([
-      ["record", "rec-1"],
-      ...COLLECTIONS,
-    ]);
+    expect(invalidatedKeys()).toEqual([["record", "rec-1"], ...COLLECTIONS]);
   });
 
   it("does not invalidate again for the same turn", () => {
-    turns.push({ id: "turn-0", question: "hi", pending: true } as ChatTurn);
-    const { rerender } = renderTracker(client);
+    draw();
+    setTurns([writeTurn("turn-1", { pending: true, answer: undefined, action: undefined })]);
+    setTurns([writeTurn("turn-1")]);
+    const afterSettling = invalidate.mock.calls.length;
 
-    turns.splice(0, 1, writeTurn("turn-1"));
-    rerender(
-      <QueryClientProvider client={client}>
-        <ChatWriteTracker />
-      </QueryClientProvider>
-    );
-    const afterFirst = invalidate.mock.calls.length;
+    setTurns([writeTurn("turn-1")]);
 
-    rerender(
-      <QueryClientProvider client={client}>
-        <ChatWriteTracker />
-      </QueryClientProvider>
-    );
-
-    expect(invalidate.mock.calls.length).toBe(afterFirst);
+    expect(invalidate.mock.calls.length).toBe(afterSettling);
   });
 
-  it("invalidates nothing for a transcript it was mounted with", () => {
-    turns.push(writeTurn("turn-1"));
-    renderTracker(client);
+  it("invalidates nothing for a transcript restored after mount", () => {
+    // `ChatProvider` starts `turns` at `[]` and hydrates `sessionStorage`
+    // asynchronously, so a reload delivers settled turns through the same
+    // `setTurns` a live answer uses. Nothing here ran, so nothing refetches.
+    draw();
+
+    setTurns([writeTurn("turn-1"), writeTurn("turn-2")]);
 
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it("ignores a pending or failed turn", () => {
-    const { rerender } = renderTracker(client);
+  it("invalidates nothing for a transcript already present at mount", () => {
+    turns.push(writeTurn("turn-1"));
+    draw();
 
-    turns.push({ ...writeTurn("turn-1"), pending: true } as ChatTurn);
-    turns.push({ ...writeTurn("turn-2"), error: "unreachable" } as ChatTurn);
-    rerender(
-      <QueryClientProvider client={client}>
-        <ChatWriteTracker />
-      </QueryClientProvider>
-    );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("invalidates nothing when the turn it watched fails", () => {
+    draw();
+    setTurns([writeTurn("turn-1", { pending: true, answer: undefined, action: undefined })]);
+
+    setTurns([writeTurn("turn-1", { error: "unreachable", action: undefined })]);
+
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("invalidates nothing for a read turn it watched", () => {
+    draw();
+    setTurns([writeTurn("turn-1", { pending: true, answer: undefined, action: undefined })]);
+
+    setTurns([writeTurn("turn-1", { action: action("get_record", { id: "rec-1" }) })]);
 
     expect(invalidate).not.toHaveBeenCalled();
   });

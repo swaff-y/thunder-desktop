@@ -11,28 +11,35 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
+import { useChat } from "@swaff-y/thunder-chat-core";
 import { invalidationsFor } from "./chat-cache";
-
-function newestSettled(turns: ChatTurn[]): ChatTurn | undefined {
-  return turns.findLast((turn) => !turn.pending && !turn.error);
-}
 
 export default function ChatWriteTracker(): null {
   const { turns } = useChat();
   const queryClient = useQueryClient();
-  const settled = newestSettled(turns);
-  // Seeded from the transcript as it was at mount, so a restored session does
-  // not invalidate on every reload. Only a transition fires.
-  const lastSeenRef = useRef(settled?.id);
+  const newest = turns.at(-1);
+  /**
+   * The turn this mount watched go out, and the whole of what separates a
+   * write from a transcript. `turns` starts empty and the restored history
+   * arrives later, through the same `setTurns` a live answer does, so a
+   * settled turn appearing from nowhere is a reload — not something to
+   * refetch for. Only a turn seen pending here has actually just run.
+   */
+  const watchedRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (settled?.id === lastSeenRef.current) return;
-    lastSeenRef.current = settled?.id;
-    for (const queryKey of invalidationsFor(settled?.action)) {
+    if (!newest) return;
+    if (newest.pending) {
+      watchedRef.current = newest.id;
+      return;
+    }
+    if (watchedRef.current !== newest.id) return;
+    watchedRef.current = undefined;
+    if (newest.error) return;
+    for (const queryKey of invalidationsFor(newest.action)) {
       queryClient.invalidateQueries({ queryKey });
     }
-  }, [settled, queryClient]);
+  }, [newest, queryClient]);
 
   return null;
 }

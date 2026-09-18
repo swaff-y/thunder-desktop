@@ -30,6 +30,7 @@ const COPY: Record<ChatErrorKind, { message: string; recovery: Recovery }> = {
   },
   unreachable: { message: "Couldn't reach the catalogue service.", recovery: "retry" },
   rate_limited: { message: "Too many questions at once.", recovery: "retry" },
+  busy: { message: "Still finishing your last question.", recovery: "retry" },
   refusal: { message: "Claude wouldn't answer that one.", recovery: "retry" },
   loop_limit: { message: "That question took too many steps to answer.", recovery: "retry" },
   unknown: { message: "Something went wrong.", recovery: "retry" },

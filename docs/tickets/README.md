@@ -249,3 +249,41 @@ could ever have copied phase 8.
   guards on `!record` and CategoryDetail on `isError && !data`, so an errored
   refetch leaves the page showing what the reader was already looking at.
   Companions: thunder TH-044, web-thunder THW-35. Shipped in #74.
+
+- [TD-085](complete/TD-085-copy-record-id-on-watch.md) — Record view: copy the
+  record's ID from beside its name. TD-070 lets the chat ask about "this
+  record" while you are on it; anything else — comparing two records,
+  referring back from another page, handing the id to a tool — needs the
+  id typed, and the record view is the one page that has it and never
+  shows it. TD-041 gave the entity detail pages an info button that
+  reveals the id with a copy control; the record view never got one. A
+  copy icon beside `record.name` in the TD-083 title row, one click to
+  the clipboard, no disclosure — on a record page the id is the point,
+  not a debugging detail. The copy control becomes a shared
+  `CopyIdButton` so `CategoryDetail` stops carrying its own copy state.
+  Companions: thunder TH-045, web-thunder THW-36. Shipped in #76.
+
+- [TD-086](complete/TD-086-chat-writes-invalidate-the-cache.md) — AI chat: a record the
+  chat changed is still the old one on the page. thunder-context exposes every
+  halo-mcp tool, curation included, so "rename this record" writes Halo and
+  leaves the renderer holding the pre-write answer for `staleTime`'s five
+  minutes — or until launch, since the IDB persister hydrates it. Watch and the
+  upload card already invalidate after their own writes; the chat's writes are
+  the one path with nothing behind them. A `ChatWriteTracker` leaf beside
+  TD-070's `CurrentViewTracker` — not in the drawer, which unmounts on close
+  while the turn runs on — invalidates the subject's key plus the four
+  collection prefixes when a settled turn's tool is a write. The wire keeps
+  only the turn's last successful call, so a write-then-read turn stays
+  invisible; that half is thunder-context TC-042. Companions: thunder TH-048,
+  web-thunder THW-37. Shipped in #77.
+
+- [TD-087](TD-087-one-copy-id-behaviour.md) — Copy ID: one behaviour, not two.
+  TD-085 left `useCopyId` (TD-069) standing beside the new `CopyIdButton`, so
+  the same affordance now flashes for 2s in the chat's record card and 1.5s
+  everywhere else — and only the component clears its timer. The hook's two
+  call sites both unmount readily (close the drawer, collapse the overlay, or
+  let the next turn replace the card), so a copy followed by an unmount inside
+  the window leaves a timer setting state on nothing. Collapse the behaviour
+  into the hook, move it to `hooks/` so shared code stops depending on
+  `components/chat/`, and have `CopyIdButton` consume it. Not a swap to the
+  icon button: the cards keep their text `Copy ID` and visible status line.

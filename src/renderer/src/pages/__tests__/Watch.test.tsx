@@ -141,3 +141,19 @@ describe("Watch reload button", () => {
     expect(screen.queryByText("network down")).not.toBeInTheDocument();
   });
 });
+
+describe("Watch copy record id", () => {
+  it("copies the record's id to the clipboard", async () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    fetchRecord.mockResolvedValue(record("Old name"));
+    renderWatch();
+
+    await screen.findByRole("heading", { level: 2, name: "Old name" });
+    await userEvent.click(screen.getByRole("button", { name: "Copy record ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("rec-1");
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+});

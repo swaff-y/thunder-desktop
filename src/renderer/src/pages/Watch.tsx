@@ -16,6 +16,7 @@ import ContentTable from "../components/shared/ContentTable";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
 import BackButton from "../components/shared/BackButton";
+import CopyIdButton from "../components/shared/CopyIdButton";
 
 interface WatchProps {
   id: string;
@@ -89,6 +90,7 @@ export default function Watch({ id, onBack }: WatchProps) {
         <div className="watch-title-row">
           <h2 className="watch-title-desktop">{record.name}</h2>
           <div className="watch-title-actions">
+            <CopyIdButton id={id} label="Copy record ID" className="discrete-btn" />
             <button
               type="button"
               className="discrete-btn"

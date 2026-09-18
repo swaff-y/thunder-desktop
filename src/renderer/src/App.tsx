@@ -22,6 +22,7 @@ import CategoryDetail from './pages/CategoryDetail'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import LoadingSpinner from './components/shared/LoadingSpinner'
+import ChatWriteTracker from './components/chat/ChatWriteTracker'
 
 // TD-070: reads the route and writes it into the source, and renders
 // nothing. `useLocation` re-renders whoever calls it on every navigation,
@@ -49,6 +50,7 @@ function ChatBridgeProvider({ children }: { children: React.ReactNode }): React.
       viewSource={viewSource}
     >
       <CurrentViewTracker source={viewSource} />
+      <ChatWriteTracker />
       {children}
     </ChatProvider>
   )

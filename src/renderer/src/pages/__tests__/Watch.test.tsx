@@ -156,4 +156,17 @@ describe("Watch copy record id", () => {
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
+
+  it("sits beside the record's name, not with the like and reload buttons", async () => {
+    // `.watch-title-row` is `space-between`, so anything in the actions group
+    // lands hard right, a title's width away from the name it belongs to.
+    fetchRecord.mockResolvedValue(record("Old name"));
+    renderWatch();
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "Old name" });
+    const copy = screen.getByRole("button", { name: "Copy record ID" });
+
+    expect(copy.parentElement).toBe(heading.parentElement);
+    expect(reloadButton().parentElement).not.toBe(heading.parentElement);
+  });
 });

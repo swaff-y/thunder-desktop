@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ChatError from "../ChatError";
+import { reauthenticate } from "../../../api/auth";
 import { OPEN_SETTINGS_EVENT } from "../../desktop/SettingsModal";
 import type { ChatError as ChatErrorKind } from "@swaff-y/thunder-chat-core";
 
@@ -13,11 +14,13 @@ const RETRYABLE: Array<[ChatErrorKind, string]> = [
   ["unauthorized", "Your session expired."],
   ["unreachable", "Couldn't reach the catalogue service."],
   ["rate_limited", "Too many questions at once."],
+  ["busy", "Still finishing your last question."],
   ["interrupted", "That question was interrupted."],
 ];
 
 describe("ChatError", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
@@ -47,6 +50,32 @@ describe("ChatError", () => {
     render(<ChatError error="refusal" message="I can't help with that." onRetry={vi.fn()} />);
 
     expect(screen.getByText("I can't help with that.")).toBeInTheDocument();
+  });
+
+  it("keeps the server's sentence off the screen when the previous question is still running", () => {
+    render(
+      <ChatError
+        error="busy"
+        message="A turn is already in flight for this conversation."
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Still finishing your last question.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("A turn is already in flight for this conversation."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("re-asks without minting a token when the previous question is still running", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<ChatError error="busy" onRetry={onRetry} />);
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(reauthenticate)).not.toHaveBeenCalled();
   });
 
   it("falls back to fixed copy when the failure carried no message", () => {

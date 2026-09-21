@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import {
   ChatProvider,
   formatUsageSummary,
   type ChatSend,
+  type ChatStatus,
   type ModelInfo,
   type TurnUsage,
 } from "@swaff-y/thunder-chat-core";
@@ -638,5 +639,126 @@ describe("ChatPanel composer", () => {
     expect(composer()).toHaveValue("");
     expect(sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe("");
     expect(screen.getByRole("list")).toBeEmptyDOMElement();
+  });
+});
+
+describe("ChatPanel turn progress", () => {
+  function statusLine(): HTMLElement {
+    return screen.getByRole("status");
+  }
+
+  function toolRow(): HTMLElement | null {
+    return document.querySelector(".chat-tool");
+  }
+
+  /** Holds the turn open so the panel can be driven through its statuses. */
+  function pendingSend(): {
+    send: ChatSend;
+    report: (status: ChatStatus) => void;
+    finish: () => void;
+  } {
+    const deferred = deferredAnswer();
+    let onStatus!: (status: ChatStatus) => void;
+    const send: ChatSend = async (_question, _history, report) => {
+      onStatus = report;
+      return deferred.promise;
+    };
+    return {
+      send,
+      report: (status) => {
+        act(() => onStatus(status));
+      },
+      finish: () => {
+        deferred.resolve(answer("Nick Cage"));
+      },
+    };
+  }
+
+  async function ask(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.type(composer(), "what is popular?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("redraws the line as the rounds go by", async () => {
+    const user = userEvent.setup();
+    const turn = pendingSend();
+    renderPanel(turn.send);
+    await ask(user);
+
+    turn.report({ state: "thinking", round: 1 });
+    expect(toolRow()).toHaveTextContent("Step 1");
+    expect(statusLine()).toHaveTextContent("Thinking… Step 1.");
+
+    // `steps` is what has already run, so the in-flight tool is not in it yet.
+    turn.report({ state: "calling-tool", tool: "get_film", round: 2, steps: ["list_films"] });
+    expect(toolRow()).toHaveTextContent("Running catalogue query…");
+    expect(toolRow()).toHaveTextContent("Step 2");
+    expect(within(toolRow() as HTMLElement).getByRole("list")).toHaveTextContent("list_films");
+
+    turn.report({
+      state: "thinking",
+      round: 6,
+      steps: ["list_films", "get_film", "list_people"],
+    });
+    expect(toolRow()).toHaveTextContent("Step 6");
+    expect(statusLine()).toHaveTextContent(
+      "Thinking… Step 6. Run so far: list_films, get_film, list_people."
+    );
+  });
+
+  it("renders a round-less turn the way it always did", async () => {
+    const user = userEvent.setup();
+    const turn = pendingSend();
+    renderPanel(turn.send);
+    await ask(user);
+
+    turn.report({ state: "thinking" });
+    expect(toolRow()).toBeNull();
+    expect(statusLine()).toHaveTextContent("Thinking…");
+    expect(statusLine()).not.toHaveTextContent("Step");
+
+    turn.report({ state: "calling-tool", tool: "list_films" });
+    expect(toolRow()).toHaveTextContent("Running catalogue query…");
+    expect(toolRow()).toHaveTextContent("list_films");
+    expect(toolRow()).not.toHaveTextContent("Step");
+    expect(statusLine()).toHaveTextContent("Running catalogue query… list_films");
+  });
+
+  it("names the steps and never their arguments", async () => {
+    const user = userEvent.setup();
+    const turn = pendingSend();
+    renderPanel(turn.send);
+    await ask(user);
+
+    turn.report({ state: "thinking", round: 3, steps: ["list_films", "get_film"] });
+
+    const names = [...document.querySelectorAll(".chat-tool-name")].map(
+      (name) => name.textContent
+    );
+    expect(names).toEqual(["list_films", "get_film"]);
+  });
+
+  it("clears a six-step progress once the turn settles", async () => {
+    const user = userEvent.setup();
+    const turn = pendingSend();
+    renderPanel(turn.send);
+    await ask(user);
+
+    turn.report({
+      state: "thinking",
+      round: 6,
+      steps: ["a", "b", "c", "d", "e", "f"],
+    });
+    expect(toolRow()).toHaveTextContent("Step 6");
+
+    turn.finish();
+
+    expect(await screen.findByRole("button", { name: "Ask" })).toBeInTheDocument();
+    expect(toolRow()).toBeNull();
+    expect(statusLine()).not.toHaveTextContent("Step");
   });
 });

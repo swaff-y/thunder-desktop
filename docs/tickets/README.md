@@ -45,18 +45,18 @@ Implementation tickets for [thunder-desktop-plan.md](../thunder-desktop-plan.md)
 - [TD-024](complete/TD-024-download-manager-main.md) — Browser tab — download manager (main)
 - [TD-025](complete/TD-025-downloads-drawer.md) — Browser tab — downloads drawer (renderer)
 - [TD-026](complete/TD-026-download-folder-picker.md) — Browser tab — download folder picker
-- [TD-032](TD-032-download-safety.md) — Browser tab — download safety hardening (lands with TD-024)
+- [TD-032](complete/TD-032-download-safety.md) — Browser tab — download safety hardening (lands with TD-024)
 
 ## Phase 6 — Polish & ship
 
 - [TD-027](TD-027-code-signing.md) — macOS code signing and notarization
 - [TD-028](TD-028-auto-updater.md) — Auto-updater wiring
-- [TD-029](TD-029-prod-url-cutover.md) — Production API URL cutover
+- [TD-029](complete/TD-029-prod-url-cutover.md) — Production API URL cutover
 - [TD-051](complete/TD-051-managed-api-domains-cutover.md) — Managed API domain cutover + settings migration
 
 ## Phase 7 — Browser hardening
 
-- [TD-031](TD-031-safe-browsing.md) — Browser tab — Safe Browsing URL filtering
+- [TD-031](complete/TD-031-safe-browsing.md) — Browser tab — Safe Browsing URL filtering
 
 ## Phase 8 — AI chat on Home
 
@@ -144,6 +144,19 @@ could ever have copied phase 8.
   Clicking a tile opens the full-size image through the TD-021 `openExternal`
   bridge — a desktop-specific answer THW-31 and TH-028 will each need their own
   version of. Shipped in #67, with the first AC unconfirmed against a live turn.
+
+## Phase 10 — Browser tabs
+
+- [TD-089](TD-089-browser-tabs.md) — Browser tab: tabs inside the
+  browser. The embedded browser has one page, so following a link or a
+  `target=_blank` is destructive and TD-080's chat web image throws away
+  whatever was open. A tab strip, one `<webview>` per tab, each with its
+  own `useBrowserNav`. Main is already keyed by `webContents.id`
+  (detection, context menu, downloads); the renderer is the half that
+  assumes one — including the partition-wide asset subscription TD-024's
+  own comment predicted would break here. TD-039 suspension stays keyed
+  on the Browser tab's visibility and applies to every open tab at once,
+  so a browser-tab switch never costs a reload. Not started.
 
 ## Bugs / polish
 
@@ -287,3 +300,14 @@ could ever have copied phase 8.
   into the hook, move it to `hooks/` so shared code stops depending on
   `components/chat/`, and have `CopyIdButton` consume it. Not a swap to the
   icon button: the cards keep their text `Copy ID` and visible status line.
+
+- [TD-088](TD-088-the-chat-says-which-step-it-is-on.md) — AI chat: the status
+  line says which step the turn is on. `ChatPanel` already renders `status.tool`
+  — TC-045 opened by assuming we dropped it and found we do not — but 91.8% of a
+  turn is the model rather than tools, so that line covers a twentieth of the
+  wall clock and "Thinking" covers the rest. At a 23.6 s median, with 25 turns a
+  fortnight at six rounds or more, one unchanging word for over a minute reads
+  as a hang. Renders `round` and `steps` from chat-core 0.12.0 beside the
+  existing text, in `liveMessage` as well as on screen, and renders exactly as
+  today when a turn carries neither. Blocked on `@swaff-y/thunder-chat-core`
+  TCC-014. Companions: web-thunder THW-36, thunder TH-049. Not started.

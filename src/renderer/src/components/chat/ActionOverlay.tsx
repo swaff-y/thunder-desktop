@@ -6,7 +6,7 @@ import ImageCarousel from "../shared/ImageCarousel";
 import ActionRowImage from "./ActionRowImage";
 import { APP_ROUTES } from "./entity-routes";
 import { ChipSection } from "./record-parts";
-import { useCopyId } from "./useCopyId";
+import { useCopyId } from "../../hooks/useCopyId";
 import { useActionImages } from "./useActionImages";
 
 /**

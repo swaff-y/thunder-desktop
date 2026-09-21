@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from "react";
 import { IoCopy, IoCheckmark } from "react-icons/io5";
-
-const COPIED_MS = 1500;
+import { useCopyId } from "../../hooks/useCopyId";
 
 interface CopyIdButtonProps {
   id: string;
@@ -14,41 +12,14 @@ export default function CopyIdButton({
   label = "Copy ID",
   className,
 }: CopyIdButtonProps) {
-  const [copied, setCopied] = useState(false);
-  const resetRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (resetRef.current !== null) {
-        window.clearTimeout(resetRef.current);
-      }
-    };
-  }, []);
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(id);
-    } catch {
-      return;
-    }
-    setCopied(true);
-    if (resetRef.current !== null) {
-      window.clearTimeout(resetRef.current);
-    }
-    resetRef.current = window.setTimeout(() => {
-      setCopied(false);
-      resetRef.current = null;
-    }, COPIED_MS);
-  }
+  const { copied, copy } = useCopyId(id);
 
   return (
     <>
       <button
         type="button"
         className={className}
-        onClick={() => {
-          void handleCopy();
-        }}
+        onClick={copy}
         aria-label={copied ? "Copied" : label}
         title={copied ? "Copied" : label}
       >

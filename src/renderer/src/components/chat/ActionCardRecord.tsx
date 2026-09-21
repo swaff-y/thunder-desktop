@@ -4,7 +4,7 @@ import type { ChatAction } from "@swaff-y/thunder-chat-core";
 import ImageCarousel, { type CarouselImage } from "../shared/ImageCarousel";
 import { toSingleCard } from "@swaff-y/thunder-chat-core";
 import { ChipSection } from "./record-parts";
-import { useCopyId } from "./useCopyId";
+import { useCopyId } from "../../hooks/useCopyId";
 import { useActionImages } from "./useActionImages";
 
 /**

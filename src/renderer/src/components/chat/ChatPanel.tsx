@@ -14,6 +14,7 @@ import ChatMarkdown from "./ChatMarkdown";
 import type { ListRow } from "@swaff-y/thunder-chat-core";
 
 const RUNNING_QUERY = "Running catalogue query…";
+const THINKING = "Thinking…";
 
 /** The drawer focuses the composer on open. */
 export const COMPOSER_INPUT_ID = "chat-question";
@@ -43,12 +44,52 @@ type HistoryWalk = { steps: number; typed: string };
 
 /**
  * The one thing a screen reader is told about a turn: that it is running,
- * what it is running, and then the answer itself.
+ * what it is running, which round it is on, and then the answer itself.
+ *
+ * TD-088: `round` and `steps` are absent from a server older than
+ * thunder-context TC-045 and from any turn that started before it, and the
+ * announcement is then word for word what it was.
  */
 function liveMessage(status: ChatStatus, lastAnswer: string | undefined): string {
-  if (status.state === "calling-tool") return `${RUNNING_QUERY} ${status.tool}`;
-  if (status.state === "thinking") return "Thinking…";
-  return lastAnswer ?? "";
+  if (status.state === "idle") return lastAnswer ?? "";
+  const running = status.state === "calling-tool" ? `${RUNNING_QUERY} ${status.tool}` : THINKING;
+  const round = status.round === undefined ? "" : ` Step ${status.round}.`;
+  const steps =
+    status.steps === undefined || status.steps.length === 0
+      ? ""
+      : ` Run so far: ${status.steps.join(", ")}.`;
+  return `${running}${round}${steps}`;
+}
+
+/**
+ * TD-088: what the turn is on, so a turn that spends 91.8% of its wall clock
+ * in the model has something to redraw. Nothing is held in state — the server
+ * clears both fields when the turn settles and `status` goes `idle` with it.
+ */
+function ChatProgress({ status }: { status: ChatStatus }): React.JSX.Element | null {
+  if (status.state === "idle") return null;
+
+  const callingTool = status.state === "calling-tool";
+  const steps = status.steps ?? [];
+  if (!callingTool && status.round === undefined && steps.length === 0) return null;
+
+  return (
+    <div className="chat-tool">
+      <Spinner animation="border" size="sm" aria-hidden="true" />
+      <span>{callingTool ? RUNNING_QUERY : THINKING}</span>
+      {status.state === "calling-tool" && <code className="chat-tool-name">{status.tool}</code>}
+      {status.round !== undefined && <span className="chat-round">Step {status.round}</span>}
+      {steps.length > 0 && (
+        <ol className="chat-steps" aria-label="Run so far">
+          {steps.map((step, index) => (
+            <li key={`${index}-${step}`}>
+              <code className="chat-tool-name">{step}</code>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 function renderRowImage(row: ListRow): React.ReactNode {
@@ -304,13 +345,7 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
         {liveMessage(status, lastAnswer)}
       </p>
 
-      {status.state === "calling-tool" && (
-        <div className="chat-tool">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{RUNNING_QUERY}</span>
-          <code className="chat-tool-name">{status.tool}</code>
-        </div>
-      )}
+      <ChatProgress status={status} />
 
       {/* Not an aria-live region: this changes after every answer, and a
           reader announcing a new dollar figure on top of the answer is
@@ -515,6 +550,7 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
         }
         .chat-tool {
           align-items: center;
+          flex-wrap: wrap;
           border-top: 1px solid var(--color-border);
           color: var(--color-text-muted);
           display: flex;
@@ -525,6 +561,19 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
         .chat-tool-name {
           color: var(--color-accent-light);
           font-size: var(--text-caption);
+        }
+        .chat-round {
+          font-size: var(--text-caption);
+        }
+        /* The order the model asked for the tools in is the point, so the
+           steps are a list; nothing about the row wants bullets. */
+        .chat-steps {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--space-sm);
+          list-style: none;
+          margin: 0;
+          padding: 0;
         }
         /* The line first appears the instant the first answer lands, which
            is the worst possible moment to move the input the user is about

@@ -147,7 +147,7 @@ could ever have copied phase 8.
 
 ## Phase 10 — Browser tabs
 
-- [TD-089](TD-089-browser-tabs.md) — Browser tab: tabs inside the
+- [TD-089](complete/TD-089-browser-tabs.md) — Browser tab: tabs inside the
   browser. The embedded browser has one page, so following a link or a
   `target=_blank` is destructive and TD-080's chat web image throws away
   whatever was open. A tab strip, one `<webview>` per tab, each with its
@@ -156,7 +156,7 @@ could ever have copied phase 8.
   assumes one — including the partition-wide asset subscription TD-024's
   own comment predicted would break here. TD-039 suspension stays keyed
   on the Browser tab's visibility and applies to every open tab at once,
-  so a browser-tab switch never costs a reload. Not started.
+  so a browser-tab switch never costs a reload. Shipped in #81.
 
 ## Bugs / polish
 
@@ -290,7 +290,7 @@ could ever have copied phase 8.
   invisible; that half is thunder-context TC-042. Companions: thunder TH-048,
   web-thunder THW-37. Shipped in #77.
 
-- [TD-087](TD-087-one-copy-id-behaviour.md) — Copy ID: one behaviour, not two.
+- [TD-087](complete/TD-087-one-copy-id-behaviour.md) — Copy ID: one behaviour, not two.
   TD-085 left `useCopyId` (TD-069) standing beside the new `CopyIdButton`, so
   the same affordance now flashes for 2s in the chat's record card and 1.5s
   everywhere else — and only the component clears its timer. The hook's two
@@ -300,8 +300,9 @@ could ever have copied phase 8.
   into the hook, move it to `hooks/` so shared code stops depending on
   `components/chat/`, and have `CopyIdButton` consume it. Not a swap to the
   icon button: the cards keep their text `Copy ID` and visible status line.
+  Shipped in #78.
 
-- [TD-088](TD-088-the-chat-says-which-step-it-is-on.md) — AI chat: the status
+- [TD-088](complete/TD-088-the-chat-says-which-step-it-is-on.md) — AI chat: the status
   line says which step the turn is on. `ChatPanel` already renders `status.tool`
   — TC-045 opened by assuming we dropped it and found we do not — but 91.8% of a
   turn is the model rather than tools, so that line covers a twentieth of the
@@ -310,4 +311,17 @@ could ever have copied phase 8.
   as a hang. Renders `round` and `steps` from chat-core 0.12.0 beside the
   existing text, in `liveMessage` as well as on screen, and renders exactly as
   today when a turn carries neither. Blocked on `@swaff-y/thunder-chat-core`
-  TCC-014. Companions: web-thunder THW-36, thunder TH-049. Not started.
+  TCC-014. Companions: web-thunder THW-36, thunder TH-049. Shipped in #79.
+
+- [TD-090](complete/TD-090-the-queue-card-replaces-the-cart.md) — AI chat: the
+  queue card replaces the cart. TC-046's `show_queue` proposes four records out
+  of a real catalogue read; this is the fourth action card, and the first that
+  writes state the user can see from outside the chat panel. The card proposes
+  and the button acts, so a restored transcript keeps a live button and no
+  persisted pressed-state. The button **replaces**: `MAX_CART_SIZE` is 4 and
+  `add` silently drops past it, so appending into a queue holding two would
+  give two of the four asked for and say nothing. Rows and the press both
+  re-read by id — `action.result` carries no presigned URL at any depth — and a
+  failed read still queues its record minimally rather than dropping it.
+  `ActionOverlay` already degrades to nothing for the kind, which a test now
+  locks in. Blocked on `@swaff-y/thunder-chat-core` TCC-015. Shipped in #80.

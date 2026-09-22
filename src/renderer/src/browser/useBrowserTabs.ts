@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { BrowserNav } from './useBrowserNav'
 
 /**
@@ -35,6 +35,22 @@ export interface BrowserTabEntry {
   loading: boolean
 }
 
+/**
+ * Everything that changes the strip. Held apart from the state above so a
+ * `BrowserTabView` can take these without also taking a render on every
+ * other tab's page load.
+ */
+export interface BrowserTabActions {
+  /** Opens a foreground tab and answers whether there was room for it. */
+  open: (url?: string) => boolean
+  close: (id: string) => void
+  activate: (id: string) => void
+  /** Surfaces a refusal that happened before any tab was created. */
+  refuse: (message: string) => void
+  registerTab: (id: string, nav: BrowserNav) => void
+  unregisterTab: (id: string) => void
+}
+
 export interface BrowserTabs {
   entries: BrowserTabEntry[]
   tabs: BrowserTab[]
@@ -44,14 +60,7 @@ export interface BrowserTabs {
   /** The cap, or a URL the address bar would reject — said in the strip
    *  rather than swallowed. */
   message: string | null
-  /** Opens a foreground tab and answers whether there was room for it. */
-  open: (url?: string) => boolean
-  close: (id: string) => void
-  activate: (id: string) => void
-  /** Surfaces a refusal that happened before any tab was created. */
-  refuse: (message: string) => void
-  registerTab: (id: string, nav: BrowserNav) => void
-  unregisterTab: (id: string) => void
+  actions: BrowserTabActions
 }
 
 let nextTabId = 0
@@ -130,6 +139,13 @@ export function useBrowserTabs(): BrowserTabs {
     })
   }, [])
 
+  // Identity changes only when a tab opens or closes, which is what keeps
+  // a page load out of every other tab's render.
+  const actions = useMemo(
+    () => ({ open, close, activate, refuse, registerTab, unregisterTab }),
+    [open, close, activate, refuse, registerTab, unregisterTab]
+  )
+
   const entries = tabs.map((tab) => {
     const nav = navs[tab.id]
     return {
@@ -147,11 +163,6 @@ export function useBrowserTabs(): BrowserTabs {
     activeId,
     activeNav: navs[activeId],
     message,
-    open,
-    close,
-    activate,
-    refuse,
-    registerTab,
-    unregisterTab
+    actions
   }
 }

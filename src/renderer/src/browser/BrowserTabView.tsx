@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { useBrowserTabsState } from './BrowserTabsContext'
+import { memo, useEffect, useLayoutEffect } from 'react'
+import { useBrowserTabActions } from './BrowserTabsContext'
 import { useBrowserNav } from './useBrowserNav'
 import EmbeddedWebview from './EmbeddedWebview'
 import type { BrowserTab } from './useBrowserTabs'
@@ -31,16 +31,16 @@ interface BrowserTabViewProps {
   browserVisible: boolean
 }
 
-export default function BrowserTabView({
-  tab,
-  active,
-  browserVisible
-}: BrowserTabViewProps): React.JSX.Element {
-  const { open, registerTab, unregisterTab } = useBrowserTabsState()
+function BrowserTabView({ tab, active, browserVisible }: BrowserTabViewProps): React.JSX.Element {
+  const { open, registerTab, unregisterTab } = useBrowserTabActions()
   const nav = useBrowserNav(tab.initialUrl, open)
   const { setMuted } = nav
 
-  useEffect(() => {
+  // Before paint, not after: `BrowserPage` draws no chrome until the active
+  // tab's nav is registered, and a passive effect would let the frame where
+  // a brand-new tab is active but unregistered reach the screen — the
+  // address bar and the assets rail blinking out on every `+`.
+  useLayoutEffect(() => {
     registerTab(tab.id, nav)
   }, [tab.id, nav, registerTab])
 
@@ -59,3 +59,10 @@ export default function BrowserTabView({
     </div>
   )
 }
+
+/**
+ * A page load ticks several times a second and re-renders `BrowserPage`,
+ * which would otherwise re-render all eight tabs. The props here are a
+ * stable tab object and two booleans, so this is where that stops.
+ */
+export default memo(BrowserTabView)

@@ -1,4 +1,4 @@
-import { useBrowserTabsState } from './BrowserTabsContext'
+import { useBrowserTabActions, useBrowserTabsState } from './BrowserTabsContext'
 import { useDownloads } from './useDownloads'
 import BrowserChrome from './BrowserChrome'
 import BrowserTabStrip from './BrowserTabStrip'
@@ -12,6 +12,7 @@ interface BrowserPageProps {
 
 export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.Element {
   const tabs = useBrowserTabsState()
+  const { activate, close, open } = useBrowserTabActions()
   const downloads = useDownloads()
   // Undefined for the first frame only, before the active tab's view has
   // registered the nav it owns.
@@ -23,9 +24,9 @@ export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.El
         entries={tabs.entries}
         activeId={tabs.activeId}
         message={tabs.message}
-        onActivate={tabs.activate}
-        onClose={tabs.close}
-        onOpen={tabs.open}
+        onActivate={activate}
+        onClose={close}
+        onOpen={open}
       />
       {activeNav && <BrowserChrome nav={activeNav} />}
       <div className="browser-page-body">

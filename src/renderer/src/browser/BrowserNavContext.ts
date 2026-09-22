@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, type ReactNode } from 'react'
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BrowserTabsContext } from './BrowserTabsContext'
+import { BrowserTabActionsContext, BrowserTabsContext } from './BrowserTabsContext'
 import { normaliseUrl } from './useBrowserNav'
 import { useBrowserTabs } from './useBrowserTabs'
 
@@ -49,7 +49,7 @@ export function BrowserNavProvider({
 }: BrowserNavProviderProps): React.JSX.Element {
   const tabs = useBrowserTabs()
   const navigate = useNavigate()
-  const { open, refuse } = tabs
+  const { open, refuse } = tabs.actions
 
   const openInBrowserTab = useCallback<OpenInBrowserTab>(
     (url) => {
@@ -70,7 +70,11 @@ export function BrowserNavProvider({
   return React.createElement(
     OpenInBrowserTabContext.Provider,
     { value: openInBrowserTab },
-    React.createElement(BrowserTabsContext.Provider, { value: tabs }, children)
+    React.createElement(
+      BrowserTabActionsContext.Provider,
+      { value: tabs.actions },
+      React.createElement(BrowserTabsContext.Provider, { value: tabs }, children)
+    )
   )
 }
 

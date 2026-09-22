@@ -24,7 +24,7 @@ function renderTabs(): { tabs: () => BrowserTabs } {
 function fill(tabs: () => BrowserTabs, count: number): void {
   while (tabs().entries.length < count) {
     act(() => {
-      tabs().open()
+      tabs().actions.open()
     })
   }
 }
@@ -42,7 +42,7 @@ describe('useBrowserTabs', () => {
     const { tabs } = renderTabs()
 
     act(() => {
-      tabs().open('https://example.com/cat.gif')
+      tabs().actions.open('https://example.com/cat.gif')
     })
 
     expect(tabs().entries).toHaveLength(2)
@@ -54,7 +54,7 @@ describe('useBrowserTabs', () => {
     const { tabs } = renderTabs()
 
     act(() => {
-      tabs().open()
+      tabs().actions.open()
     })
 
     expect(tabs().entries[1].url).toBe(INITIAL_URL)
@@ -64,11 +64,11 @@ describe('useBrowserTabs', () => {
     const { tabs } = renderTabs()
     const first = tabs().entries[0].id
     act(() => {
-      tabs().open()
+      tabs().actions.open()
     })
 
     act(() => {
-      tabs().activate(first)
+      tabs().actions.activate(first)
     })
 
     expect(tabs().activeId).toBe(first)
@@ -81,7 +81,7 @@ describe('useBrowserTabs', () => {
 
     let opened: boolean | undefined
     act(() => {
-      opened = tabs().open()
+      opened = tabs().actions.open()
     })
 
     expect(opened).toBe(false)
@@ -95,11 +95,11 @@ describe('useBrowserTabs', () => {
     fill(tabs, 3)
     const [, middle, right] = tabs().entries.map((entry) => entry.id)
     act(() => {
-      tabs().activate(middle)
+      tabs().actions.activate(middle)
     })
 
     act(() => {
-      tabs().close(middle)
+      tabs().actions.close(middle)
     })
 
     expect(tabs().entries).toHaveLength(2)
@@ -112,7 +112,7 @@ describe('useBrowserTabs', () => {
     const [, middle, right] = tabs().entries.map((entry) => entry.id)
 
     act(() => {
-      tabs().close(right)
+      tabs().actions.close(right)
     })
 
     expect(tabs().activeId).toBe(middle)
@@ -123,11 +123,11 @@ describe('useBrowserTabs', () => {
     fill(tabs, 3)
     const [left, , right] = tabs().entries.map((entry) => entry.id)
     act(() => {
-      tabs().activate(right)
+      tabs().actions.activate(right)
     })
 
     act(() => {
-      tabs().close(left)
+      tabs().actions.close(left)
     })
 
     expect(tabs().activeId).toBe(right)
@@ -138,7 +138,7 @@ describe('useBrowserTabs', () => {
     const only = tabs().entries[0].id
 
     act(() => {
-      tabs().close(only)
+      tabs().actions.close(only)
     })
 
     expect(tabs().entries).toHaveLength(1)
@@ -152,7 +152,7 @@ describe('useBrowserTabs', () => {
     const before = tabs().entries[0].id
 
     act(() => {
-      tabs().close('tab-not-open')
+      tabs().actions.close('tab-not-open')
     })
 
     expect(tabs().entries).toHaveLength(1)
@@ -162,12 +162,12 @@ describe('useBrowserTabs', () => {
   it('clears the refusal once a tab opens or closes', () => {
     const { tabs } = renderTabs()
     act(() => {
-      tabs().refuse('Not a valid URL.')
+      tabs().actions.refuse('Not a valid URL.')
     })
     expect(tabs().message).toBe('Not a valid URL.')
 
     act(() => {
-      tabs().open()
+      tabs().actions.open()
     })
 
     expect(tabs().message).toBeNull()

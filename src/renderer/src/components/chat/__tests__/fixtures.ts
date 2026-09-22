@@ -2,6 +2,7 @@ import type {
   ChartBar,
   ChatAction,
   ChatAskResult,
+  QueueItem,
   UploadTarget,
 } from "@swaff-y/thunder-chat-core";
 
@@ -118,6 +119,13 @@ export function webImagesAction(
     title,
     result: { images },
   };
+}
+
+export function queueAction(
+  items: QueueItem[] | undefined,
+  title = "Four to watch"
+): ChatAction {
+  return { kind: "queue", tool: "show_queue", args: {}, title, result: null, items };
 }
 
 /**

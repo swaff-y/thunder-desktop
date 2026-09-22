@@ -168,7 +168,7 @@ describe("ActionCardQueue: the button", () => {
     });
   });
 
-  it("is disabled while the fetches are in flight, and acknowledges the count after", async () => {
+  it("announces and disables while in flight, and acknowledges the count after", async () => {
     let release!: (value: ContentRecord) => void;
     fetchRecord.mockImplementation(
       (id: string) =>
@@ -182,11 +182,11 @@ describe("ActionCardQueue: the button", () => {
     await userEvent.click(button());
 
     expect(button().hasAttribute("disabled")).toBe(true);
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("Replacing the watch queue");
 
     release(record("rec-1", "Fetched rec-1"));
 
-    expect((await screen.findByRole("status")).textContent).toContain("Queued 4 records");
+    expect(await screen.findByText(/Queued 4 records/)).toBeTruthy();
     expect(button().hasAttribute("disabled")).toBe(false);
   });
 
@@ -195,13 +195,13 @@ describe("ActionCardQueue: the button", () => {
 
     await userEvent.click(button());
 
-    expect((await screen.findByRole("status")).textContent).toContain("MultiWatch needs two");
+    expect(await screen.findByText(/MultiWatch needs two/)).toBeTruthy();
   });
 
   it("comes back live and unacknowledged on remount", async () => {
     const view = renderCard(queueAction(ITEMS));
     await userEvent.click(button());
-    await screen.findByRole("status");
+    await screen.findByText(/Queued 4 records/);
 
     view.unmount();
     renderCard(queueAction(ITEMS));

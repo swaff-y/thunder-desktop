@@ -88,11 +88,14 @@ function QueueCardBody({ card }: { card: QueueCard }): React.JSX.Element {
    */
   async function handleQueue(): Promise<void> {
     setBusy(true);
-    const records = await Promise.all(card.items.map(resolve));
-    clear();
-    for (const record of records) add(record);
-    setQueued(records.length);
-    setBusy(false);
+    try {
+      const records = await Promise.all(card.items.map(resolve));
+      clear();
+      for (const record of records) add(record);
+      setQueued(records.length);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleClick(): void {
@@ -121,7 +124,13 @@ function QueueCardBody({ card }: { card: QueueCard }): React.JSX.Element {
           {busy ? "Queueing…" : "Replace watch queue"}
         </button>
 
-        {queued !== undefined && (
+        {busy && (
+          <p className="card-queue-ack" role="status">
+            Replacing the watch queue…
+          </p>
+        )}
+
+        {!busy && queued !== undefined && (
           <p className="card-queue-ack" role="status">
             Queued {queued} {queued === 1 ? "record" : "records"}.
             {queued < 2 && " MultiWatch needs two."}

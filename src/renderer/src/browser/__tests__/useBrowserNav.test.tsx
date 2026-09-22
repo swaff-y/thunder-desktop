@@ -14,18 +14,22 @@ const NEXT_URL = 'https://example.com/cat.gif'
  */
 function fakeWebview(): {
   el: WebviewTag
-  emit: (type: string) => void
+  emit: (type: string, props?: Record<string, unknown>) => void
+  isMuted: () => boolean
   loadURL: ReturnType<typeof vi.fn>
 } {
   const listeners = new Map<string, EventListener>()
   const loadURL = vi.fn()
+  let muted = false
   const el = {
     addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
     removeEventListener: (type: string) => listeners.delete(type),
     getWebContentsId: () => 7,
     getURL: () => SUSPENDED_FROM,
-    isAudioMuted: () => false,
-    setAudioMuted: vi.fn(),
+    isAudioMuted: () => muted,
+    setAudioMuted: (next: boolean) => {
+      muted = next
+    },
     stop: vi.fn(),
     canGoBack: () => false,
     canGoForward: () => false,
@@ -34,16 +38,20 @@ function fakeWebview(): {
 
   return {
     el,
-    emit: (type) => listeners.get(type)?.(new Event(type)),
+    emit: (type, props) => listeners.get(type)?.(Object.assign(new Event(type), props)),
+    isMuted: () => muted,
     loadURL
   }
 }
 
-function renderNav(el: WebviewTag): { nav: () => BrowserNav } {
+function renderNav(
+  el: WebviewTag,
+  onNewWindow?: (url: string) => void
+): { nav: () => BrowserNav } {
   let latest: BrowserNav | null = null
 
   function Harness(): null {
-    latest = useBrowserNav(INITIAL_URL)
+    latest = useBrowserNav(INITIAL_URL, onNewWindow)
     return null
   }
 
@@ -107,5 +115,104 @@ describe('loadURL while the tab is suspended', () => {
     })
 
     expect(loadURL).toHaveBeenCalledWith(NEXT_URL)
+  })
+})
+
+/**
+ * TD-089: a popup used to be rewritten into a same-webview `loadURL`
+ * because there was nowhere else for it to go. There is now.
+ */
+describe('a target=_blank link', () => {
+  it('hands an http(s) popup to the tab strip instead of loading it in place', () => {
+    const onNewWindow = vi.fn()
+    const { el, emit, loadURL } = fakeWebview()
+    renderNav(el, onNewWindow)
+
+    act(() => {
+      emit('did-attach')
+    })
+    act(() => {
+      emit('new-window', { url: NEXT_URL })
+    })
+
+    expect(onNewWindow).toHaveBeenCalledWith(NEXT_URL)
+    expect(loadURL).not.toHaveBeenCalled()
+  })
+
+  it('loads in place when nothing else will take it', () => {
+    const { el, emit, loadURL } = fakeWebview()
+    renderNav(el)
+
+    act(() => {
+      emit('did-attach')
+    })
+    act(() => {
+      emit('new-window', { url: NEXT_URL })
+    })
+
+    expect(loadURL).toHaveBeenCalledWith(NEXT_URL)
+  })
+})
+
+// TD-089: only the browser tab on screen makes noise, and TD-039's
+// snapshot must not mistake that for the user's own mute.
+describe('a muted background tab', () => {
+  function suspendAndResume(nav: () => BrowserNav): void {
+    act(() => {
+      nav().setVisible(false)
+    })
+    act(() => {
+      nav().setVisible(true)
+    })
+  }
+
+  it('is still muted after the Browser tab has been away and come back', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 0
+    })
+    const { el, emit, isMuted } = fakeWebview()
+    const { nav } = renderNav(el)
+
+    act(() => {
+      emit('did-attach')
+    })
+    act(() => {
+      nav().setVisible(true)
+    })
+    act(() => {
+      nav().setMuted(true)
+    })
+    expect(isMuted()).toBe(true)
+
+    suspendAndResume(nav)
+
+    expect(isMuted()).toBe(true)
+
+    act(() => {
+      nav().setMuted(false)
+    })
+
+    expect(isMuted()).toBe(false)
+  })
+
+  it('leaves a tab that was never muted audible on resume', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 0
+    })
+    const { el, emit, isMuted } = fakeWebview()
+    const { nav } = renderNav(el)
+
+    act(() => {
+      emit('did-attach')
+    })
+    act(() => {
+      nav().setVisible(true)
+    })
+
+    suspendAndResume(nav)
+
+    expect(isMuted()).toBe(false)
   })
 })

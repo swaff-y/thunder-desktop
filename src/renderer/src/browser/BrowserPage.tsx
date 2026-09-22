@@ -1,7 +1,8 @@
-import { INITIAL_URL, useBrowserNavState } from './BrowserNavContext'
+import { useBrowserTabActions, useBrowserTabsState } from './BrowserTabsContext'
 import { useDownloads } from './useDownloads'
 import BrowserChrome from './BrowserChrome'
-import EmbeddedWebview from './EmbeddedWebview'
+import BrowserTabStrip from './BrowserTabStrip'
+import BrowserTabView from './BrowserTabView'
 import DetectedAssetsPanel from './DetectedAssetsPanel'
 import DownloadsDrawer from './DownloadsDrawer'
 
@@ -10,16 +11,40 @@ interface BrowserPageProps {
 }
 
 export default function BrowserPage({ visible }: BrowserPageProps): React.JSX.Element {
-  const nav = useBrowserNavState()
+  const tabs = useBrowserTabsState()
+  const { activate, close, open } = useBrowserTabActions()
   const downloads = useDownloads()
+  // Undefined for the first frame only, before the active tab's view has
+  // registered the nav it owns.
+  const activeNav = tabs.activeNav
 
   return (
     <div className="browser-page" style={{ display: visible ? 'flex' : 'none' }}>
-      <BrowserChrome nav={nav} />
+      <BrowserTabStrip
+        entries={tabs.entries}
+        activeId={tabs.activeId}
+        message={tabs.message}
+        onActivate={activate}
+        onClose={close}
+        onOpen={open}
+      />
+      {activeNav && <BrowserChrome nav={activeNav} />}
       <div className="browser-page-body">
-        <EmbeddedWebview nav={nav} initialUrl={INITIAL_URL} visible={visible} />
-        <DetectedAssetsPanel nav={nav} onDownload={downloads.start} />
+        {/* Every tab's webview stays mounted — only the active one is
+            displayed, the same mechanism TD-035 uses for the whole page —
+            so switching tabs costs no reload and loses no page state. */}
+        {tabs.tabs.map((tab) => (
+          <BrowserTabView
+            key={tab.id}
+            tab={tab}
+            active={tab.id === tabs.activeId}
+            browserVisible={visible}
+          />
+        ))}
+        {activeNav && <DetectedAssetsPanel nav={activeNav} onDownload={downloads.start} />}
       </div>
+      {/* Downloads are global: one drawer for every tab, and a download
+          outlives the tab that started it (TD-042). */}
       <DownloadsDrawer downloads={downloads} />
 
       <style>{`

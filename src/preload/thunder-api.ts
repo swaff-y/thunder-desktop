@@ -244,6 +244,12 @@ export interface ThunderAuthCredentials {
  */
 export interface ThunderAssetDetectedPayload {
   id: string
+  /**
+   * TD-089: which webview saw it. The subscription is partition-wide, so
+   * with several browser tabs open every one of them receives every
+   * other one's detections; this is what lets a tab keep only its own.
+   */
+  webContentsId: number
   pageUrl: string
   assetUrl: string
   mimeType: string

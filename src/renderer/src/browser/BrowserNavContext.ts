@@ -1,17 +1,19 @@
 import { createContext, useCallback, useContext, type ReactNode } from 'react'
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useBrowserNav, type BrowserNav } from './useBrowserNav'
+import { BrowserTabActionsContext, BrowserTabsContext } from './BrowserTabsContext'
+import { normaliseUrl } from './useBrowserNav'
+import { useBrowserTabs } from './useBrowserTabs'
 
 /**
  * TD-080: one owner for the embedded browser's navigation state, so
  * somewhere other than the address bar can point the Browser tab at a URL.
  *
- * `useBrowserNav` used to live inside `BrowserPage`, which made `loadURL`
- * reachable only from the chrome rendered beside it. Lifting it one level
- * up — still inside `DesktopLayout`, so the hook and the `<webview>` it
- * drives keep the same lifetime — leaves the browser itself untouched and
- * gives the rest of the app a way in.
+ * TD-089: what it owns is now the tab strip rather than a single page —
+ * `useBrowserTabs` holds the open tabs and each `BrowserTabView` registers
+ * its own `useBrowserNav` with it. The provider still sits inside
+ * `DesktopLayout`, so the tabs and the `<webview>`s they drive keep the
+ * same lifetime they had.
  *
  * The state and the way in are two contexts, not one. A page load fires
  * several `nav` updates a second (loading, url, history flags); everything
@@ -19,16 +21,15 @@ import { useBrowserNav, type BrowserNav } from './useBrowserNav'
  * would re-render every chat image tile on every one of those ticks.
  */
 
-export const INITIAL_URL = 'https://www.google.com'
-
 /**
- * Loads `url` in the embedded webview and brings the Browser tab to the
- * front. A URL the address bar would reject is rejected here too: nothing
- * navigates and `nav.validationError` explains why.
+ * Opens `url` in a **new** browser tab and brings the Browser tab to the
+ * front. TD-089: a new tab rather than the active one, so clicking a chat
+ * image never throws away the page the user had open. A URL the address
+ * bar would reject is rejected here too: no tab is created and the strip
+ * says why.
  */
 export type OpenInBrowserTab = (url: string) => void
 
-const BrowserNavContext = createContext<BrowserNav | null>(null)
 const OpenInBrowserTabContext = createContext<OpenInBrowserTab | null>(null)
 
 interface BrowserNavProviderProps {
@@ -46,32 +47,35 @@ export function BrowserNavProvider({
   children,
   onOpenBrowserTab
 }: BrowserNavProviderProps): React.JSX.Element {
-  const nav = useBrowserNav(INITIAL_URL)
+  const tabs = useBrowserTabs()
   const navigate = useNavigate()
-  const { loadURL } = nav
+  const { open, refuse } = tabs.actions
 
   const openInBrowserTab = useCallback<OpenInBrowserTab>(
     (url) => {
-      if (!loadURL(url)) return
+      const checked = normaliseUrl(url)
+      if ('error' in checked) {
+        refuse(checked.error)
+        return
+      }
+      if (!open(checked.url)) return
       onOpenBrowserTab?.()
       // Routing rather than a bare flag so TD-038's tab history records the
       // visit and Back leaves the Browser tab the way the sidebar entry does.
       navigate('/browser')
     },
-    [loadURL, navigate, onOpenBrowserTab]
+    [open, refuse, navigate, onOpenBrowserTab]
   )
 
   return React.createElement(
     OpenInBrowserTabContext.Provider,
     { value: openInBrowserTab },
-    React.createElement(BrowserNavContext.Provider, { value: nav }, children)
+    React.createElement(
+      BrowserTabActionsContext.Provider,
+      { value: tabs.actions },
+      React.createElement(BrowserTabsContext.Provider, { value: tabs }, children)
+    )
   )
-}
-
-export function useBrowserNavState(): BrowserNav {
-  const value = useContext(BrowserNavContext)
-  if (!value) throw new Error('useBrowserNavState must be used within a BrowserNavProvider')
-  return value
 }
 
 export function useOpenInBrowserTab(): OpenInBrowserTab {

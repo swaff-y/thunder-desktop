@@ -5,6 +5,7 @@ import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-cha
 import ActionCardChart from "./ActionCardChart";
 import ActionOverlay from "./ActionOverlay";
 import ActionCardList from "./ActionCardList";
+import ActionCardQueue from "./ActionCardQueue";
 import ActionCardRecord from "./ActionCardRecord";
 import ActionCardUpload from "./ActionCardUpload";
 import ActionCardWebImages from "./ActionCardWebImages";
@@ -126,6 +127,7 @@ const CARDS: Partial<Record<ChatAction["kind"], (context: CardContext) => React.
       onExpand={expandHandler(action)}
     />
   ),
+  queue: ({ action }) => <ActionCardQueue action={action} />,
   upload: ({ action }) => <ActionCardUpload action={action} />,
   web_images: ({ action }) => <ActionCardWebImages action={action} />,
 };

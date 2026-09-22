@@ -13,7 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ChatAction } from "@swaff-y/thunder-chat-core";
 import ActionOverlay from "../ActionOverlay";
 import type { ActionImages } from "../useActionImages";
-import { listAction, singleAction } from "./fixtures";
+import { listAction, queueAction, singleAction } from "./fixtures";
 
 let images: ActionImages = { slides: [], isLoading: false, isError: false };
 
@@ -223,5 +223,20 @@ describe("ActionOverlay: closing", () => {
   it("takes focus on open so Escape has somewhere to land", () => {
     renderOverlay(recordsAction());
     expect(overlay()).toHaveFocus();
+  });
+});
+
+/**
+ * TD-090: the overlay re-derives cards by name and knows only `list` and
+ * `single`. A `queue` action reaching it must degrade to the nothing an
+ * unknown kind already degrades to.
+ */
+describe("ActionOverlay: a kind it does not draw", () => {
+  it("renders nothing for a queue action, and throws nothing", () => {
+    const { container } = renderOverlay(
+      queueAction([{ id: "rec-1", name: "Nightjar Sessions" }])
+    );
+
+    expect(container.firstChild).toBeNull();
   });
 });

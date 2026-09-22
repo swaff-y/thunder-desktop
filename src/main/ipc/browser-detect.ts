@@ -125,6 +125,7 @@ export function registerBrowserDetectHandlers(): void {
     const sizeBytes = getContentLength(details.responseHeaders ?? {})
     const payload: ThunderAssetDetectedPayload = {
       id: makeId(),
+      webContentsId: wcId,
       pageUrl,
       assetUrl: details.url,
       mimeType: mime ?? 'application/octet-stream',

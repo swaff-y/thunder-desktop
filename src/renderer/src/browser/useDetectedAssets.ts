@@ -73,21 +73,21 @@ export function useDetectedAssets(nav: BrowserNav): DetectedAssets {
   }, [url, webContentsId, seedNonce])
 
   useEffect(() => {
-    // TD-024: subscription is partition-wide, not scoped to this
-    // webview's `webContentsId`. Single-webview today so it's fine, but
-    // when the download manager lands and routing needs to know which
-    // webview originated an asset, the IPC payload will need to carry
-    // `webContentsId` and this filter against `nav.webContentsId`.
+    // TD-089: the subscription is partition-wide, so with several browser
+    // tabs open every one of them receives every other one's detections.
+    // The payload now names the webview that saw it, which is what TD-024's
+    // comment here predicted would be needed.
     const browser = window.thunder?.browser
     if (!browser) return
     const unsubscribe = browser.onAssetDetected((payload) => {
+      if (payload.webContentsId !== webContentsId) return
       setAssets((prev) => {
         if (prev.some((a) => a.id === payload.id)) return prev
         return [payload, ...prev]
       })
     })
     return unsubscribe
-  }, [])
+  }, [webContentsId])
 
   const clear = useCallback(() => {
     setAssets([])

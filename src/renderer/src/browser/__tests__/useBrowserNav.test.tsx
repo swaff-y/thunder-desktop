@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, render } from '@testing-library/react'
 import type { WebviewTag } from 'electron'
 import { useBrowserNav, type BrowserNav } from '../useBrowserNav'
@@ -46,7 +46,7 @@ function fakeWebview(): {
 
 function renderNav(
   el: WebviewTag,
-  onNewWindow?: (url: string) => void
+  onNewWindow?: (url: string, options?: { background?: boolean }) => void
 ): { nav: () => BrowserNav } {
   let latest: BrowserNav | null = null
 
@@ -214,5 +214,87 @@ describe('a muted background tab', () => {
     suspendAndResume(nav)
 
     expect(isMuted()).toBe(false)
+  })
+})
+
+/**
+ * TD-091: main builds the menu but can't open a tab, so the item the
+ * user chose comes back here to be carried out.
+ */
+describe('a right-click on a link', () => {
+  const PARAMS = {
+    mediaType: 'none',
+    srcURL: '',
+    pageURL: SUSPENDED_FROM,
+    linkURL: NEXT_URL
+  }
+
+  function stubContextMenu(result: unknown): ReturnType<typeof vi.fn> {
+    const show = vi.fn(async () => result)
+    Object.assign(window, {
+      thunder: { browser: { contextMenu: { show } } }
+    })
+    return show
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'thunder')
+  })
+
+  it('forwards the link URL with the rest of the params', async () => {
+    const show = stubContextMenu({ action: 'none' })
+    const { el, emit } = fakeWebview()
+    renderNav(el, vi.fn())
+
+    await act(async () => {
+      emit('context-menu', { params: PARAMS })
+    })
+
+    expect(show).toHaveBeenCalledWith({
+      webContentsId: 7,
+      mediaType: 'none',
+      srcURL: '',
+      pageURL: SUSPENDED_FROM,
+      linkURL: NEXT_URL
+    })
+  })
+
+  it('opens a background tab and leaves this page where it is', async () => {
+    stubContextMenu({ action: 'open-in-new-tab', url: NEXT_URL })
+    const onNewWindow = vi.fn()
+    const { el, emit, loadURL } = fakeWebview()
+    renderNav(el, onNewWindow)
+
+    await act(async () => {
+      emit('context-menu', { params: PARAMS })
+    })
+
+    expect(onNewWindow).toHaveBeenCalledWith(NEXT_URL, { background: true })
+    expect(loadURL).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when there is no tab strip to open into', async () => {
+    stubContextMenu({ action: 'open-in-new-tab', url: NEXT_URL })
+    const { el, emit, loadURL } = fakeWebview()
+    renderNav(el)
+
+    await act(async () => {
+      emit('context-menu', { params: PARAMS })
+    })
+
+    expect(loadURL).not.toHaveBeenCalled()
+  })
+
+  it('opens nothing when main reports no choice', async () => {
+    stubContextMenu({ action: 'none' })
+    const onNewWindow = vi.fn()
+    const { el, emit } = fakeWebview()
+    renderNav(el, onNewWindow)
+
+    await act(async () => {
+      emit('context-menu', { params: PARAMS })
+    })
+
+    expect(onNewWindow).not.toHaveBeenCalled()
   })
 })

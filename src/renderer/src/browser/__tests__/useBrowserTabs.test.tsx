@@ -50,6 +50,37 @@ describe('useBrowserTabs', () => {
     expect(tabs().activeId).toBe(tabs().entries[1].id)
   })
 
+  // TD-091: a right-click on a link means keep me here, unlike a
+  // `target=_blank` popup asking to be looked at.
+  it('opens a background tab without moving the one on screen', () => {
+    const { tabs } = renderTabs()
+    const active = tabs().activeId
+
+    let opened: boolean | undefined
+    act(() => {
+      opened = tabs().actions.open('https://example.com/cat.gif', { background: true })
+    })
+
+    expect(opened).toBe(true)
+    expect(tabs().entries).toHaveLength(2)
+    expect(tabs().entries[1].url).toBe('https://example.com/cat.gif')
+    expect(tabs().activeId).toBe(active)
+  })
+
+  it('refuses a background tab at the cap, with the same message', () => {
+    const { tabs } = renderTabs()
+    fill(tabs, MAX_BROWSER_TABS)
+
+    let opened: boolean | undefined
+    act(() => {
+      opened = tabs().actions.open('https://example.com/cat.gif', { background: true })
+    })
+
+    expect(opened).toBe(false)
+    expect(tabs().entries).toHaveLength(MAX_BROWSER_TABS)
+    expect(tabs().message).toMatch(/limit/i)
+  })
+
   it('opens on the initial URL when given no URL', () => {
     const { tabs } = renderTabs()
 

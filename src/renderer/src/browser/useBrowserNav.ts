@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContextMenuEvent, DidFailLoadEvent, WebviewTag } from 'electron'
+import type { BrowserTabOpenOptions } from './useBrowserTabs'
 
 /**
  * TD-021: state + actions for the embedded browser.
@@ -118,10 +119,13 @@ interface PageFaviconUpdatedEvent extends Event {
  * other than this webview — `BrowserTabView` passes the tabs context's
  * `open`, which is what makes a popup a new tab instead of a page the
  * user has to Back out of. Absent, the link loads in place as before.
+ *
+ * TD-091 reuses it for the context menu's "Open link in new tab", which
+ * passes `background` so the page the link came from stays on screen.
  */
 export function useBrowserNav(
   initialUrl: string,
-  onNewWindow?: (url: string) => void
+  onNewWindow?: (url: string, options?: BrowserTabOpenOptions) => void
 ): BrowserNav {
   const [url, setUrl] = useState(initialUrl)
   const [inputUrl, setInputUrl] = useState(initialUrl)
@@ -269,10 +273,12 @@ export function useBrowserNav(
           // Unparseable URL — drop silently; nothing safe to do with it.
         }
       }
-      // TD-047: forward image right-clicks to main so it can pop a
-      // native "Save image" menu. Main applies the partition gate,
-      // mediaType / scheme checks, and the actual menu construction —
-      // the renderer just relays params (no `electron` import needed).
+      // TD-047: forward right-clicks to main so it can pop a native
+      // menu. Main applies the partition gate, the mediaType / scheme
+      // checks, and the actual menu construction — the renderer just
+      // relays params (no `electron` import needed). TD-091: "Open link
+      // in new tab" is the one item main can't carry out, because the
+      // tab strip is renderer state, so it comes back here instead.
       const onContextMenu = (event: ContextMenuEvent): void => {
         let id: number
         try {
@@ -285,7 +291,15 @@ export function useBrowserNav(
             webContentsId: id,
             mediaType: event.params.mediaType,
             srcURL: event.params.srcURL,
-            pageURL: event.params.pageURL
+            pageURL: event.params.pageURL,
+            linkURL: event.params.linkURL
+          })
+          .then((result) => {
+            if (result.action !== 'open-in-new-tab') return
+            // No handler means this webview is the only page there is,
+            // and loading the link here would destroy the one the user
+            // right-clicked precisely to keep.
+            onNewWindowRef.current?.(result.url, { background: true })
           })
           .catch(() => {
             // Menu construction errors are non-actionable for the user;

@@ -40,9 +40,19 @@ export interface BrowserTabEntry {
  * `BrowserTabView` can take these without also taking a render on every
  * other tab's page load.
  */
+export interface BrowserTabOpenOptions {
+  /**
+   * TD-091: leave the tab on screen where it is. A `target=_blank`
+   * popup is the page asking to be looked at; a right-click on a link
+   * is the user saying the opposite.
+   */
+  background?: boolean
+}
+
 export interface BrowserTabActions {
-  /** Opens a foreground tab and answers whether there was room for it. */
-  open: (url?: string) => boolean
+  /** Opens a tab and answers whether there was room for it. Foreground
+   *  unless `background` says otherwise. */
+  open: (url?: string, options?: BrowserTabOpenOptions) => boolean
   close: (id: string) => void
   activate: (id: string) => void
   /** Surfaces a refusal that happened before any tab was created. */
@@ -77,14 +87,14 @@ export function useBrowserTabs(): BrowserTabs {
   const [message, setMessage] = useState<string | null>(null)
 
   const open = useCallback(
-    (url?: string): boolean => {
+    (url?: string, options?: BrowserTabOpenOptions): boolean => {
       if (tabs.length >= MAX_BROWSER_TABS) {
         setMessage(CAP_MESSAGE)
         return false
       }
       const tab = createTab(url ?? INITIAL_URL)
       setTabs((prev) => [...prev, tab])
-      setActiveId(tab.id)
+      if (!options?.background) setActiveId(tab.id)
       setMessage(null)
       return true
     },

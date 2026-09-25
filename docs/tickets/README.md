@@ -147,6 +147,17 @@ could ever have copied phase 8.
 
 ## Phase 10 — Browser tabs
 
+- [TD-091](TD-091-browser-open-link-in-new-tab.md) — Browser tab:
+  right-click a link → **Open link in new tab**. TD-089's strip can only
+  be reached by **+** or a page's own `target=_blank`, so following an
+  ordinary link still destroys the page you were reading. TD-047 already
+  built the menu — it just returns early on anything that is not an
+  image, and its request shape carries no `linkURL`. The menu is built in
+  main while the strip lives in the renderer, so the `ipcMain.handle`
+  resolves with the item chosen rather than growing a push channel. Opens
+  in the **background**: a `target=_blank` popup asks to be looked at, a
+  right-click says keep me here.
+
 - [TD-089](complete/TD-089-browser-tabs.md) — Browser tab: tabs inside the
   browser. The embedded browser has one page, so following a link or a
   `target=_blank` is destructive and TD-080's chat web image throws away

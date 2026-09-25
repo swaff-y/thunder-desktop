@@ -1,9 +1,10 @@
 /**
- * TD-047: tests for the "Save image" context-menu IPC handler. The
- * Electron `Menu` / `webContents` / `session` surfaces are mocked so
- * we can observe what template would be built, whether `popup` is
- * called, and which arguments make it through to the download
- * pipeline (streamed http(s)) or the raw-bytes path (data:/blob:).
+ * TD-047 / TD-091: tests for the context-menu IPC handler. The Electron
+ * `Menu` / `webContents` / `session` surfaces are mocked so we can
+ * observe what template would be built, whether `popup` is called, what
+ * the invoke resolves with, and which arguments make it through to the
+ * download pipeline (streamed http(s)) or the raw-bytes path
+ * (data:/blob:).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,7 +24,13 @@ let focusedWindow: { isDestroyed: () => boolean } | null = {
 
 const popupSpy = vi.fn()
 const buildFromTemplateSpy = vi.fn()
-let lastTemplate: Array<{ label: string; click?: () => void }> = []
+let lastTemplate: Array<{ label?: string; type?: string; click?: () => void }> = []
+/**
+ * Label of the item to click while the menu is open, mirroring
+ * Electron's ordering: the click handler runs, then `popup`'s close
+ * callback. Null means the user dismissed the menu without choosing.
+ */
+let clickWhileOpen: string | null = null
 
 const ipcHandlers = new Map<
   string,
@@ -35,10 +42,18 @@ vi.mock('electron', () => ({
     getFocusedWindow: () => focusedWindow
   },
   Menu: {
-    buildFromTemplate: (template: Array<{ label: string; click?: () => void }>) => {
+    buildFromTemplate: (template: Array<{ label?: string; type?: string; click?: () => void }>) => {
       buildFromTemplateSpy(template)
       lastTemplate = template
-      return { popup: popupSpy }
+      return {
+        popup: (options: { window: unknown; callback?: () => void }) => {
+          popupSpy(options)
+          if (clickWhileOpen !== null) {
+            lastTemplate.find((item) => item.label === clickWhileOpen)?.click?.()
+          }
+          options.callback?.()
+        }
+      }
     }
   },
   ipcMain: {
@@ -61,6 +76,7 @@ vi.mock('electron', () => ({
 }))
 
 const { THUNDER_IPC_CHANNELS } = await import('../../../preload/thunder-api')
+type ThunderContextMenuResult = import('../../../preload/thunder-api').ThunderContextMenuResult
 
 type StartBrowserDownload = (args: {
   assetUrl: string
@@ -79,10 +95,10 @@ let saveImageBytes: ReturnType<typeof vi.fn<SaveImageBytes>>
 let registerBrowserContextMenuHandlers: typeof import('../browser-context-menu').registerBrowserContextMenuHandlers
 let deriveImageFilename: typeof import('../browser-context-menu').deriveImageFilename
 
-async function callShow(args: unknown): Promise<void> {
+async function callShow(args: unknown): Promise<ThunderContextMenuResult> {
   const handler = ipcHandlers.get(THUNDER_IPC_CHANNELS.browserContextMenuShow)
   if (!handler) throw new Error('context-menu show handler not registered')
-  await handler({}, args)
+  return (await handler({}, args)) as ThunderContextMenuResult
 }
 
 // Click handlers kick off async work (saveImage) via `void ...catch`.
@@ -93,11 +109,12 @@ async function clickAndFlush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-describe('browser-context-menu (TD-047)', () => {
+describe('browser-context-menu (TD-047, TD-091)', () => {
   beforeEach(async () => {
     popupSpy.mockReset()
     buildFromTemplateSpy.mockReset()
     lastTemplate = []
+    clickWhileOpen = null
     ipcHandlers.clear()
     mockGuest = {
       isDestroyed: (): boolean => false,
@@ -163,7 +180,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/p.jpg',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
     expect(popupSpy).not.toHaveBeenCalled()
@@ -176,7 +194,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 999,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/p.jpg',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
   })
@@ -193,7 +212,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/p.jpg',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
   })
@@ -210,7 +230,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: '42',
       mediaType: 'image',
       srcURL: 'https://x/p.jpg',
-      pageURL: 'https://x/'
+      pageURL: 'https://x/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
   })
@@ -222,7 +243,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'none',
       srcURL: 'https://cdn.example.com/p.jpg',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
     expect(startBrowserDownload).not.toHaveBeenCalled()
@@ -233,7 +255,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'file:///etc/passwd',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).not.toHaveBeenCalled()
   })
@@ -245,12 +268,13 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/photo.jpg',
-      pageURL: 'https://example.com/page'
+      pageURL: 'https://example.com/page',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
     expect(lastTemplate).toHaveLength(1)
     expect(lastTemplate[0]?.label).toBe('Save image')
-    expect(popupSpy).toHaveBeenCalledWith({ window: focusedWindow })
+    expect(popupSpy).toHaveBeenCalledWith(expect.objectContaining({ window: focusedWindow }))
   })
 
   it('does not pop the menu when no window is focused', async () => {
@@ -259,7 +283,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/photo.jpg',
-      pageURL: 'https://example.com/page'
+      pageURL: 'https://example.com/page',
+      linkURL: ''
     })
     expect(popupSpy).not.toHaveBeenCalled()
   })
@@ -270,7 +295,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/photo.jpg',
-      pageURL: 'https://example.com/page'
+      pageURL: 'https://example.com/page',
+      linkURL: ''
     })
     expect(popupSpy).not.toHaveBeenCalled()
   })
@@ -282,7 +308,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/photo.jpg',
-      pageURL: 'https://example.com/page'
+      pageURL: 'https://example.com/page',
+      linkURL: ''
     })
     await clickAndFlush()
     expect(startBrowserDownload).toHaveBeenCalledWith({
@@ -298,7 +325,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'https://cdn.example.com/photo.jpg',
-      pageURL: 'about:blank'
+      pageURL: 'about:blank',
+      linkURL: ''
     })
     await clickAndFlush()
     expect(startBrowserDownload).toHaveBeenCalledWith({
@@ -316,7 +344,8 @@ describe('browser-context-menu (TD-047)', () => {
         webContentsId: 42,
         mediaType: 'image',
         srcURL: 'https://cdn.example.com/photo.jpg',
-        pageURL: 'https://example.com/'
+        pageURL: 'https://example.com/',
+        linkURL: ''
       })
       await clickAndFlush()
       expect(errorSpy).toHaveBeenCalledWith(
@@ -336,7 +365,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: `data:image/gif;base64,${original.toString('base64')}`,
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
     await clickAndFlush()
@@ -355,7 +385,8 @@ describe('browser-context-menu (TD-047)', () => {
         webContentsId: 42,
         mediaType: 'image',
         srcURL: 'data:text/plain;base64,aGVsbG8=',
-        pageURL: 'https://example.com/'
+        pageURL: 'https://example.com/',
+        linkURL: ''
       })
       // The menu still shows (scheme is data:), but the click writes
       // nothing because decode returns null.
@@ -383,7 +414,8 @@ describe('browser-context-menu (TD-047)', () => {
       webContentsId: 42,
       mediaType: 'image',
       srcURL: 'blob:https://example.com/abc-123',
-      pageURL: 'https://example.com/'
+      pageURL: 'https://example.com/',
+      linkURL: ''
     })
     expect(buildFromTemplateSpy).toHaveBeenCalledTimes(1)
     await clickAndFlush()
@@ -406,7 +438,8 @@ describe('browser-context-menu (TD-047)', () => {
         webContentsId: 42,
         mediaType: 'image',
         srcURL: 'blob:https://example.com/abc-123',
-        pageURL: 'https://example.com/'
+        pageURL: 'https://example.com/',
+        linkURL: ''
       })
       await clickAndFlush()
       expect(saveImageBytes).not.toHaveBeenCalled()
@@ -429,12 +462,122 @@ describe('browser-context-menu (TD-047)', () => {
         webContentsId: 42,
         mediaType: 'image',
         srcURL: 'blob:https://example.com/abc-123',
-        pageURL: 'https://example.com/'
+        pageURL: 'https://example.com/',
+        linkURL: ''
       })
       await clickAndFlush()
       expect(saveImageBytes).not.toHaveBeenCalled()
     } finally {
       errorSpy.mockRestore()
     }
+  })
+
+  // ─── TD-091: "Open link in new tab" ───────────────────────────────
+
+  describe('open link in new tab (TD-091)', () => {
+    const LINK = {
+      webContentsId: 42,
+      mediaType: 'none' as const,
+      srcURL: '',
+      pageURL: 'https://example.com/page',
+      linkURL: 'https://example.com/target'
+    }
+
+    it('builds a single link item and resolves with the parsed URL when clicked', async () => {
+      clickWhileOpen = 'Open link in new tab'
+      const result = await callShow(LINK)
+      expect(lastTemplate).toHaveLength(1)
+      expect(lastTemplate[0]?.label).toBe('Open link in new tab')
+      expect(result).toEqual({
+        action: 'open-in-new-tab',
+        url: 'https://example.com/target'
+      })
+      expect(startBrowserDownload).not.toHaveBeenCalled()
+    })
+
+    it('resolves with the re-serialised URL rather than the raw string', async () => {
+      clickWhileOpen = 'Open link in new tab'
+      const result = await callShow({ ...LINK, linkURL: 'https://example.com' })
+      expect(result).toEqual({ action: 'open-in-new-tab', url: 'https://example.com/' })
+    })
+
+    it('resolves none when the menu is dismissed without a choice', async () => {
+      const result = await callShow(LINK)
+      expect(popupSpy).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({ action: 'none' })
+    })
+
+    it('settles once when a click is followed by the close callback', async () => {
+      clickWhileOpen = 'Open link in new tab'
+      // The mock fires `callback` after the click, as Electron does; the
+      // later `none` must not overwrite the choice already resolved.
+      const result = await callShow(LINK)
+      expect(result).toEqual({ action: 'open-in-new-tab', url: 'https://example.com/target' })
+    })
+
+    it('offers no item for a non-http(s) link and pops no menu', async () => {
+      for (const linkURL of ['javascript:alert(1)', 'file:///etc/passwd', 'mailto:a@b.c']) {
+        buildFromTemplateSpy.mockClear()
+        const result = await callShow({ ...LINK, linkURL })
+        expect(buildFromTemplateSpy).not.toHaveBeenCalled()
+        expect(result).toEqual({ action: 'none' })
+      }
+    })
+
+    it('pops no menu for a right-click with neither a link nor a saveable image', async () => {
+      const result = await callShow({ ...LINK, linkURL: '' })
+      expect(buildFromTemplateSpy).not.toHaveBeenCalled()
+      expect(result).toEqual({ action: 'none' })
+    })
+
+    it('rejects a request with no linkURL field as malformed', async () => {
+      const result = await callShow({
+        webContentsId: 42,
+        mediaType: 'image',
+        srcURL: 'https://cdn.example.com/photo.jpg',
+        pageURL: 'https://example.com/'
+      })
+      expect(buildFromTemplateSpy).not.toHaveBeenCalled()
+      expect(result).toEqual({ action: 'none' })
+    })
+
+    it('offers the link first, then the image, for a linked image', async () => {
+      const result = await callShow({
+        ...LINK,
+        mediaType: 'image',
+        srcURL: 'https://cdn.example.com/photo.jpg'
+      })
+      expect(lastTemplate.map((item) => item.label ?? item.type)).toEqual([
+        'Open link in new tab',
+        'separator',
+        'Save image'
+      ])
+      expect(result).toEqual({ action: 'none' })
+    })
+
+    it('saves the image without proposing a tab when the image item is chosen', async () => {
+      clickWhileOpen = 'Save image'
+      const result = await callShow({
+        ...LINK,
+        mediaType: 'image',
+        srcURL: 'https://cdn.example.com/photo.jpg'
+      })
+      expect(result).toEqual({ action: 'none' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(startBrowserDownload).toHaveBeenCalledWith({
+        assetUrl: 'https://cdn.example.com/photo.jpg',
+        suggestedFilename: 'photo.jpg',
+        referer: 'https://example.com/page'
+      })
+    })
+
+    it('still resolves none when the partition gate rejects the request', async () => {
+      mockGuest = {
+        isDestroyed: (): boolean => false,
+        session: otherSession,
+        executeJavaScript: vi.fn()
+      }
+      expect(await callShow(LINK)).toEqual({ action: 'none' })
+    })
   })
 })

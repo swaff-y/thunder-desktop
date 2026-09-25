@@ -1,23 +1,30 @@
 /**
- * TD-047: native "Save image" context menu for the embedded Browser
- * tab.
+ * TD-047: native context menu for the embedded Browser tab. TD-091
+ * added its second item.
  *
  * The renderer can't construct an Electron `Menu` (no `electron`
  * import in the renderer, per the boundary), so it forwards the
  * webview's `context-menu` params over IPC; this module gates the
- * request, builds a single-item native menu, and pops it. The click
- * handler calls back into the TD-024 download pipeline so the file
- * lands in the same downloads drawer as a detected-asset download —
- * progress, completion and "Show in Folder" all reuse that surface.
+ * request, builds a native menu from whatever the params support, and
+ * pops it. "Save image" calls back into the TD-024 download pipeline so
+ * the file lands in the same downloads drawer as a detected-asset
+ * download — progress, completion and "Show in Folder" all reuse that
+ * surface.
+ *
+ * "Open link in new tab" finishes somewhere main cannot reach: the tab
+ * strip is `useBrowserTabs`, renderer state. So the invoke resolves
+ * with the chosen item rather than acting on it, and the renderer opens
+ * the tab — one channel, and no second copy of the tab-open path.
  *
  * Trust model: every field on the request is renderer-supplied and
  * therefore untrusted. The handler:
  *   - resolves `webContentsId` to a live `webContents` and checks its
  *     session against the Browser-tab partition (fail closed),
- *   - rejects non-`image` mediaType (no menu shown),
- *   - accepts only `http(s)`, `data:` and `blob:` image sources — the
- *     same schemes a normal browser's "Save image" supports — and
- *     fails closed on anything else,
+ *   - offers "Save image" only for an `image` mediaType whose source
+ *     is `http(s)`, `data:` or `blob:` — the same schemes a normal
+ *     browser's "Save image" supports — and fails closed otherwise,
+ *   - offers "Open link in new tab" only for an `http(s)` `linkURL`,
+ *     so a `javascript:` or `file:` link gets no item and no menu,
  *   - uses `pageURL` as the Referer header only when it parses as
  *     http(s); a malformed value is dropped silently rather than
  *     smuggled into an outbound request.
@@ -33,13 +40,14 @@
  */
 
 import { BrowserWindow, Menu, ipcMain, session, webContents } from 'electron'
-import type { IpcMainInvokeEvent, WebContents } from 'electron'
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions, WebContents } from 'electron'
 import { basename, extname } from 'node:path'
 import { THUNDER_BROWSER_PARTITION } from '../../shared/browser'
 import {
   THUNDER_IPC_CHANNELS,
   type ThunderBrowserContextMenuRequest,
-  type ThunderContextMenuMediaType
+  type ThunderContextMenuMediaType,
+  type ThunderContextMenuResult
 } from '../../preload/thunder-api'
 import type { BrowserDownloadHandlers } from './browser-download'
 import {
@@ -50,6 +58,10 @@ import {
 
 const DEFAULT_IMAGE_EXT = '.jpg'
 const DEFAULT_IMAGE_BASENAME = 'image'
+
+// Handed back by reference from every refusal path, so frozen rather
+// than trusted not to be mutated.
+const NONE: ThunderContextMenuResult = Object.freeze({ action: 'none' })
 
 const MEDIA_TYPES: ReadonlySet<ThunderContextMenuMediaType> = new Set([
   'none',
@@ -67,12 +79,13 @@ function isMediaType(value: unknown): value is ThunderContextMenuMediaType {
 
 function parseRequest(args: unknown): ThunderBrowserContextMenuRequest | null {
   if (!args || typeof args !== 'object') return null
-  const { webContentsId, mediaType, srcURL, pageURL } = args as Record<string, unknown>
+  const { webContentsId, mediaType, srcURL, pageURL, linkURL } = args as Record<string, unknown>
   if (typeof webContentsId !== 'number' || !Number.isInteger(webContentsId)) return null
   if (!isMediaType(mediaType)) return null
   if (typeof srcURL !== 'string') return null
   if (typeof pageURL !== 'string') return null
-  return { webContentsId, mediaType, srcURL, pageURL }
+  if (typeof linkURL !== 'string') return null
+  return { webContentsId, mediaType, srcURL, pageURL, linkURL }
 }
 
 function parseHttpUrl(value: string): URL | null {
@@ -208,9 +221,9 @@ export function registerBrowserContextMenuHandlers(deps: BrowserDownloadHandlers
 
   ipcMain.handle(
     THUNDER_IPC_CHANNELS.browserContextMenuShow,
-    async (_event: IpcMainInvokeEvent, args: unknown): Promise<void> => {
+    async (_event: IpcMainInvokeEvent, args: unknown): Promise<ThunderContextMenuResult> => {
       const request = parseRequest(args)
-      if (!request) return
+      if (!request) return NONE
 
       // Partition gate: resolve the claimed webContentsId and verify
       // it's the Browser-tab webview. `_event.sender` is the host
@@ -220,37 +233,60 @@ export function registerBrowserContextMenuHandlers(deps: BrowserDownloadHandlers
       // partition check below, which rejects any guest id pointing at
       // a webContents outside the Browser-tab session.
       const guest = webContents.fromId(request.webContentsId)
-      if (!guest || guest.isDestroyed() || guest.session !== browserSession) return
+      if (!guest || guest.isDestroyed() || guest.session !== browserSession) return NONE
 
-      // AC3 + AC4: only image right-clicks get a menu, and only when
-      // the source is a scheme we can save (http(s) / data: / blob:).
-      // Anything else fails closed — no item surfaces.
-      if (request.mediaType !== 'image') return
-      const scheme = imageScheme(request.srcURL)
-      if (scheme === null) return
-
-      const menu = Menu.buildFromTemplate([
-        {
-          label: 'Save image',
-          click: () => {
-            void saveImage(scheme, request, guest).catch((error: unknown) => {
-              // Failures after an `id` is minted surface to the drawer
-              // via the complete event; failures before it (decode,
-              // mkdir, write) have no drawer surface, so log them so
-              // the failure is at least diagnosable from the console.
-              console.error('[browser-context-menu] save image failed:', error)
-            })
-          }
-        }
-      ])
+      // TD-091 AC6 + TD-047 AC3/AC4: each item is offered only when the
+      // params can actually support it — an `http(s)` link, an image
+      // whose source is a scheme we can save. A right-click on neither
+      // pops no menu at all.
+      const link = parseHttpUrl(request.linkURL)
+      const scheme = request.mediaType === 'image' ? imageScheme(request.srcURL) : null
+      if (!link && scheme === null) return NONE
 
       // Anchor on the focused window. Electron picks the cursor
       // position by default, which is what the user expects from a
       // right-click. Skip when no window is focused (rare; e.g., the
       // user alt-tabbed between the right-click and the IPC landing).
       const window = BrowserWindow.getFocusedWindow()
-      if (!window || window.isDestroyed()) return
-      menu.popup({ window })
+      if (!window || window.isDestroyed()) return NONE
+
+      // A click fires before `popup`'s close callback, so the chosen item
+      // always resolves first and the `NONE` behind it is the no-op a
+      // second `resolve` always is. A dismissed menu fires the callback
+      // alone, which is what makes `NONE` the right thing to send there.
+      return await new Promise<ThunderContextMenuResult>((resolve) => {
+        const template: MenuItemConstructorOptions[] = []
+        if (link) {
+          // Chrome's order: the link first, then the image under it.
+          template.push({
+            label: 'Open link in new tab',
+            click: () => resolve({ action: 'open-in-new-tab', url: link.toString() })
+          })
+        }
+        if (scheme !== null) {
+          if (template.length > 0) template.push({ type: 'separator' })
+          template.push({
+            label: 'Save image',
+            click: () => {
+              // Main finishes this one itself, so the renderer is told
+              // there is nothing left for it to do.
+              resolve(NONE)
+              void saveImage(scheme, request, guest).catch((error: unknown) => {
+                // Failures after an `id` is minted surface to the drawer
+                // via the complete event; failures before it (decode,
+                // mkdir, write) have no drawer surface, so log them so
+                // the failure is at least diagnosable from the console.
+                console.error('[browser-context-menu] save image failed:', error)
+              })
+            }
+          })
+        }
+
+        Menu.buildFromTemplate(template).popup({
+          window,
+          callback: () => resolve(NONE)
+        })
+      })
     }
   )
 }

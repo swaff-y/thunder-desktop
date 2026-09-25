@@ -123,11 +123,13 @@ export const THUNDER_IPC_CHANNELS = {
   browserSessionClear: 'thunder:browser:session:clear',
 
   /**
-   * TD-047: native "Save image" context menu for the embedded Browser
-   * tab. Renderer forwards the webview's `context-menu` params; main
-   * gates on partition, builds an Electron `Menu` and pops it. The
-   * click handler reuses the TD-024 download pipeline so the image
-   * lands in the same downloads drawer as a detected asset. Handler in
+   * TD-047: native context menu for the embedded Browser tab. Renderer
+   * forwards the webview's `context-menu` params; main gates on
+   * partition, builds an Electron `Menu` and pops it. "Save image"
+   * reuses the TD-024 download pipeline so the image lands in the same
+   * downloads drawer as a detected asset. TD-091: the invoke resolves
+   * with the item the user chose, because "Open link in new tab" is
+   * the renderer's to carry out — the tab strip lives there. Handler in
    * `main/ipc/browser-context-menu.ts`.
    */
   browserContextMenuShow: 'thunder:browser:context-menu:show',
@@ -302,7 +304,24 @@ export interface ThunderBrowserContextMenuRequest {
   mediaType: ThunderContextMenuMediaType
   srcURL: string
   pageURL: string
+  /**
+   * TD-091: `params.linkURL` — the link enclosing the node that was
+   * right-clicked, empty when there isn't one. Untrusted like every
+   * field here; main parses it and offers an item only for `http(s)`.
+   */
+  linkURL: string
 }
+
+/**
+ * TD-091: what the user picked. `none` covers everything main finished
+ * by itself ("Save image"), a dismissed menu, and a request that failed
+ * a gate — the renderer has nothing different to do for any of them.
+ * The `url` is main's re-serialised parse of `linkURL`, not the raw
+ * string the renderer sent.
+ */
+export type ThunderContextMenuResult =
+  | { action: 'open-in-new-tab'; url: string }
+  | { action: 'none' }
 
 /**
  * TD-026: result of `window.thunder.dialog.openDirectory()`.
@@ -392,13 +411,15 @@ export interface ThunderApi {
      */
     clearSession: () => Promise<void>
     /**
-     * TD-047: ask main to pop the native "Save image" context menu for
-     * the embedded Browser tab. Main validates the request (partition,
-     * mediaType, srcURL scheme) and silently no-ops anything it doesn't
-     * recognise — there is no error surface back to the renderer.
+     * TD-047: ask main to pop the native context menu for the embedded
+     * Browser tab. Main validates the request (partition, mediaType,
+     * srcURL and linkURL schemes) and silently no-ops anything it
+     * doesn't recognise — there is no error surface back to the
+     * renderer. TD-091: resolves once the menu closes, with the item
+     * the renderer has to act on or `{ action: 'none' }`.
      */
     contextMenu: {
-      show: (request: ThunderBrowserContextMenuRequest) => Promise<void>
+      show: (request: ThunderBrowserContextMenuRequest) => Promise<ThunderContextMenuResult>
     }
   }
   /**

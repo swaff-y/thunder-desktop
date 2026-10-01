@@ -324,6 +324,18 @@ could ever have copied phase 8.
   today when a turn carries neither. Blocked on `@swaff-y/thunder-chat-core`
   TCC-014. Companions: web-thunder THW-36, thunder TH-049. Shipped in #79.
 
+- [TD-093](TD-093-the-refresh-token-replaces-the-stored-password.md) — The
+  refresh token replaces the stored password. TD-030's silent reauth keeps the
+  user's **password** in the credential store and replays `v1/login` with it
+  every time a JWT lapses; halo HALO-269 shipped `POST /v1/refresh`, so the
+  thing on disk can be a 30-day, revocable, single-purpose token instead. The
+  other half is the failure path: `client.ts` clears the record and redirects on
+  *any* reauth failure, which logs a user out of a month-long session because
+  Cognito was briefly busy — a 401 ends the session, a 500 or a dead network
+  must not. Existing installs upgrade themselves on first boot and the password
+  is deleted; the cost is a password entry every 30 days. Companions: thunder
+  TH-059, web-thunder THW-39.
+
 - [TD-090](complete/TD-090-the-queue-card-replaces-the-cart.md) — AI chat: the
   queue card replaces the cart. TC-046's `show_queue` proposes four records out
   of a real catalogue read; this is the fourth action card, and the first that

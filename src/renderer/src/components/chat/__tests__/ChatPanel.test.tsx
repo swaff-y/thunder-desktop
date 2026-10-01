@@ -762,3 +762,78 @@ describe("ChatPanel turn progress", () => {
     expect(statusLine()).not.toHaveTextContent("Step");
   });
 });
+
+describe("ChatPanel greeting", () => {
+  const GREETING = {
+    text: "Ask me about the catalogue.",
+    suggestions: ["What is popular this week?", "Show me Nick Cage films"],
+  };
+
+  function renderWithGreeting(
+    send: ChatSend,
+    greeting: typeof GREETING | undefined
+  ): ReturnType<typeof render> {
+    return render(
+      <MemoryRouter>
+        <BrowserNavProvider>
+          <ChatProvider
+            send={send}
+            cancelRequest={cancelRequest}
+            loadCapabilities={async () => ({ chat_enabled: true, tools: [], greeting })}
+          >
+            <ChatPanel />
+          </ChatProvider>
+        </BrowserNavProvider>
+      </MemoryRouter>
+    );
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("opens an empty chat with the greeting and its suggestions", async () => {
+    renderWithGreeting(async () => answer("Nick Cage"), GREETING);
+
+    expect(await screen.findByText(GREETING.text)).toBeInTheDocument();
+    const suggestions = within(
+      screen.getByRole("list", { name: "Suggested questions" })
+    ).getAllByRole("button");
+    expect(suggestions.map((button) => button.textContent)).toEqual(GREETING.suggestions);
+  });
+
+  it("asks a suggestion verbatim and drops the greeting once the turn exists", async () => {
+    const user = userEvent.setup();
+    const asked: string[] = [];
+    renderWithGreeting(async (question) => {
+      asked.push(question);
+      return answer("Nick Cage");
+    }, GREETING);
+
+    await user.click(await screen.findByRole("button", { name: GREETING.suggestions[0] }));
+
+    await waitFor(() => expect(asked).toEqual([GREETING.suggestions[0]]));
+    expect(saidLines()).toContain(GREETING.suggestions[0]);
+    expect(screen.queryByText(GREETING.text)).not.toBeInTheDocument();
+  });
+
+  it("brings the greeting back when the conversation is cleared", async () => {
+    const user = userEvent.setup();
+    renderWithGreeting(async () => answer("Nick Cage"), GREETING);
+
+    await user.click(await screen.findByRole("button", { name: GREETING.suggestions[0] }));
+    await waitFor(() => expect(screen.queryByText(GREETING.text)).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(screen.getByText(GREETING.text)).toBeInTheDocument();
+  });
+
+  it("leaves the panel silent when capabilities carry no greeting", async () => {
+    renderWithGreeting(async () => answer("Nick Cage"), undefined);
+
+    expect(await screen.findByRole("button", { name: "Ask" })).toBeInTheDocument();
+    expect(document.querySelector(".chat-greeting")).toBeNull();
+    expect(screen.getByRole("list")).toBeEmptyDOMElement();
+  });
+});

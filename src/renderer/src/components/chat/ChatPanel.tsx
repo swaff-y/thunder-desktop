@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
-import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
+import type { ChatAction, ChatStatus, Greeting } from "@swaff-y/thunder-chat-core";
 import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
 import ActionOverlay from "./ActionOverlay";
@@ -173,12 +173,41 @@ function TurnAction({
 }
 
 /**
+ * TD-092: what an empty chat opens with. Every word of it is the server's —
+ * a suggestion is the question it starts, sent as it stands.
+ */
+function ChatGreeting({
+  greeting,
+  onAsk,
+}: {
+  greeting: Greeting;
+  onAsk: (question: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className="chat-greeting">
+      <p className="chat-greeting-text">{greeting.text}</p>
+      {greeting.suggestions.length > 0 && (
+        <ul className="chat-suggestions" aria-label="Suggested questions">
+          {greeting.suggestions.map((suggestion) => (
+            <li key={suggestion}>
+              <button type="button" className="chat-suggestion" onClick={() => onAsk(suggestion)}>
+                {suggestion}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
  * TD-069: the drawer passes this so the cards grow an `Expand` button and
  * the overlay has somewhere to draw. Off by default — `ChatPanel` renders
  * outside the drawer too, and an overlay there would cover the page.
  */
 export default function ChatPanel({ expandable = false }: { expandable?: boolean } = {}) {
-  const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
+  const { turns, status, usage, model, greeting, isEmpty, ask, retry, cancel, clear } = useChat();
   const [draft, setDraft] = useState(loadDraft);
   const [recall, setRecall] = useState<HistoryWalk | null>(null);
   const [expanded, setExpanded] = useState<ChatAction | null>(null);
@@ -225,12 +254,15 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
     sessionStorage.setItem(DRAFT_STORAGE_KEY, text);
   }
 
-  function submitQuestion(): void {
-    const question = draft.trim();
+  function sendQuestion(question: string): void {
     if (!question || isPending) return;
     writeDraft("");
     setRecall(null);
     void ask(question);
+  }
+
+  function submitQuestion(): void {
+    sendQuestion(draft.trim());
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
@@ -342,6 +374,9 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
           </li>
         ))}
       </ol>
+
+      {/* No `inert`: the overlay opens on a card, and a card needs a turn. */}
+      {isEmpty && greeting !== null && <ChatGreeting greeting={greeting} onAsk={sendQuestion} />}
 
       <p className="visually-hidden" role="status">
         {liveMessage(status, lastAnswer)}
@@ -549,6 +584,41 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
             animation: none;
             opacity: 0.6;
           }
+        }
+        .chat-greeting {
+          border-top: 1px solid var(--color-border);
+          padding: var(--space-md);
+        }
+        .chat-greeting-text {
+          color: var(--color-text);
+          font-size: var(--text-body);
+          margin: 0;
+          white-space: pre-wrap;
+        }
+        .chat-suggestions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--space-sm);
+          list-style: none;
+          margin: var(--space-md) 0 0;
+          padding: 0;
+        }
+        .chat-suggestion {
+          background: var(--color-bg-alt);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-xl);
+          color: var(--color-text);
+          cursor: pointer;
+          font-size: var(--text-body-sm);
+          padding: var(--space-xs) var(--space-md);
+          text-align: left;
+        }
+        .chat-suggestion:hover {
+          border-color: var(--color-accent);
+        }
+        .chat-suggestion:focus-visible {
+          outline: 2px solid var(--color-accent);
+          outline-offset: 2px;
         }
         .chat-tool {
           align-items: center;

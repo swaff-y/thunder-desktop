@@ -14,7 +14,7 @@
  *   "token": "<base64 ciphertext or plaintext>",
  *   "apiKey": "...",
  *   "email": "...",
- *   "password": "..."
+ *   "refreshToken": "..."
  * }
  * ```
  *
@@ -31,13 +31,30 @@
 
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { errorMessage } from '../../shared/errors'
 
 export interface StoredCredentials {
   token: string
   apiKey: string
   /** Optional — pre-TD-030 migrations only carry token + apiKey. */
   email?: string
-  /** Present iff the user opted into "Stay signed in" at login time. */
+  /**
+   * TD-093: the refresh token `POST /v1/refresh` mints new access tokens
+   * from. Present iff the user opted into "Stay signed in" at login time.
+   * Replaces the password TD-030 kept here — good for one 30-day Halo
+   * session rather than for signing in anywhere, forever.
+   */
+  refreshToken?: string
+}
+
+/**
+ * TD-093: what a read can hand back, which is a superset of what
+ * {@link setCredentials} will write. A record written before TD-093 carries
+ * the user's `password` and no refresh token; the renderer's boot check
+ * trades it for one, once, and the field never appears on disk again.
+ * Nothing but that migration may read it.
+ */
+export interface MigratableCredentials extends StoredCredentials {
   password?: string
 }
 
@@ -52,6 +69,8 @@ interface OnDiskCredentials {
   token: string
   apiKey: string
   email?: string
+  refreshToken?: string
+  /** Pre-TD-093 records only. Read for the migration, never written. */
   password?: string
 }
 
@@ -96,9 +115,10 @@ function readUsableFile(path: string, crypto: CryptoAdapter): OnDiskCredentials 
 /**
  * TD-053: the access token on its own, for the halo-mcp client's
  * per-request read. {@link getCredentials} would also decrypt the api
- * key, the email and — when "Stay signed in" is on — the user's
- * password, materialising all three in main-process memory on every
- * outbound HTTP request for no reason.
+ * key, the email and — when "Stay signed in" is on — the refresh token,
+ * materialising all three in main-process memory on every outbound HTTP
+ * request for no reason. TD-093 swapped the credential at rest and left
+ * this a one-field read.
  */
 export function getToken(path: string, crypto: CryptoAdapter): string | null {
   const entry = readUsableFile(path, crypto)
@@ -107,12 +127,12 @@ export function getToken(path: string, crypto: CryptoAdapter): string | null {
   try {
     return crypto.decrypt(Buffer.from(entry.token, 'base64'))
   } catch (error) {
-    console.error('[auth-io] failed to decrypt credentials', error)
+    console.error('[auth-io] failed to decrypt credentials:', errorMessage(error))
     return null
   }
 }
 
-export function getCredentials(path: string, crypto: CryptoAdapter): StoredCredentials | null {
+export function getCredentials(path: string, crypto: CryptoAdapter): MigratableCredentials | null {
   const entry = readUsableFile(path, crypto)
   if (entry === null) return null
 
@@ -122,6 +142,7 @@ export function getCredentials(path: string, crypto: CryptoAdapter): StoredCrede
         token: entry.token,
         apiKey: entry.apiKey,
         email: entry.email,
+        refreshToken: entry.refreshToken,
         password: entry.password
       }
     }
@@ -129,10 +150,13 @@ export function getCredentials(path: string, crypto: CryptoAdapter): StoredCrede
       token: crypto.decrypt(Buffer.from(entry.token, 'base64')),
       apiKey: crypto.decrypt(Buffer.from(entry.apiKey, 'base64')),
       email: entry.email ? crypto.decrypt(Buffer.from(entry.email, 'base64')) : undefined,
+      refreshToken: entry.refreshToken
+        ? crypto.decrypt(Buffer.from(entry.refreshToken, 'base64'))
+        : undefined,
       password: entry.password ? crypto.decrypt(Buffer.from(entry.password, 'base64')) : undefined
     }
   } catch (error) {
-    console.error('[auth-io] failed to decrypt credentials', error)
+    console.error('[auth-io] failed to decrypt credentials:', errorMessage(error))
     return null
   }
 }
@@ -151,12 +175,12 @@ export function setCredentials(
       ...(creds.email !== undefined && {
         email: crypto.encrypt(creds.email).toString('base64')
       }),
-      ...(creds.password !== undefined && {
-        password: crypto.encrypt(creds.password).toString('base64')
+      ...(creds.refreshToken !== undefined && {
+        refreshToken: crypto.encrypt(creds.refreshToken).toString('base64')
       })
     }
   } else {
-    console.warn('[auth-io] safeStorage unavailable — refusing to persist password')
+    console.warn('[auth-io] safeStorage unavailable — refusing to persist refresh token')
     payload = {
       encrypted: false,
       token: creds.token,
@@ -172,6 +196,6 @@ export function clearCredentials(path: string): void {
   try {
     unlinkSync(path)
   } catch (error) {
-    console.error('[auth-io] failed to clear credentials', error)
+    console.error('[auth-io] failed to clear credentials:', errorMessage(error))
   }
 }

@@ -1,6 +1,6 @@
 import axios from "axios";
 import { API_URL } from "../config/env";
-import { reauthenticate } from "./auth";
+import { isSessionEnded, reauthenticate } from "./auth";
 
 interface CachedCreds {
   token: string;
@@ -59,6 +59,22 @@ interface RetriedConfig {
   _td030Retried?: boolean;
 }
 
+/**
+ * The session is over: drop the record, the cache and the user onto the
+ * login screen, exactly once. Only reached when the failure says so —
+ * see {@link isSessionEnded}.
+ */
+async function endSession(): Promise<void> {
+  isRedirectingToLogin = true;
+  try {
+    await window.thunder?.auth.clear();
+  } catch {
+    // ignore — IPC may be unavailable mid-shutdown
+  }
+  cached = null;
+  window.location.hash = "#/login";
+}
+
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -70,37 +86,36 @@ client.interceptors.response.use(
       // means the new token is also being rejected — looping would mint
       // tokens forever; the user needs to re-login instead.
       if (config?._td030Retried) {
-        isRedirectingToLogin = true;
-        try {
-          await window.thunder?.auth.clear();
-        } catch {
-          // ignore — IPC may be unavailable mid-shutdown
-        }
-        cached = null;
-        window.location.hash = "#/login";
+        await endSession();
         return Promise.reject(error);
       }
 
+      let fresh: CachedCreds;
       try {
-        const fresh = await ensureReauth();
-        if (config) {
-          config._td030Retried = true;
-          config.headers["Authorization"] = `Bearer ${fresh.token}`;
-          config.headers["x-api-key"] = fresh.apiKey;
-          return await client.request(config);
-        }
-      } catch {
-        // fall through to redirect
+        fresh = await ensureReauth();
+      } catch (reauthError) {
+        // TD-093: a 500 from `/v1/refresh` or an outright transport
+        // failure is Cognito being busy or the network blinking — reject
+        // this one request and leave the record and `isRedirectingToLogin`
+        // alone, so a later request succeeds once the backend is reachable.
+        // Clearing here would end a 30-day session over a blip, and the
+        // record is the only copy of the credential.
+        if (isSessionEnded(reauthError)) await endSession();
+        return Promise.reject(error);
       }
 
-      isRedirectingToLogin = true;
-      try {
-        await window.thunder?.auth.clear();
-      } catch {
-        // ignore — IPC may be unavailable mid-shutdown
+      // The retry is deliberately outside the catch above: a 401 on the
+      // retried request is this same interceptor's `_td030Retried` branch
+      // to handle, and treating it as a *reauth* failure here would clear
+      // and redirect a second time.
+      if (config) {
+        config._td030Retried = true;
+        config.headers["Authorization"] = `Bearer ${fresh.token}`;
+        config.headers["x-api-key"] = fresh.apiKey;
+        return await client.request(config);
       }
-      cached = null;
-      window.location.hash = "#/login";
+
+      await endSession();
     }
     return Promise.reject(error);
   }

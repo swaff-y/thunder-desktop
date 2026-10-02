@@ -222,17 +222,28 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
 export type ThunderMenuAction = never
 
 /**
- * TD-030: shape of credentials persisted via the keychain. `password` is
- * present iff the user opted into "Stay signed in" — its presence is
- * what enables silent reauth on token expiry.
+ * TD-030: shape of credentials persisted via the keychain. TD-093 replaced
+ * the password here with a refresh token: present iff the user opted into
+ * "Stay signed in", and its presence is what enables silent reauth on
+ * token expiry.
  */
 export interface ThunderAuthCredentials {
   token: string
   apiKey: string
-  /** Optional — pre-TD-030 migrations only carry token + apiKey.
-   *  Required for silent reauth; absence simply means no auto-refresh. */
+  /** Optional — pre-TD-030 migrations only carry token + apiKey. */
   email?: string
   /** Present iff "Stay signed in" was checked at login time. */
+  refreshToken?: string
+}
+
+/**
+ * TD-093: what a read can hand back, which is a superset of what `set`
+ * accepts. A record written before TD-093 carries the user's `password`
+ * and no refresh token; the renderer's boot check trades it for one, once.
+ * `set` cannot persist a password and nothing but that migration may read
+ * this field.
+ */
+export interface ThunderStoredAuthCredentials extends ThunderAuthCredentials {
   password?: string
 }
 
@@ -350,7 +361,7 @@ export interface ThunderApi {
    */
   platform: NodeJS.Platform
   auth: {
-    get: () => Promise<ThunderAuthCredentials | null>
+    get: () => Promise<ThunderStoredAuthCredentials | null>
     set: (creds: ThunderAuthCredentials) => Promise<void>
     clear: () => Promise<void>
   }

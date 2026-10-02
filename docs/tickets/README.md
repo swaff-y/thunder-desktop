@@ -336,3 +336,20 @@ could ever have copied phase 8.
   failed read still queues its record minimally rather than dropping it.
   `ActionOverlay` already degrades to nothing for the kind, which a test now
   locks in. Blocked on `@swaff-y/thunder-chat-core` TCC-015. Shipped in #80.
+
+- [TD-093](complete/TD-093-the-refresh-token-replaces-the-stored-password.md) —
+  The refresh token replaces the stored password. TD-030 kept the user's email
+  and password at rest and replayed `v1/login` with them on every expiry,
+  because that was all Halo offered. HALO-269 shipped `POST /v1/refresh`, so the
+  credential on disk is now good for one 30-day session, revocable server-side,
+  and survives a password change instead of silently starting to fail. The other
+  half is the failure path: TD-030's `catch { }` logged the user out whether the
+  password was wrong or the wifi dropped, so one predicate classifies HALO-269
+  §3's answers and the interceptor, the boot check and the focus handler all act
+  on it — a 500 or no response at all keeps the session, because the record it
+  would delete is the only copy of the credential. Existing installs trade the
+  password for a token on their first boot and never carry one again. Rotation is
+  off, so the write-back is the token it was handed, never the response's absent
+  key. `getToken` stays a one-field read (TD-053). The cost is accepted and
+  visible: 30 days from the last password entry, the user logs in again.
+  Companions: thunder TH-059, web-thunder THW-39. Shipped in #84.

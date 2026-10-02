@@ -353,3 +353,23 @@ could ever have copied phase 8.
   key. `getToken` stays a one-field read (TD-053). The cost is accepted and
   visible: 30 days from the last password entry, the user logs in again.
   Companions: thunder TH-059, web-thunder THW-39. Shipped in #84.
+
+- [TD-092](complete/TD-092-an-empty-chat-says-nothing.md) — AI chat: an empty
+  chat says nothing. thunder-context has been sending a welcome message since
+  TC-056 and this app never showed one — `turns.map(...)` over no turns is an
+  empty `<ol>`, so the panel's first word to a reader who had not asked anything
+  was none. Renders `greeting.text` and one button per suggestion while the
+  transcript is empty, and sends a pressed suggestion verbatim through the one
+  path the composer uses. Every word is the server's: no heading, no subtitle,
+  and no fallback string, because a greeting written here is a second source of
+  copy nothing updates. A null greeting renders as before — an old server, a
+  failed fetch and an offline start all arrive that way and none wants a
+  placeholder apologising for it. TCC-017 came with it: the store asked for
+  capabilities once and read a `null` as final, which is what a 401 looks like,
+  so `0.15.0` retries and `ChatCapabilitiesTracker` calls
+  `refreshCapabilities()` when a token arrives — `ChatBridgeProvider` is mounted
+  outside `AuthProvider`, so a login without a restart had asked before any
+  token existed. Guarded on a null greeting, because the server picks one per
+  request and refreshing a drawn greeting swaps it under the reader. Blocked on
+  `@swaff-y/thunder-chat-core` TCC-016 and TCC-017. Companions: web-thunder
+  THW-38, thunder TH-057 and TH-058. Shipped in #85.

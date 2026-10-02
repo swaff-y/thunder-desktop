@@ -7,6 +7,7 @@ import {
   formatUsageSummary,
   type ChatSend,
   type ChatStatus,
+  type Greeting,
   type ModelInfo,
   type TurnUsage,
 } from "@swaff-y/thunder-chat-core";
@@ -760,5 +761,109 @@ describe("ChatPanel turn progress", () => {
     expect(await screen.findByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(toolRow()).toBeNull();
     expect(statusLine()).not.toHaveTextContent("Step");
+  });
+});
+
+/**
+ * TD-092: the greeting and its suggestions are the server's, so these tests
+ * assert that what `GET /v1/capabilities` sent is what the panel draws and
+ * what a press sends — never a string this repo supplies.
+ */
+describe("ChatPanel greeting", () => {
+  const GREETING: Greeting = {
+    text: "Ask me about the catalogue.",
+    suggestions: ["What is popular this week?", "Who directed Mandy?"],
+  };
+
+  function renderWithGreeting(send: ChatSend, greeting?: Greeting) {
+    return render(
+      <MemoryRouter>
+        <BrowserNavProvider>
+          <ChatProvider
+            send={send}
+            cancelRequest={cancelRequest}
+            loadCapabilities={async () => ({ chat_enabled: true, tools: [], greeting })}
+          >
+            <ChatPanel />
+          </ChatProvider>
+        </BrowserNavProvider>
+      </MemoryRouter>
+    );
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    cancelRequest.mockClear();
+  });
+
+  it("opens an empty chat with the greeting text and its suggestions", async () => {
+    renderWithGreeting(vi.fn(async () => answer("unused")), GREETING);
+
+    expect(await screen.findByText(GREETING.text)).toBeInTheDocument();
+    for (const suggestion of GREETING.suggestions) {
+      expect(screen.getByRole("button", { name: suggestion })).toBeInTheDocument();
+    }
+  });
+
+  it("starts a turn whose question is the suggestion, verbatim", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn<ChatSend>(async () => answer("Mandy"));
+    renderWithGreeting(send, GREETING);
+
+    await user.click(await screen.findByRole("button", { name: "Who directed Mandy?" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0]?.[0]).toBe("Who directed Mandy?");
+    expect(await within(transcript()).findByText("Mandy")).toBeInTheDocument();
+  });
+
+  it("drops the greeting once a turn exists and leaves the transcript alone", async () => {
+    const user = userEvent.setup();
+    renderWithGreeting(vi.fn(async () => answer("Mandy")), GREETING);
+
+    await user.click(await screen.findByRole("button", { name: "Who directed Mandy?" }));
+
+    await waitFor(() => expect(screen.queryByText(GREETING.text)).not.toBeInTheDocument());
+    expect(within(transcript()).getByText("Mandy")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "What is popular this week?" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nothing when capabilities carry no greeting", async () => {
+    renderWithGreeting(vi.fn(async () => answer("unused")));
+
+    await waitFor(() => expect(composer()).toBeInTheDocument());
+    expect(document.querySelector(".chat-greeting")).toBeNull();
+    expect(transcript()).toBeEmptyDOMElement();
+  });
+
+  it("asks for capabilities once, so the greeting never changes under the user", async () => {
+    const user = userEvent.setup();
+    const loadCapabilities = vi.fn(async () => ({
+      chat_enabled: true,
+      tools: [],
+      greeting: GREETING,
+    }));
+    render(
+      <MemoryRouter>
+        <BrowserNavProvider>
+          <ChatProvider
+            send={vi.fn(async () => answer("Mandy"))}
+            cancelRequest={cancelRequest}
+            loadCapabilities={loadCapabilities}
+          >
+            <ChatPanel />
+          </ChatProvider>
+        </BrowserNavProvider>
+      </MemoryRouter>
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Who directed Mandy?" }));
+    expect(await within(transcript()).findByText("Mandy")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(await screen.findByText(GREETING.text)).toBeInTheDocument();
+    expect(loadCapabilities).toHaveBeenCalledTimes(1);
   });
 });

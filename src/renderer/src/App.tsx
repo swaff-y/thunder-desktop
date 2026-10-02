@@ -23,6 +23,7 @@ import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import LoadingSpinner from './components/shared/LoadingSpinner'
 import ChatWriteTracker from './components/chat/ChatWriteTracker'
+import ChatCapabilitiesTracker from './components/chat/ChatCapabilitiesTracker'
 
 // TD-070: reads the route and writes it into the source, and renders
 // nothing. `useLocation` re-renders whoever calls it on every navigation,
@@ -120,6 +121,7 @@ function App(): React.JSX.Element {
         <TabHistoryProvider>
           <ChatBridgeProvider>
             <AuthProvider>
+              <ChatCapabilitiesTracker />
               <CartProvider>
                 <DownloadsProvider>
                   <AppRoutes />

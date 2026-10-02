@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "react-bootstrap";
-import type { ChatAction, ChatStatus } from "@swaff-y/thunder-chat-core";
+import type { ChatAction, ChatStatus, Greeting } from "@swaff-y/thunder-chat-core";
 import { formatUsageSummary, useChat, type ChatTurn } from "@swaff-y/thunder-chat-core";
 import ActionCardChart from "./ActionCardChart";
 import ActionOverlay from "./ActionOverlay";
@@ -173,12 +173,51 @@ function TurnAction({
 }
 
 /**
+ * TD-092: what the chat opens with before anything has been asked. Every word
+ * of it is thunder-context's — the text, the suggestions, and the decision to
+ * send none at all — so there is nothing here to render when `greeting` is
+ * null and nothing of this app's own to put beside it when it is not.
+ */
+function ChatGreeting({
+  greeting,
+  isPending,
+  onSelect,
+}: {
+  greeting: Greeting;
+  isPending: boolean;
+  onSelect: (suggestion: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className="chat-greeting">
+      <p className="chat-greeting-text">{greeting.text}</p>
+      {greeting.suggestions.length > 0 && (
+        <ul className="chat-suggestions" aria-label="Suggested questions">
+          {greeting.suggestions.map((suggestion, index) => (
+            <li key={`${index}-${suggestion}`}>
+              <button
+                type="button"
+                className="chat-suggestion"
+                disabled={isPending}
+                onClick={() => onSelect(suggestion)}
+              >
+                {suggestion}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
  * TD-069: the drawer passes this so the cards grow an `Expand` button and
  * the overlay has somewhere to draw. Off by default — `ChatPanel` renders
  * outside the drawer too, and an overlay there would cover the page.
  */
 export default function ChatPanel({ expandable = false }: { expandable?: boolean } = {}) {
-  const { turns, status, usage, model, ask, retry, cancel, clear } = useChat();
+  const { turns, isEmpty, status, usage, model, greeting, ask, retry, cancel, clear } =
+    useChat();
   const [draft, setDraft] = useState(loadDraft);
   const [recall, setRecall] = useState<HistoryWalk | null>(null);
   const [expanded, setExpanded] = useState<ChatAction | null>(null);
@@ -225,12 +264,19 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
     sessionStorage.setItem(DRAFT_STORAGE_KEY, text);
   }
 
-  function submitQuestion(): void {
-    const question = draft.trim();
-    if (!question || isPending) return;
+  /** The one way a question leaves this panel, whether it was typed or
+   *  pressed. A suggestion goes through it as it stands. */
+  function sendQuestion(question: string): void {
+    if (isPending) return;
     writeDraft("");
     setRecall(null);
     void ask(question);
+  }
+
+  function submitQuestion(): void {
+    const question = draft.trim();
+    if (!question) return;
+    sendQuestion(question);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
@@ -342,6 +388,10 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
           </li>
         ))}
       </ol>
+
+      {isEmpty && greeting !== null && (
+        <ChatGreeting greeting={greeting} isPending={isPending} onSelect={sendQuestion} />
+      )}
 
       <p className="visually-hidden" role="status">
         {liveMessage(status, lastAnswer)}
@@ -587,6 +637,47 @@ export default function ChatPanel({ expandable = false }: { expandable?: boolean
           min-height: 1.25em;
           padding: var(--space-xs) var(--space-md) 0;
           text-align: right;
+        }
+        /* Sits where the first turn will be, so pressing a suggestion moves
+           the eye up into the transcript rather than away from it. */
+        .chat-greeting {
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-md);
+          padding: var(--space-md) var(--space-md) 0;
+        }
+        .chat-greeting-text {
+          color: var(--color-text);
+          font-size: var(--text-body);
+          margin: 0;
+          white-space: pre-wrap;
+        }
+        .chat-suggestions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--space-sm);
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+        .chat-suggestion {
+          background: var(--color-bg-alt);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-xl);
+          color: var(--color-text);
+          cursor: pointer;
+          font-family: inherit;
+          font-size: var(--text-body-sm);
+          padding: var(--space-sm) var(--space-md);
+          text-align: left;
+        }
+        .chat-suggestion:hover,
+        .chat-suggestion:focus-visible {
+          border-color: var(--color-accent);
+        }
+        .chat-suggestion:disabled {
+          cursor: default;
+          opacity: 0.5;
         }
         .chat-composer {
           align-items: flex-end;

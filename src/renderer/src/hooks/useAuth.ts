@@ -8,8 +8,14 @@ import {
 } from "react";
 import { jwtDecode } from "jwt-decode";
 import { login as apiLogin } from "../api/halo";
-import { reauthenticate } from "../api/auth";
+import {
+  isSessionEnded,
+  migratePasswordToRefreshToken,
+  reauthenticate,
+  type FreshCreds,
+} from "../api/auth";
 import { setCachedCreds, resetClientGuards } from "../api/client";
+import { errorMessage } from "../../../shared/errors";
 import { queryClient } from "../api/cache";
 import { RANDOM_RECORDS_KEY } from "./useRecords";
 import { useTabHistory } from "./useTabHistory";
@@ -30,7 +36,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, rememberPassword?: boolean) => Promise<void>;
+  login: (email: string, password: string, staySignedIn?: boolean) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -55,9 +61,18 @@ function decodeUserId(token: string): string | null {
   }
 }
 
+/** The state a freshly minted access token puts the provider in. */
+function signedInState(creds: FreshCreds): AuthState {
+  return {
+    token: creds.token,
+    apiKey: creds.apiKey,
+    userId: decodeUserId(creds.token),
+  };
+}
+
 // One-shot migration: copy any pre-TD-030 localStorage tokens into the
 // keychain and wipe the localStorage keys so we never read them again.
-// Pre-030 builds didn't store the email or password — without those,
+// Pre-030 builds didn't store the email or a credential — without one,
 // silent reauth can't fire, so the migrated record is a one-shot session
 // that will end at JWT expiry like the old behaviour. The user gets a
 // proper "Stay signed in" record on their next explicit login.
@@ -72,7 +87,7 @@ async function migrateFromLocalStorage(): Promise<{
   try {
     await window.thunder?.auth.set({ token, apiKey });
   } catch (error) {
-    console.error("[useAuth] localStorage migration failed", error);
+    console.error("[useAuth] localStorage migration failed:", errorMessage(error));
     return null;
   }
   localStorage.removeItem("userToken");
@@ -105,39 +120,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (cancelled) return;
 
+        // TD-093: a record from before this ticket carries the user's
+        // password and no refresh token. Trade it for one — a single
+        // `v1/login` the user never sees — and the password is gone from
+        // disk for good. A failed migration is a re-login, not a reason to
+        // keep the password another cycle.
+        if (creds?.email && creds.password && !creds.refreshToken) {
+          try {
+            const fresh = await migratePasswordToRefreshToken(creds.email, creds.password);
+            if (cancelled) return;
+            setState(signedInState(fresh));
+            return;
+          } catch (error) {
+            console.error("[useAuth] refresh-token migration failed:", errorMessage(error));
+            await window.thunder?.auth.clear();
+            if (!cancelled) setCachedCreds(null);
+            return;
+          }
+        }
+
         if (creds && isTokenValid(creds.token)) {
           setCachedCreds({ token: creds.token, apiKey: creds.apiKey });
-          setState({
-            token: creds.token,
-            apiKey: creds.apiKey,
-            userId: decodeUserId(creds.token),
-          });
+          setState(signedInState(creds));
           return;
         }
 
-        if (creds?.email && creds?.password) {
+        if (creds?.refreshToken) {
           try {
             const fresh = await reauthenticate();
             if (cancelled) return;
-            setState({
-              token: fresh.token,
-              apiKey: fresh.apiKey,
-              userId: decodeUserId(fresh.token),
-            });
+            setState(signedInState(fresh));
             return;
-          } catch {
-            // expired token + bad/wrong stored password — clear so we
-            // don't retry every boot, then fall through to logged-out.
-            await window.thunder?.auth.clear();
+          } catch (error) {
+            // TD-093: only a revoked/expired refresh token clears the
+            // record. A boot while the backend is busy or the laptop is
+            // offline falls through to logged-out for this launch and
+            // leaves the credential in place to try again.
+            if (isSessionEnded(error)) await window.thunder?.auth.clear();
           }
         } else if (creds) {
-          // expired token, no stored password — clear silently.
+          // expired token, no refresh token — clear silently.
           await window.thunder?.auth.clear();
         }
 
         if (!cancelled) setCachedCreds(null);
       } catch (error) {
-        console.error("[useAuth] boot check failed", error);
+        console.error("[useAuth] boot check failed:", errorMessage(error));
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -150,24 +178,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string, rememberPassword = true) => {
+    async (email: string, password: string, staySignedIn = true) => {
       const response = await apiLogin(email, password);
-      const { access_token, api_key } = response.data;
+      const { access_token, api_key, refresh_token } = response.data;
 
       await window.thunder?.auth.set({
         token: access_token,
         apiKey: api_key,
         email,
-        password: rememberPassword ? password : undefined,
+        refreshToken: staySignedIn ? refresh_token : undefined,
       });
       setCachedCreds({ token: access_token, apiKey: api_key });
       resetClientGuards();
       queryClient.invalidateQueries({ queryKey: RANDOM_RECORDS_KEY });
-      setState({
-        token: access_token,
-        apiKey: api_key,
-        userId: decodeUserId(access_token),
-      });
+      setState(signedInState({ token: access_token, apiKey: api_key }));
     },
     []
   );
@@ -189,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]);
     for (const r of results) {
       if (r.status === "rejected") {
-        console.error("[useAuth] logout cleanup failed", r.reason);
+        console.error("[useAuth] logout cleanup failed:", errorMessage(r.reason));
       }
     }
     setCachedCreds(null);
@@ -198,23 +222,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState(EMPTY_STATE);
   }, [clearTabHistory, clearChat]);
 
-  // Re-check token validity on window focus. If the JWT has expired,
-  // try silent reauth first — only fall through to logout (which clears
-  // the stored password) if reauth itself fails. Without this, a user
-  // who leaves the app long enough for the JWT to expire would lose
-  // their "Stay signed in" credential the moment they refocus the window.
+  // Re-check token validity on window focus. If the JWT has expired, try
+  // silent reauth first — and only log out (which clears the stored
+  // refresh token) when the failure says the session is genuinely over.
+  // TD-093: a laptop opened on a train fails the refresh with no response
+  // at all; logging out there would cost the user a live 30-day session
+  // and delete the only copy of its credential.
   useEffect(() => {
     const handleFocus = async () => {
       if (!state.token || isTokenValid(state.token)) return;
       try {
         const fresh = await reauthenticate();
-        setState({
-          token: fresh.token,
-          apiKey: fresh.apiKey,
-          userId: decodeUserId(fresh.token),
-        });
-      } catch {
-        await logout();
+        setState(signedInState(fresh));
+      } catch (error) {
+        if (isSessionEnded(error)) await logout();
       }
     };
     window.addEventListener("focus", handleFocus);

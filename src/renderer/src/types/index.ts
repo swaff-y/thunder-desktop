@@ -81,6 +81,26 @@ export interface LoginResponse {
   data: {
     access_token: string;
     api_key: string;
+    /**
+     * TD-093 (halo HALO-269): the 30-day credential this app keeps at rest
+     * in place of the user's password.
+     */
+    refresh_token: string;
+    expires_in: number;
+  };
+}
+
+/**
+ * TD-093: what `POST /v1/refresh` answers. Deliberately NOT carrying a
+ * `refresh_token` — HALO-269 has rotation off, so the key is absent from
+ * the response and the stored token keeps working for its full 30 days.
+ */
+export interface RefreshResponse {
+  statusCode: number;
+  data: {
+    access_token: string;
+    api_key: string;
+    expires_in: number;
   };
 }
 

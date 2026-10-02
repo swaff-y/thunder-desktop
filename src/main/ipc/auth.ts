@@ -34,7 +34,7 @@ function isValidAuthPayload(value: unknown): value is ThunderAuthCredentials {
   if (typeof v.token !== 'string' || v.token.length === 0) return false
   if (typeof v.apiKey !== 'string' || v.apiKey.length === 0) return false
   if (v.email !== undefined && typeof v.email !== 'string') return false
-  if (v.password !== undefined && typeof v.password !== 'string') return false
+  if (v.refreshToken !== undefined && typeof v.refreshToken !== 'string') return false
   return true
 }
 

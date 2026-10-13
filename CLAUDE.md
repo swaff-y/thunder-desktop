@@ -14,4 +14,19 @@ Keep to the ticket scope. If the ticket is about a specific feature or bug, try 
 
 This file provides guidance to claude code (claude.ai/code) when working with code in this repository.
 
-When asked to create a ticket, follow the template in [docs/tickets/README.md](docs/tickets/README.md) and the example ticket in [docs/tickets/TD-033-settings-url-trim.md](docs/tickets/TD-033-settings-url-trim.md). This is also the location for where new tickets should be created. Each ticket should be focused on a specific feature or bug and should include a clear description, requirements, acceptance criteria, and test plan.
+## Ticketing
+
+Tickets are GitHub issues in `swaff-y/thunder-desktop`, on the `Halo` project
+board. Raise new work there, and read one with `gh issue view <n>`.
+
+The `TD-NNN` id lives in the issue title rather than the number — TD-093 is
+issue #178 — so `gh issue list --search "TD-093" --state all` is how you resolve
+the `TD-NNN` ids that source comments and review notes cite throughout. Branches
+carry the id (`TD-093-refresh-token-replaces-password`) and the PR closes the
+issue. [#179](https://github.com/swaff-y/thunder-desktop/issues/179) indexes
+every ticket by phase.
+
+A ticket is focused on one feature or bug and carries a clear description,
+requirements, acceptance criteria and a test plan —
+[TD-033](https://github.com/swaff-y/thunder-desktop/issues/118) is the example
+to follow.

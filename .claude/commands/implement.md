@@ -1,18 +1,18 @@
 ---
 description: Implement a ticket end-to-end, then self-review and fix
-argument-hint: <ticket-md-path>
+argument-hint: <TD-NNN | issue number>
 ---
 
 You are a senior engineer implementing a ticket.
 
-Ticket path: `$1`
+Ticket: `$1` — a `TD-NNN` id or an issue number in `swaff-y/thunder-desktop`.
 Current branch: !`git branch --show-current`
 
 ## Task
 
-1. **Validate input.** If no ticket path was provided in `$1`, stop and ask the user: "No ticket path provided. Please supply a ticket md path." Wait for their response before continuing.
+1. **Validate input.** If nothing was provided in `$1`, stop and ask the user: "No ticket provided. Please supply a `TD-NNN` id or an issue number." Wait for their response before continuing. Resolve a `TD-NNN` id to its issue with `gh issue list --search "<id>" --state all`, then write the issue body to a temp file with `gh issue view <n> --json body -q .body`.
 
-2. **Parse the ticket.** Spawn the `ticket-parser` subagent (`subagent_type: ticket-parser`) with the ticket path `$1`. It returns a structured brief (verbatim ACs, requirements, non-goals, file/symbol mentions, open questions). Use that brief as the source of truth — do not re-read the ticket inline unless the brief is clearly missing something.
+2. **Parse the ticket.** Spawn the `ticket-parser` subagent (`subagent_type: ticket-parser`) with the path of that temp file. It returns a structured brief (verbatim ACs, requirements, non-goals, file/symbol mentions, open questions). Use that brief as the source of truth — do not re-read the ticket inline unless the brief is clearly missing something.
 
 3. **Plan the implementation.** Run the following in parallel (single message, multiple tool calls) before writing any code:
 

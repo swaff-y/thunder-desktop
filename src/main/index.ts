@@ -3,6 +3,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { createMainWindow } from './window'
 import { registerAuthHandlers } from './ipc/auth'
+import { registerBiometricHandlers } from './ipc/biometric'
 import { registerBrowserContextMenuHandlers } from './ipc/browser-context-menu'
 import { registerBrowserDetectHandlers } from './ipc/browser-detect'
 import { registerBrowserDownloadHandlers } from './ipc/browser-download'
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
 
   registerSettingsHandlers()
   registerAuthHandlers()
+  registerBiometricHandlers()
   registerChatHandlers()
   registerShellHandlers()
   registerDialogHandlers()

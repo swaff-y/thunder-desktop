@@ -38,6 +38,15 @@ export const WINDOW_STATE_FILENAME = 'thunder-desktop-window-state.json'
 export const AUTH_CREDENTIALS_FILENAME = 'thunder-desktop-credentials.enc'
 
 /**
+ * TD-094: the password a user opted into remembering for Touch ID.
+ * Deliberately absent from {@link SEEDED_FILENAMES}: a dev profile points
+ * at a different Halo account (TD-060), so copying a prod password into it
+ * would replay it against the dev backend. The two profiles each get their
+ * own file, or none.
+ */
+export const AUTH_BIOMETRIC_FILENAME = 'thunder-desktop-biometric.enc'
+
+/**
  * TD-065: retired. Nothing writes or reads this file any more — it is
  * named only so {@link removeStaleAwsCredentials} can delete what older
  * versions left behind.

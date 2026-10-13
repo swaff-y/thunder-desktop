@@ -28,7 +28,8 @@ const DEFAULTS: ThunderSettings = {
   apiUrl: 'https://halo.example/dev/',
   downloadFolder: '/tmp/Thunder',
   contextUrl: 'https://thunder-context.example/v1',
-  chatEnabled: false
+  chatEnabled: false,
+  requireTouchIdOnLaunch: false
 }
 
 describe('settings-io (TD-018)', () => {

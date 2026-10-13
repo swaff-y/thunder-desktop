@@ -63,7 +63,9 @@ export function defaults(): ThunderSettings {
       // caller's Halo token, so a dev API URL with a prod context URL is
       // a 401 on every question.
       contextUrl: resolveDefaultContextUrl({ isPackaged: app.isPackaged, argv: process.argv }),
-      chatEnabled: false
+      chatEnabled: false,
+      // TD-094: off, so upgrading never locks a user out of their own app.
+      requireTouchIdOnLaunch: false
     }
   }
   return cachedDefaults
@@ -76,6 +78,15 @@ export function defaults(): ThunderSettings {
  */
 export function resolveContextUrl(): string {
   return getSetting(settingsPath(), defaults(), 'contextUrl')
+}
+
+/**
+ * TD-094: the Halo backend a Touch ID replay posts to, read the same way
+ * and for the same reason — the session it mints has to come from the
+ * backend the dead one was minted on.
+ */
+export function resolveApiUrl(): string {
+  return getSetting(settingsPath(), defaults(), 'apiUrl')
 }
 
 /**
@@ -97,7 +108,8 @@ const FIELD_TYPES: Record<keyof ThunderSettings, 'string' | 'boolean'> = {
   downloadFolder: 'string',
   userAgent: 'string',
   contextUrl: 'string',
-  chatEnabled: 'boolean'
+  chatEnabled: 'boolean',
+  requireTouchIdOnLaunch: 'boolean'
 }
 
 function isValidKey(key: unknown): key is keyof ThunderSettings {

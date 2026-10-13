@@ -22,7 +22,11 @@ function credentialsPath(): string {
   return join(app.getPath('userData'), AUTH_CREDENTIALS_FILENAME)
 }
 
-const crypto: CryptoAdapter = {
+/**
+ * Exported for TD-094: the remembered-password store encrypts with the
+ * same adapter, and a second copy of these three lines is a drift trap.
+ */
+export const safeStorageCrypto: CryptoAdapter = {
   encrypt: (plaintext) => safeStorage.encryptString(plaintext),
   decrypt: (ciphertext) => safeStorage.decryptString(ciphertext),
   isAvailable: () => safeStorage.isEncryptionAvailable()
@@ -44,19 +48,29 @@ function isValidAuthPayload(value: unknown): value is ThunderAuthCredentials {
  * record, and a captured token would outlive its own session.
  */
 export function resolveAuthToken(): string | undefined {
-  return getToken(credentialsPath(), crypto) ?? undefined
+  return getToken(credentialsPath(), safeStorageCrypto) ?? undefined
+}
+
+/**
+ * TD-094: the one write path into the credential record from outside
+ * this module. A Touch ID unlock mints its session in main, so main is
+ * what has to persist it — and it goes through `setCredentials` like
+ * every other write, rather than near the file.
+ */
+export function writeAuthCredentials(creds: ThunderAuthCredentials): void {
+  setCredentials(credentialsPath(), safeStorageCrypto, creds)
 }
 
 export function registerAuthHandlers(): void {
   ipcMain.handle(THUNDER_IPC_CHANNELS.authGet, async () => {
-    return getCredentials(credentialsPath(), crypto)
+    return getCredentials(credentialsPath(), safeStorageCrypto)
   })
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.authSet, async (_event, payload: unknown) => {
     if (!isValidAuthPayload(payload)) {
       throw new Error('Invalid credentials payload')
     }
-    setCredentials(credentialsPath(), crypto, payload)
+    setCredentials(credentialsPath(), safeStorageCrypto, payload)
   })
 
   ipcMain.handle(THUNDER_IPC_CHANNELS.authClear, async () => {

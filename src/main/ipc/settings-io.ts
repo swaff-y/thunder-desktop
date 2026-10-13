@@ -55,7 +55,14 @@ function coerce(partial: Partial<ThunderSettings>, defaults: ThunderSettings): T
       : defaults.downloadFolder,
     contextUrl: coerceTrimmed(partial.contextUrl, defaults.contextUrl),
     chatEnabled:
-      typeof partial.chatEnabled === 'boolean' ? partial.chatEnabled : defaults.chatEnabled
+      typeof partial.chatEnabled === 'boolean' ? partial.chatEnabled : defaults.chatEnabled,
+    // TD-094: only a literal `true` arms the launch gate. A lock that
+    // engages because a truthy value drifted into the file is worse than
+    // no lock.
+    requireTouchIdOnLaunch:
+      typeof partial.requireTouchIdOnLaunch === 'boolean'
+        ? partial.requireTouchIdOnLaunch
+        : defaults.requireTouchIdOnLaunch
   }
   if (typeof partial.userAgent === 'string' && partial.userAgent.length > 0) {
     out.userAgent = partial.userAgent

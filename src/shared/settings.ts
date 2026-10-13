@@ -134,6 +134,11 @@ export function resolveDefaultContextUrl(options: {
  * - `contextUrl`    — TD-065: thunder-context deployment backing the AI chat.
  * - `chatEnabled`   — TD-052: master switch for the AI chat surface.
  *                     Ships `false`; TD-056 is what makes it visible.
+ * - `requireTouchIdOnLaunch`
+ *                   — TD-094: Touch ID before the app renders anything.
+ *                     Ships `false` so no upgrade locks anybody out, and
+ *                     it is a lock rather than a credential — the session
+ *                     is on disk either way.
  *
  * TD-065 removed `mcpUrl`, `bedrockRegion` and `bedrockModelId`: the
  * model, its region and the tool surface are the server's business now,
@@ -145,4 +150,5 @@ export interface ThunderSettings {
   userAgent?: string
   contextUrl: string
   chatEnabled: boolean
+  requireTouchIdOnLaunch: boolean
 }

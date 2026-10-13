@@ -75,6 +75,18 @@ export const THUNDER_IPC_CHANNELS = {
   authClear: 'thunder:auth:clear',
 
   /**
+   * TD-094: Touch ID. `remember` is the only channel carrying a secret,
+   * and it carries it inward only — the replay `POST v1/login` happens in
+   * main, so nothing on this surface ever returns a password. Handlers
+   * are registered in `main/ipc/biometric.ts`.
+   */
+  biometricStatus: 'thunder:auth:biometric:status',
+  biometricRemember: 'thunder:auth:biometric:remember',
+  biometricUnlock: 'thunder:auth:biometric:unlock',
+  biometricPrompt: 'thunder:auth:biometric:prompt',
+  biometricForget: 'thunder:auth:biometric:forget',
+
+  /**
    * TD-018: JSON-backed settings store at `<userData>/thunder-desktop-settings.json`.
    * Main-process handlers are registered in `main/ipc/settings.ts`.
    */
@@ -196,6 +208,11 @@ export const THUNDER_ALLOWLIST: ReadonlyArray<string> = [
   THUNDER_IPC_CHANNELS.authGet,
   THUNDER_IPC_CHANNELS.authSet,
   THUNDER_IPC_CHANNELS.authClear,
+  THUNDER_IPC_CHANNELS.biometricStatus,
+  THUNDER_IPC_CHANNELS.biometricRemember,
+  THUNDER_IPC_CHANNELS.biometricUnlock,
+  THUNDER_IPC_CHANNELS.biometricPrompt,
+  THUNDER_IPC_CHANNELS.biometricForget,
   THUNDER_IPC_CHANNELS.settingsGet,
   THUNDER_IPC_CHANNELS.settingsSet,
   THUNDER_IPC_CHANNELS.settingsGetAll,
@@ -246,6 +263,39 @@ export interface ThunderAuthCredentials {
 export interface ThunderStoredAuthCredentials extends ThunderAuthCredentials {
   password?: string
 }
+
+/**
+ * TD-094: why Touch ID is unavailable on this machine. A code rather than
+ * a sentence so the renderer owns its own copy — and so adding a reason
+ * can't change a string the UI is matching on.
+ */
+export type ThunderBiometricUnavailableReason = 'platform' | 'sensor' | 'encryption'
+
+/**
+ * TD-094: what the login screen and Settings branch on. `supported` gates
+ * every control; `remembered` gates the unlock button and the "forget"
+ * action. `reason` is present iff `supported` is false.
+ */
+export interface ThunderBiometricStatus {
+  supported: boolean
+  remembered: boolean
+  reason?: ThunderBiometricUnavailableReason
+}
+
+/**
+ * TD-094: the credentials a passed replay minted, or why it didn't.
+ *
+ * - `cancelled` — the user dismissed the prompt. Nothing was cleared.
+ * - `rejected` — Halo refused the password (401). It has been forgotten,
+ *   because prompting for a biometric that cannot work is worse than
+ *   asking for a password.
+ * - `transient` — a 5xx, or no response at all. Says nothing about the
+ *   password, so the password is kept.
+ * - `unavailable` — no sensor, no `safeStorage`, or nothing remembered.
+ */
+export type ThunderBiometricUnlockResult =
+  | { ok: true; token: string; apiKey: string }
+  | { ok: false; failure: 'cancelled' | 'rejected' | 'transient' | 'unavailable' }
 
 /**
  * TD-022: shape of the event the main process pushes whenever the
@@ -364,6 +414,28 @@ export interface ThunderApi {
     get: () => Promise<ThunderStoredAuthCredentials | null>
     set: (creds: ThunderAuthCredentials) => Promise<void>
     clear: () => Promise<void>
+    /**
+     * TD-094: Touch ID, in place of the login form once the refresh token
+     * is over, and optionally as a gate in front of the whole app.
+     *
+     * The guarantee is an application-level one: `safeStorage` cannot set
+     * `kSecAccessControlUserPresence`, so code already running as the user
+     * could read the ciphertext without passing the prompt. The UI says so.
+     */
+    biometric: {
+      status: () => Promise<ThunderBiometricStatus>
+      /**
+       * Prompts, then stores. Resolves `false` on a dismissal and on a
+       * storage failure alike — it rides on a sign-in that has already
+       * succeeded and must never turn into a failed login.
+       */
+      remember: (login: { email: string; password: string }) => Promise<boolean>
+      /** Prompt → replay → the fresh session, or why there isn't one. */
+      unlock: () => Promise<ThunderBiometricUnlockResult>
+      /** The launch gate's bare prompt. Touches no credential. */
+      prompt: () => Promise<boolean>
+      forget: () => Promise<void>
+    }
   }
   settings: {
     get: <K extends keyof ThunderSettings>(key: K) => Promise<ThunderSettings[K]>
@@ -496,7 +568,14 @@ export const thunderApi: ThunderApi = {
   auth: {
     get: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authGet),
     set: (creds) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authSet, creds),
-    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear)
+    clear: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.authClear),
+    biometric: {
+      status: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.biometricStatus),
+      remember: (login) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.biometricRemember, login),
+      unlock: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.biometricUnlock),
+      prompt: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.biometricPrompt),
+      forget: () => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.biometricForget)
+    }
   },
   settings: {
     get: (key) => ipcRenderer.invoke(THUNDER_IPC_CHANNELS.settingsGet, key),

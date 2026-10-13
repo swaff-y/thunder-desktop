@@ -16,6 +16,7 @@ import {
 } from "../api/auth";
 import { setCachedCreds, resetClientGuards } from "../api/client";
 import { errorMessage } from "../../../shared/errors";
+import type { ThunderBiometricUnlockResult } from "../../../preload/thunder-api";
 import { queryClient } from "../api/cache";
 import { RANDOM_RECORDS_KEY } from "./useRecords";
 import { useTabHistory } from "./useTabHistory";
@@ -36,7 +37,22 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
+  /**
+   * TD-094: the launch gate. True only when the setting is on, Touch ID
+   * is available and a session is stored — and false whenever any of the
+   * three can't be read, because a lock that engages by accident is
+   * worse than no lock.
+   */
+  isLocked: boolean;
   login: (email: string, password: string, staySignedIn?: boolean) => Promise<void>;
+  /** TD-094: the gate's prompt. Resolves false on a dismissal, which leaves it armed. */
+  unlockApp: () => Promise<boolean>;
+  /**
+   * TD-094: Touch ID in place of the login form. Resolves with the
+   * failure rather than throwing, so the login screen can tell a
+   * dismissal from a changed password.
+   */
+  loginWithBiometric: () => Promise<ThunderBiometricUnlockResult>;
   logout: () => Promise<void>;
 }
 
@@ -95,13 +111,39 @@ async function migrateFromLocalStorage(): Promise<{
   return { token, apiKey };
 }
 
+/**
+ * TD-094: all three conditions, and a `false` for any one of them that
+ * can't be read. The settings read, the support probe and the stored
+ * session are each a separate way to fail open.
+ */
+async function shouldLockLaunch(): Promise<boolean> {
+  try {
+    // The setting first, and the native probe only if it is on: the flag
+    // ships false, so the common boot pays one settings read rather than
+    // a `canPromptTouchID` round trip it will discard.
+    const required = await window.thunder?.settings.get("requireTouchIdOnLaunch");
+    if (required !== true) return false;
+    const status = await window.thunder?.auth.biometric.status();
+    return status?.supported === true;
+  } catch (error) {
+    console.error("[useAuth] launch-gate check failed:", errorMessage(error));
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(EMPTY_STATE);
   const [isLoading, setIsLoading] = useState(true);
+  const [lockArmed, setLockArmed] = useState(false);
   const { clearHistory: clearTabHistory } = useTabHistory();
   const { clear: clearChat } = useChatActions();
 
   const isAuthenticated = !!state.token && isTokenValid(state.token);
+  // TD-094: derived, not synchronised. A record that turns out to be a
+  // dead session clears itself in the boot check below and the gate opens
+  // onto the login form — locking a user out of a session they no longer
+  // have would leave them nothing to unlock.
+  const isLocked = lockArmed && isAuthenticated;
 
   // Boot check
   useEffect(() => {
@@ -119,6 +161,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (cancelled) return;
+
+        // TD-094: before any of the branches below, so every path that
+        // ends signed in is gated — and only when a session is actually
+        // stored, so a logged-out launch is never locked out of the form.
+        const lockLaunch = creds ? await shouldLockLaunch() : false;
+        if (cancelled) return;
+        if (lockLaunch) setLockArmed(true);
 
         // TD-093: a record from before this ticket carries the user's
         // password and no refresh token. Trade it for one — a single
@@ -177,6 +226,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * TD-094: the transition a fresh session puts the app through,
+   * extracted so a Touch ID sign-in and a typed one cannot drift —
+   * identical cached creds, cleared guards and cache invalidation.
+   */
+  const adoptSession = useCallback((creds: FreshCreds) => {
+    setCachedCreds(creds);
+    resetClientGuards();
+    queryClient.invalidateQueries({ queryKey: RANDOM_RECORDS_KEY });
+    setState(signedInState(creds));
+  }, []);
+
   const login = useCallback(
     async (email: string, password: string, staySignedIn = true) => {
       const response = await apiLogin(email, password);
@@ -188,13 +249,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         refreshToken: staySignedIn ? refresh_token : undefined,
       });
-      setCachedCreds({ token: access_token, apiKey: api_key });
-      resetClientGuards();
-      queryClient.invalidateQueries({ queryKey: RANDOM_RECORDS_KEY });
-      setState(signedInState({ token: access_token, apiKey: api_key }));
+      adoptSession({ token: access_token, apiKey: api_key });
     },
-    []
+    [adoptSession]
   );
+
+  // The credential record is written in main, by the handler that ran
+  // the replay — there is nothing to persist here. An IPC failure is
+  // reported as `unavailable` rather than thrown, so the login screen has
+  // one shape to branch on.
+  const loginWithBiometric = useCallback(async (): Promise<ThunderBiometricUnlockResult> => {
+    const result = await window.thunder?.auth.biometric
+      .unlock()
+      .catch((): ThunderBiometricUnlockResult => ({ ok: false, failure: "unavailable" }));
+    if (!result) return { ok: false, failure: "unavailable" };
+    if (result.ok) adoptSession({ token: result.token, apiKey: result.apiKey });
+    return result;
+  }, [adoptSession]);
+
+  const unlockApp = useCallback(async () => {
+    const passed = await window.thunder?.auth.biometric.prompt().catch(() => false);
+    if (passed === true) setLockArmed(false);
+    return passed === true;
+  }, []);
 
   const logout = useCallback(async () => {
     // TD-065: before the keychain is wiped, not after. Dropping the
@@ -207,8 +284,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // session's data. The webview itself resets on its own — flipping
     // isAuthenticated unmounts ProtectedDesktopOutlet → DesktopLayout →
     // BrowserPage → webview, so React state and history are dropped.
+    // TD-094: the remembered password goes with the session. Leaving it
+    // behind would hand the next person at the machine a sign-in.
     const results = await Promise.allSettled([
       window.thunder?.auth.clear(),
+      window.thunder?.auth.biometric?.forget(),
       window.thunder?.browser?.clearSession(),
     ]);
     for (const r of results) {
@@ -219,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCachedCreds(null);
     resetClientGuards();
     clearTabHistory();
+    setLockArmed(false);
     setState(EMPTY_STATE);
   }, [clearTabHistory, clearChat]);
 
@@ -244,7 +325,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return React.createElement(
     AuthContext.Provider,
-    { value: { ...state, isAuthenticated, isLoading, login, logout } },
+    {
+      value: {
+        ...state,
+        isAuthenticated,
+        isLoading,
+        isLocked,
+        login,
+        loginWithBiometric,
+        unlockApp,
+        logout,
+      },
+    },
     children
   );
 }

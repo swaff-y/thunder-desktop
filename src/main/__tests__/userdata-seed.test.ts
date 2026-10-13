@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  AUTH_BIOMETRIC_FILENAME,
   AUTH_CREDENTIALS_FILENAME,
   AWS_CREDENTIALS_FILENAME,
   DEV_USERDATA_SUFFIX,
@@ -59,6 +60,12 @@ describe('userdata-seed (TD-063)', () => {
   // cutover exists to get rid of.
   it('does not seed the retired AWS credential file', () => {
     expect(SEEDED_FILENAMES).not.toContain(AWS_CREDENTIALS_FILENAME)
+  })
+
+  // TD-094: a dev profile points at a different Halo account, so a
+  // seeded password would be replayed against the wrong backend.
+  it('does not seed the remembered password', () => {
+    expect(SEEDED_FILENAMES).not.toContain(AUTH_BIOMETRIC_FILENAME)
   })
 
   // ─── First launch ─────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import CategoryDetail from './pages/CategoryDetail'
 import MultiWatch from './pages/MultiWatch'
 import Stats from './pages/Stats'
 import LoadingSpinner from './components/shared/LoadingSpinner'
+import LaunchLock from './components/shared/LaunchLock'
 import ChatWriteTracker from './components/chat/ChatWriteTracker'
 import ChatCapabilitiesTracker from './components/chat/ChatCapabilitiesTracker'
 
@@ -114,6 +115,16 @@ function AppRoutes(): React.JSX.Element {
   )
 }
 
+// TD-094: the launch gate renders in place of its children, not around
+// them — a locked app must not mount a route, a layout or the embedded
+// webview behind the lock screen. Exported so that is testable without
+// standing up the whole router.
+export function LaunchGate({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const { isLocked } = useAuth()
+  if (isLocked) return <LaunchLock />
+  return <>{children}</>
+}
+
 function App(): React.JSX.Element {
   return (
     <QueryProvider>
@@ -121,10 +132,16 @@ function App(): React.JSX.Element {
         <TabHistoryProvider>
           <ChatBridgeProvider>
             <AuthProvider>
-              <ChatCapabilitiesTracker />
               <CartProvider>
                 <DownloadsProvider>
-                  <AppRoutes />
+                  <LaunchGate>
+                    {/* TD-094: inside the gate, not above it. Keyed on
+                        `isAuthenticated`, it would otherwise send an
+                        authenticated capabilities request from behind a
+                        locked launch screen. */}
+                    <ChatCapabilitiesTracker />
+                    <AppRoutes />
+                  </LaunchGate>
                 </DownloadsProvider>
               </CartProvider>
             </AuthProvider>

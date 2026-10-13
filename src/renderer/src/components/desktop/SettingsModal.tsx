@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Form, Button, Alert } from "react-bootstrap";
 import { queryClient } from "../../api/cache";
 import { CHAT_ENABLED_KEY } from "../../hooks/useSettings";
+import { forgetTouchIdPassword, useBiometricStatus } from "../../hooks/useBiometric";
 import type { ThunderSettings } from "../../../../shared/settings";
 
 interface SettingsModalProps {
@@ -21,6 +22,7 @@ interface FormState {
   userAgent: string;
   contextUrl: string;
   chatEnabled: boolean;
+  requireTouchIdOnLaunch: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -29,6 +31,7 @@ const EMPTY_FORM: FormState = {
   userAgent: "",
   contextUrl: "",
   chatEnabled: false,
+  requireTouchIdOnLaunch: false,
 };
 
 /**
@@ -64,6 +67,7 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
   const [contextUrlError, setContextUrlError] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string>("");
+  const biometric = useBiometricStatus();
 
   useEffect(() => {
     if (!show) return;
@@ -83,6 +87,7 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
         userAgent: settings.userAgent ?? "",
         contextUrl: settings.contextUrl ?? "",
         chatEnabled: settings.chatEnabled ?? false,
+        requireTouchIdOnLaunch: settings.requireTouchIdOnLaunch ?? false,
       };
       setInitial(next);
       setForm(next);
@@ -114,6 +119,11 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
       await saveIfChanged("userAgent", form.userAgent, initial.userAgent);
       await saveIfChanged("contextUrl", contextUrl, initial.contextUrl);
       await saveIfChanged("chatEnabled", form.chatEnabled, initial.chatEnabled);
+      await saveIfChanged(
+        "requireTouchIdOnLaunch",
+        form.requireTouchIdOnLaunch,
+        initial.requireTouchIdOnLaunch,
+      );
       // TD-056: Home reads this at mount, and the modal closes over a Home
       // that never unmounted — without this the toggle looks like a no-op.
       if (form.chatEnabled !== initial.chatEnabled) {
@@ -138,6 +148,26 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
   const handleChatEnabledChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { checked } = e.target;
     setForm((f) => ({ ...f, chatEnabled: checked }));
+  };
+
+  /**
+   * TD-094: arming prompts first, so nobody can switch on a lock this
+   * machine cannot open. Disarming just flips — never make a lock hard to
+   * turn off.
+   */
+  const handleTouchIdLaunchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { checked } = e.target;
+    if (!checked) {
+      setForm((f) => ({ ...f, requireTouchIdOnLaunch: false }));
+      return;
+    }
+    const passed = await window.thunder?.auth.biometric.prompt().catch(() => false);
+    if (passed !== true) return;
+    setForm((f) => ({ ...f, requireTouchIdOnLaunch: true }));
+  };
+
+  const handleForgetPassword = async () => {
+    await forgetTouchIdPassword();
   };
 
   const handleContextUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -241,6 +271,35 @@ export default function SettingsModal({ show, onHide }: SettingsModalProps): Rea
               )}
             </Form.Group>
           </fieldset>
+
+          {biometric.supported && (
+            <fieldset className="settings-section">
+              <legend className="settings-legend">Touch ID</legend>
+
+              <Form.Check
+                type="switch"
+                id="settings-require-touch-id"
+                label="Require Touch ID on launch"
+                checked={form.requireTouchIdOnLaunch}
+                onChange={(e) => void handleTouchIdLaunchChange(e)}
+                aria-describedby="settings-require-touch-id-help"
+              />
+              <Form.Text id="settings-require-touch-id-help" className="d-block mb-3">
+                Guards the app against someone using an unlocked laptop. It does not protect the
+                credential file — your session is stored on disk either way.
+              </Form.Text>
+
+              {biometric.remembered && (
+                <Button
+                  variant="outline-danger"
+                  type="button"
+                  onClick={() => void handleForgetPassword()}
+                >
+                  Forget my remembered password
+                </Button>
+              )}
+            </fieldset>
+          )}
 
           {notice && <Alert className="settings-notice">{notice}</Alert>}
         </Form>

@@ -5,7 +5,7 @@
  * themselves are covered in `api/__tests__/reauth.test.ts`.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThunderStoredAuthCredentials } from "../../../../preload/thunder-api";
 import { statusFailure, transportFailure } from "../../api/__tests__/axios-failures";
@@ -50,6 +50,14 @@ const FRESH = { token: VALID, apiKey: "new-key" };
 
 let stored: ThunderStoredAuthCredentials | null = null;
 let clear: ReturnType<typeof vi.fn>;
+// TD-094: the launch gate's three conditions, each independently
+// breakable so the fail-open behaviour can be pinned one at a time.
+let launchSetting: unknown = false;
+let biometricSupported = true;
+let settingsGet: ReturnType<typeof vi.fn>;
+let biometricStatus: ReturnType<typeof vi.fn>;
+let biometricPrompt: ReturnType<typeof vi.fn>;
+let biometricForget: ReturnType<typeof vi.fn>;
 
 function Probe() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -70,12 +78,29 @@ beforeEach(() => {
   clear = vi.fn(async () => {
     stored = null;
   });
+  launchSetting = false;
+  biometricSupported = true;
+  settingsGet = vi.fn(async () => launchSetting);
+  biometricStatus = vi.fn(async () => ({
+    supported: biometricSupported,
+    remembered: false,
+  }));
+  biometricPrompt = vi.fn(async () => true);
+  biometricForget = vi.fn(async () => {});
   window.thunder = {
     auth: {
       get: vi.fn(async () => (stored ? { ...stored } : null)),
       set: vi.fn(async () => {}),
       clear,
+      biometric: {
+        status: biometricStatus,
+        prompt: biometricPrompt,
+        forget: biometricForget,
+        remember: vi.fn(async () => true),
+        unlock: vi.fn(),
+      },
     },
+    settings: { get: settingsGet },
   } as unknown as typeof window.thunder;
   localStorage.clear();
   reauth.mockReset();
@@ -213,5 +238,147 @@ describe("boot check — expired access token (TD-093)", () => {
     expect(reauth).not.toHaveBeenCalled();
     expect(clear).toHaveBeenCalledTimes(1);
     expect(screen.getByText("signed out")).toBeInTheDocument();
+  });
+});
+
+describe("launch gate (TD-094)", () => {
+  function LockProbe() {
+    const { isLocked, isLoading, unlockApp } = useAuth();
+    if (isLoading) return <p>loading</p>;
+    return (
+      <>
+        <p>{isLocked ? "locked" : "unlocked"}</p>
+        <button onClick={() => void unlockApp()}>unlock</button>
+      </>
+    );
+  }
+
+  async function bootLocked(): Promise<void> {
+    render(
+      <AuthProvider>
+        <LockProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.queryByText("loading")).not.toBeInTheDocument());
+  }
+
+  beforeEach(() => {
+    stored = { token: VALID, apiKey: "k", email: "kyle@example.com", refreshToken: "refresh-1" };
+    launchSetting = true;
+  });
+
+  it("arms when the setting is on, Touch ID is available and a session is stored", async () => {
+    await bootLocked();
+
+    expect(screen.getByText("locked")).toBeInTheDocument();
+  });
+
+  it("stays open with the setting off", async () => {
+    launchSetting = false;
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("stays open on a value that is not a literal true", async () => {
+    launchSetting = "yes";
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("stays open where Touch ID is unavailable", async () => {
+    biometricSupported = false;
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("stays open when no session is stored, without probing at all", async () => {
+    stored = null;
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+    expect(settingsGet).not.toHaveBeenCalled();
+    expect(biometricStatus).not.toHaveBeenCalled();
+  });
+
+  it("stays open when the settings read fails", async () => {
+    settingsGet.mockRejectedValue(new Error("IPC unavailable"));
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("stays open when the support probe fails", async () => {
+    biometricStatus.mockRejectedValue(new Error("IPC unavailable"));
+
+    await bootLocked();
+
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("stays open when the stored session turns out to be over", async () => {
+    stored = { token: EXPIRED, apiKey: "k", email: "kyle@example.com", refreshToken: "refresh-1" };
+    reauth.mockRejectedValue(statusFailure(401));
+
+    await bootLocked();
+
+    // There is nothing left to unlock — the user needs the form.
+    expect(screen.getByText("unlocked")).toBeInTheDocument();
+  });
+
+  it("lifts on a passed prompt", async () => {
+    await bootLocked();
+
+    fireEvent.click(screen.getByRole("button", { name: "unlock" }));
+
+    await waitFor(() => expect(screen.getByText("unlocked")).toBeInTheDocument());
+  });
+
+  it("stays armed on a dismissed prompt, clearing nothing", async () => {
+    biometricPrompt.mockResolvedValue(false);
+
+    await bootLocked();
+    fireEvent.click(screen.getByRole("button", { name: "unlock" }));
+
+    await waitFor(() => expect(biometricPrompt).toHaveBeenCalled());
+    expect(screen.getByText("locked")).toBeInTheDocument();
+    expect(clear).not.toHaveBeenCalled();
+  });
+});
+
+describe("logout (TD-094)", () => {
+  function LogoutProbe() {
+    const { isAuthenticated, isLoading, logout } = useAuth();
+    if (isLoading) return <p>loading</p>;
+    return (
+      <>
+        <p>{isAuthenticated ? "signed in" : "signed out"}</p>
+        <button onClick={() => void logout()}>sign out</button>
+      </>
+    );
+  }
+
+  it("forgets the remembered password alongside the session", async () => {
+    stored = { token: VALID, apiKey: "k", email: "kyle@example.com", refreshToken: "refresh-1" };
+    render(
+      <AuthProvider>
+        <LogoutProbe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText("signed in")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "sign out" }));
+
+    await waitFor(() => expect(screen.getByText("signed out")).toBeInTheDocument());
+    // A password left behind is a sign-in for the next person at the machine.
+    expect(biometricForget).toHaveBeenCalledTimes(1);
+    expect(clear).toHaveBeenCalledTimes(1);
   });
 });

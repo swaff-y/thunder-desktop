@@ -16,7 +16,8 @@
       "Bash(cp Screenshot*10.25.35*.png /tmp/dark.png)",
       "Bash(cp Screenshot*10.27.59*.png /tmp/light.png)",
       "Read(//Applications/thunder-desktop.app/Contents/Resources/**)",
-      "Bash(rm /Applications/thunder-desktop.app/Contents/Resources/package.json)"
+      "Bash(rm /Applications/thunder-desktop.app/Contents/Resources/package.json)",
+      "Bash(gh pr *)"
     ],
     "additionalDirectories": [
       "/Users/kyleswaffield/ruby_sei/business-call-api/docs/tickets"

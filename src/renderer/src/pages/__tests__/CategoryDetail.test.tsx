@@ -39,13 +39,13 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
   return { promise, resolve };
 }
 
-function renderDetail() {
+function renderDetail(path = "/series/abc") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/series/abc"]}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/:category/:id" element={<CategoryDetail />} />
         </Routes>
@@ -108,5 +108,23 @@ describe("CategoryDetail reload button", () => {
     await waitFor(() => expect(fetchCategoryRecords).toHaveBeenCalledTimes(2));
     expect(reloadButton()).toBeInTheDocument();
     expect(screen.queryByText("network down")).not.toBeInTheDocument();
+  });
+});
+
+describe("CategoryDetail franchises", () => {
+  it("fetches the records off halo's singular franchise path", async () => {
+    fetchCategoryRecords.mockResolvedValue(page("one"));
+    renderDetail("/franchises/f-1");
+
+    await waitFor(() => expect(fetchCategoryRecords).toHaveBeenCalled());
+    expect(fetchCategoryRecords.mock.calls[0][0]).toBe("franchise");
+    expect(fetchCategoryRecords.mock.calls[0][1]).toBe("f-1");
+  });
+
+  it("names the category it goes back to", async () => {
+    fetchCategoryRecords.mockResolvedValue(page("one"));
+    renderDetail("/franchises/f-1");
+
+    expect(await screen.findByRole("button", { name: "Back to Franchises" })).toBeInTheDocument();
   });
 });

@@ -15,8 +15,8 @@ export function categoryFor(entityType: string | undefined): CategoryConfig | un
 }
 
 /**
- * `franchise` and `image` have no page in this app, so they get no route —
- * a card links somewhere real or not at all.
+ * `image` has no page in this app, so it gets no route — a card links
+ * somewhere real or not at all. `franchise` gained one in TD-096.
  */
 export function catalogueRoute(entityType: string | undefined, id: string): string | undefined {
   if (!id) return undefined;

@@ -104,7 +104,7 @@ export interface RefreshResponse {
   };
 }
 
-export type CategoryType = "actors" | "series" | "movies" | "tags";
+export type CategoryType = "actors" | "series" | "movies" | "franchises" | "tags";
 
 export interface CategoryConfig {
   type: CategoryType;
@@ -113,13 +113,17 @@ export interface CategoryConfig {
   idParam: string;
   filterable: boolean;
   genderFilterable: boolean;
+  /** Halo defines `PUT /v1/{type}/{id}/click` for every type but `franchise`. */
+  clickTrackable: boolean;
 }
 
+/** TD-096: this order is the tab order — `useTabHistory` derives `TAB_KEYS` from it. */
 export const CATEGORIES: CategoryConfig[] = [
-  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true },
-  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false },
-  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false },
-  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false },
+  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true, clickTrackable: true },
+  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false, clickTrackable: true },
+  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false, clickTrackable: true },
+  { type: "franchises", label: "Franchises", apiPath: "franchise", idParam: "franchise_id", filterable: true, genderFilterable: false, clickTrackable: false },
+  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false, clickTrackable: true },
 ];
 
 export function getCategoryConfig(

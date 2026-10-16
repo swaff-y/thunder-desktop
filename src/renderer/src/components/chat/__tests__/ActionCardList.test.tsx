@@ -85,7 +85,22 @@ describe("ActionCardList", () => {
 
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  /** TD-096: franchise has a page now, so the row that had no CTA has one. */
+  it("links a franchise row to its page and keeps calling the type Franchises", () => {
+    renderCard(
+      listAction("list_entities", { entity_type: "franchise" }, {
+        items: [{ id: "f-1", name: "Tidewater" }],
+        next_cursor: null,
+      })
+    );
+
+    expect(screen.getByRole("heading", { name: "Franchises" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View franchise: Tidewater" })).toHaveAttribute(
+      "href",
+      "/franchises/f-1"
+    );
   });
 
   it("says nothing starts with the filter when it matched nothing", () => {

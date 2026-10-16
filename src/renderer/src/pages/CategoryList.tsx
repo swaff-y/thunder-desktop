@@ -148,7 +148,9 @@ export default function CategoryList() {
                 <div
                   className="desktop-list-card"
                   onClick={() => {
-                    trackEntityClick(config!.apiPath, item.id);
+                    // Halo has no `PUT /v1/franchise/{id}/click`, so the only
+                    // thing the call could do there is 404.
+                    if (config.clickTrackable) trackEntityClick(config.apiPath, item.id);
                     navigate(`/${category}/${item.id}`);
                   }}
                 >

@@ -37,6 +37,11 @@ describe("viewForPath", () => {
     expect(viewForPath("/actors/77")).toEqual({ kind: "entity", type: "actor", id: "77" });
     expect(viewForPath("/movies/9")).toEqual({ kind: "entity", type: "movie", id: "9" });
     expect(viewForPath("/tags/3")).toEqual({ kind: "entity", type: "tag", id: "3" });
+    expect(viewForPath("/franchises/4")).toEqual({
+      kind: "entity",
+      type: "franchise",
+      id: "4",
+    });
   });
 
   it("keeps the type halo already spells the same way", () => {
@@ -46,6 +51,7 @@ describe("viewForPath", () => {
   it("maps a category list route to a list of that type", () => {
     expect(viewForPath("/actors")).toEqual({ kind: "list", type: "actor" });
     expect(viewForPath("/tags/")).toEqual({ kind: "list", type: "tag" });
+    expect(viewForPath("/franchises")).toEqual({ kind: "list", type: "franchise" });
   });
 
   it.each(["/", "/stats", "/browser", "/multi-watch", "/login"])(
@@ -56,8 +62,7 @@ describe("viewForPath", () => {
   );
 
   it("returns null for an unknown category rather than guessing a singular", () => {
-    expect(viewForPath("/franchises")).toBeNull();
-    expect(viewForPath("/franchises/4")).toBeNull();
+    expect(viewForPath("/images")).toBeNull();
     expect(viewForPath("/images/4")).toBeNull();
   });
 
@@ -185,7 +190,7 @@ describe("the view a question is asked from", () => {
   it("sends no view when the route matches nothing", async () => {
     const user = userEvent.setup();
     const send = vi.fn<ChatSend>().mockResolvedValue(answer("anything"));
-    renderApp(send, "/franchises/4");
+    renderApp(send, "/nope/1");
 
     await user.click(screen.getByRole("button", { name: "ask" }));
 

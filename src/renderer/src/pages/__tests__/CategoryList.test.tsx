@@ -7,10 +7,11 @@ import type { CategoryItem, PaginatedResponse } from "../../types";
 import CategoryList from "../CategoryList";
 
 const fetchCategoryItems = vi.fn();
+const trackEntityClick = vi.fn();
 
 vi.mock("../../api/halo", () => ({
   fetchCategoryItems: (...args: unknown[]) => fetchCategoryItems(...args),
-  trackEntityClick: vi.fn(),
+  trackEntityClick: (...args: unknown[]) => trackEntityClick(...args),
 }));
 
 vi.mock("../../hooks/useAuth", () => ({
@@ -62,6 +63,7 @@ function genderParams(): Array<string | null | undefined> {
 
 beforeEach(() => {
   fetchCategoryItems.mockReset();
+  trackEntityClick.mockReset();
   fetchCategoryItems.mockResolvedValue(page([ANNA]));
 });
 
@@ -138,5 +140,59 @@ describe("CategoryList gender filter", () => {
 
     expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
     expect(fetchCategoryItems.mock.calls[0][1].gender).toBeNull();
+  });
+});
+
+/**
+ * TD-096: halo defines `PUT /v1/{type}/{id}/click` for every category but
+ * franchise, so the one card tap that must send nothing is the franchise one.
+ */
+describe("CategoryList franchises", () => {
+  const TIDEWATER: CategoryItem = {
+    id: "f-1",
+    name: "Tidewater",
+    description: "",
+    url: "https://halo.test/tidewater.jpg",
+    status: "processed",
+  };
+
+  beforeEach(() => {
+    fetchCategoryItems.mockResolvedValue(page([TIDEWATER]));
+  });
+
+  it("lists franchises off halo's singular path, with no gender control", async () => {
+    renderCategory("franchises");
+    await screen.findByText("Tidewater");
+
+    expect(fetchCategoryItems.mock.calls[0][0]).toBe("franchise");
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(fetchCategoryItems.mock.calls[0][1].gender).toBeNull();
+  });
+
+  it("names the category in the filter-matched-nothing message", async () => {
+    fetchCategoryItems.mockResolvedValue(page([]));
+    renderCategory("franchises");
+    await screen.findByText("No items");
+
+    await userEvent.type(screen.getByRole("textbox"), "zzz");
+
+    await screen.findByText('No franchises starting with "zzz"');
+  });
+
+  it("tracks no click when a franchise card is tapped", async () => {
+    renderCategory("franchises");
+
+    await userEvent.click(await screen.findByText("Tidewater"));
+
+    expect(trackEntityClick).not.toHaveBeenCalled();
+  });
+
+  it("still tracks the click on a category halo has a /click for", async () => {
+    fetchCategoryItems.mockResolvedValue(page([ANNA]));
+    renderCategory("actors");
+
+    await userEvent.click(await screen.findByText("Anna"));
+
+    expect(trackEntityClick).toHaveBeenCalledWith("actor", "1");
   });
 });

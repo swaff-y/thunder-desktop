@@ -60,6 +60,12 @@ export function fetchMovies(params: PaginationParams) {
     .then((r) => r.data);
 }
 
+export function fetchFranchises(params: PaginationParams) {
+  return client
+    .get<PaginatedResponse<CategoryItem>>(buildListUrl("v1/franchise", params))
+    .then((r) => r.data);
+}
+
 export function fetchTags(params: PaginationParams) {
   return client
     .get<PaginatedResponse<CategoryItem>>(buildListUrl("v1/tag", params))
@@ -96,6 +102,17 @@ export function fetchMovieRecords(
   return client
     .get<PaginatedResponse<ContentRecord>>(
       buildListUrl(`v1/movie/${movieId}/records`, { ...params, limit: params.limit ?? 50 })
+    )
+    .then((r) => r.data);
+}
+
+export function fetchFranchiseRecords(
+  franchiseId: string,
+  params: PaginationParams
+) {
+  return client
+    .get<PaginatedResponse<ContentRecord>>(
+      buildListUrl(`v1/franchise/${franchiseId}/records`, { ...params, limit: params.limit ?? 50 })
     )
     .then((r) => r.data);
 }
@@ -260,6 +277,7 @@ const categoryFetchers: Record<
   actor: fetchActors,
   series: fetchSeries,
   movie: fetchMovies,
+  franchise: fetchFranchises,
   tag: fetchTags,
 };
 
@@ -270,6 +288,7 @@ const recordFetchers: Record<
   actor: fetchActorRecords,
   series: fetchSeriesRecords,
   movie: fetchMovieRecords,
+  franchise: fetchFranchiseRecords,
   tag: fetchTagRecords,
 };
 

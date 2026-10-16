@@ -4,6 +4,7 @@ import {
   IoPeopleOutline,
   IoFilmOutline,
   IoVideocamOutline,
+  IoGridOutline,
   IoPricetagOutline,
   IoGlobeOutline,
   IoStatsChartOutline
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/actors', label: 'Actors', icon: IoPeopleOutline, tabKey: 'actors' },
   { path: '/series', label: 'Series', icon: IoFilmOutline, tabKey: 'series' },
   { path: '/movies', label: 'Movies', icon: IoVideocamOutline, tabKey: 'movies' },
+  { path: '/franchises', label: 'Franchises', icon: IoGridOutline, tabKey: 'franchises' },
   { path: '/tags', label: 'Tags', icon: IoPricetagOutline, tabKey: 'tags' },
   { path: '/browser', label: 'Browser', icon: IoGlobeOutline },
   { path: '/stats', label: 'Stats', icon: IoStatsChartOutline }

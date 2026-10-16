@@ -24,7 +24,7 @@ import { getCategoryConfig } from "../../types";
  * `null` is the normal answer — Home, Stats, Browser, Multi-watch, Login and
  * every unrecognised segment all land here. An unknown category resolves to
  * nothing rather than to a guessed singular, the same rule `catalogueRoute`
- * applies to `franchise` and `image`.
+ * applies to `image`.
  */
 export function viewForPath(pathname: string): ViewContext | null {
   const segments = pathname.split("/").filter(Boolean);

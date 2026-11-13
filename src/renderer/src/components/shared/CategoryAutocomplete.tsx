@@ -22,7 +22,8 @@ export default function CategoryAutocomplete({
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const { data } = useCategoryList(apiPath);
+  // A locked-out field must not spend a round-trip on a list nobody can pick from.
+  const { data } = useCategoryList(apiPath, !disabled);
   const allItems = data?.pages.flatMap((p) => p.data) ?? [];
 
   const lower = query.toLowerCase();

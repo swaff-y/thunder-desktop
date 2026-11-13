@@ -60,6 +60,12 @@ export function fetchMovies(params: PaginationParams) {
     .then((r) => r.data);
 }
 
+export function fetchWebscenes(params: PaginationParams) {
+  return client
+    .get<PaginatedResponse<CategoryItem>>(buildListUrl("v1/webscene", params))
+    .then((r) => r.data);
+}
+
 export function fetchFranchises(params: PaginationParams) {
   return client
     .get<PaginatedResponse<CategoryItem>>(buildListUrl("v1/franchise", params))
@@ -102,6 +108,20 @@ export function fetchMovieRecords(
   return client
     .get<PaginatedResponse<ContentRecord>>(
       buildListUrl(`v1/movie/${movieId}/records`, { ...params, limit: params.limit ?? 50 })
+    )
+    .then((r) => r.data);
+}
+
+export function fetchWebsceneRecords(
+  websceneId: string,
+  params: PaginationParams
+) {
+  return client
+    .get<PaginatedResponse<ContentRecord>>(
+      buildListUrl(`v1/webscene/${encodeURIComponent(websceneId)}/records`, {
+        ...params,
+        limit: params.limit ?? 50,
+      })
     )
     .then((r) => r.data);
 }
@@ -151,7 +171,8 @@ export function fetchRecord(recordId: string) {
 }
 
 // Single entity of any halo type — `entityType` is halo's singular path
-// segment ("actor", "movie", "series", "tag", "image", "franchise").
+// segment ("actor", "movie", "series", "webscene", "tag", "image",
+// "franchise").
 export function fetchEntity(entityType: string, id: string, signal?: AbortSignal) {
   return client
     .get<{ data: EntityDetail }>(
@@ -180,19 +201,25 @@ function haloReason(data: unknown): string | undefined {
 /**
  * Halo's own words for a refusal, dug out of the body axios throws away.
  *
- * A failed upload's copy is `error.message` verbatim, so an unwrapped axios
- * error reads *Request failed with status code 400* while the sentence that
- * would tell the reader what to do — *Record is not in a replaceable state
- * (current: processing)* — sits unread in `response.data`.
+ * A refusal's copy is `error.message` verbatim, so an unwrapped axios error
+ * reads *Request failed with status code 400* while the sentence that would
+ * tell the reader what to do — *Record is not in a replaceable state
+ * (current: processing)*, or TD-097's *Only one of movie, series or
+ * webscene* — sits unread in `response.data`.
  *
- * Only the two upload ports use it. A blanket interceptor in `client.ts`
- * would rewrite the message of every failed call in the app, and the 401
- * redirect lives there.
+ * Only the ports whose refusals reach a user use it. A blanket interceptor in
+ * `client.ts` would rewrite the message of every failed call in the app, and
+ * the 401 redirect lives there.
  */
-export function uploadFailure(error: unknown): Error {
+export function haloFailure(error: unknown): Error {
   const reason = axios.isAxiosError(error) ? haloReason(error.response?.data) : undefined;
   if (reason !== undefined) return new Error(reason);
   return error instanceof Error ? error : new Error(String(error));
+}
+
+/** The `onRejected` half of every `.then` that wants halo's words, not axios's. */
+function rethrowWithReason(error: unknown): never {
+  throw haloFailure(error);
 }
 
 /**
@@ -211,12 +238,7 @@ export function requestUploadUrl(entityType: string, id: string, signal?: AbortS
       undefined,
       { signal }
     )
-    .then(
-      (r) => r.data.data,
-      (error: unknown) => {
-        throw uploadFailure(error);
-      }
-    );
+    .then((r) => r.data.data, rethrowWithReason);
 }
 
 /**
@@ -239,12 +261,7 @@ export function putUpload(
       signal,
       onUploadProgress: (event) => onProgress?.(event.loaded, event.total ?? file.size),
     })
-    .then(
-      () => undefined,
-      (error: unknown) => {
-        throw uploadFailure(error);
-      }
-    );
+    .then(() => undefined, rethrowWithReason);
 }
 
 // Video proxy URL builder
@@ -277,6 +294,7 @@ const categoryFetchers: Record<
   actor: fetchActors,
   series: fetchSeries,
   movie: fetchMovies,
+  webscene: fetchWebscenes,
   franchise: fetchFranchises,
   tag: fetchTags,
 };
@@ -288,6 +306,7 @@ const recordFetchers: Record<
   actor: fetchActorRecords,
   series: fetchSeriesRecords,
   movie: fetchMovieRecords,
+  webscene: fetchWebsceneRecords,
   franchise: fetchFranchiseRecords,
   tag: fetchTagRecords,
 };
@@ -317,7 +336,37 @@ export function likeRecord(recordId: string) {
 }
 
 export function updateRecord(recordId: string, body: RecordPatchBody) {
-  return client.patch<{ data: ContentRecord }>(`v1/record/${recordId}`, body).then((r) => r.data.data);
+  return client
+    .patch<{ data: ContentRecord }>(`v1/record/${recordId}`, body)
+    .then((r) => r.data.data, rethrowWithReason);
+}
+
+/**
+ * TD-097: the webscene-only ports.
+ *
+ * The other four of halo's seven already have a generic port — `fetchEntity`,
+ * `requestUploadUrl` and `trackEntityClick` take the singular path segment,
+ * and the list and records fetchers reach webscene through the registries
+ * above. These three have no caller for any other type yet.
+ */
+export function createWebscene(name: string) {
+  return client
+    .post<{ data: EntityDetail }>("v1/webscene", { name })
+    .then((r) => r.data.data, rethrowWithReason);
+}
+
+/** Detaches every record from the webscene; halo refuses if it has none. */
+export function unassociateWebscene(websceneId: string) {
+  return client
+    .post<{ data: EntityDetail }>(`v1/webscene/${encodeURIComponent(websceneId)}/unassociate`)
+    .then((r) => r.data.data, rethrowWithReason);
+}
+
+/** Halo refuses this while records still point at the webscene. */
+export function deleteWebscene(websceneId: string) {
+  return client
+    .delete<{ data: EntityDetail }>(`v1/webscene/${encodeURIComponent(websceneId)}`)
+    .then((r) => r.data.data, rethrowWithReason);
 }
 
 // Click tracking (fire-and-forget, survives navigation)

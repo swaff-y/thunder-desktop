@@ -1,8 +1,29 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { IoPencil, IoCheckmark, IoClose } from "react-icons/io5";
-import type { ContentRecord, RecordRef, RecordRefInput, RecordPatchBody } from "../../types";
+import type { ContentRecord, RecordRef, RecordPatchBody } from "../../types";
+import { catalogueRoute } from "../chat/entity-routes";
 import CategoryAutocomplete from "./CategoryAutocomplete";
+import { buildRecordPatch, refArraysEqual, SOURCE_KEYS, type SourceKey } from "./record-patch";
+
+interface SourceField {
+  key: SourceKey;
+  label: string;
+  placeholder: string;
+}
+
+/** One row per source halo accepts; `key` doubles as its singular api path. */
+const SOURCE_FIELDS: SourceField[] = [
+  { key: "series", label: "Series", placeholder: "Search series..." },
+  { key: "movie", label: "Movie", placeholder: "Search movies..." },
+  { key: "webscene", label: "Webscene", placeholder: "Search webscenes..." },
+];
+
+const NO_SOURCES: Record<SourceKey, RecordRef | null> = {
+  series: null,
+  movie: null,
+  webscene: null,
+};
 
 interface ContentTableProps {
   record: ContentRecord;
@@ -13,17 +34,21 @@ interface ContentTableProps {
 export default function ContentTable({ record, onUpdate, onEditingChange }: ContentTableProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [draftSeries, setDraftSeries] = useState<RecordRef | null>(null);
-  const [draftMovie, setDraftMovie] = useState<RecordRef | null>(null);
+  const [draftSources, setDraftSources] = useState(NO_SOURCES);
   const [draftActors, setDraftActors] = useState<RecordRef[]>([]);
   const [draftTags, setDraftTags] = useState<RecordRef[]>([]);
 
   const startEditing = () => {
-    setDraftSeries(record.series ?? null);
-    setDraftMovie(record.movie ?? null);
+    setDraftSources({
+      series: record.series ?? null,
+      movie: record.movie ?? null,
+      webscene: record.webscene ?? null,
+    });
     setDraftActors([...(record.actors ?? [])]);
     setDraftTags([...(record.tags ?? [])]);
+    setSaveError(null);
     setEditing(true);
     onEditingChange?.(true);
   };
@@ -33,38 +58,31 @@ export default function ContentTable({ record, onUpdate, onEditingChange }: Cont
     onEditingChange?.(false);
   };
 
-  const refsEqual = (a: RecordRef | undefined, b: RecordRef | null) =>
-    (a?.id ?? null) === (b?.id ?? null) && (a?.name ?? null) === (b?.name ?? null);
-
-  const refArraysEqual = (a: RecordRef[], b: RecordRef[]) =>
-    a.length === b.length && a.every((item, i) => item.id === b[i].id && item.name === b[i].name);
-
-  const cleanRef = (r: RecordRef): RecordRefInput =>
-    r.id ? { id: r.id, name: r.name } : { name: r.name };
-
-  const cleanRefs = (refs: RecordRef[]): RecordRefInput[] =>
-    refs.map(cleanRef);
-
-  const actorsChanged = !refArraysEqual(record.actors ?? [], draftActors);
-  const actorsEmpty = actorsChanged && draftActors.length === 0;
-  const tagsChanged = !refArraysEqual(record.tags ?? [], draftTags);
-  const tagsEmpty = tagsChanged && draftTags.length === 0;
+  const actorsEmpty =
+    !refArraysEqual(record.actors ?? [], draftActors) && draftActors.length === 0;
+  const tagsEmpty = !refArraysEqual(record.tags ?? [], draftTags) && draftTags.length === 0;
   const hasValidationError = actorsEmpty || tagsEmpty;
+
+  // Halo takes exactly one of the three, so whichever is already picked locks
+  // the other two out.
+  const hasSource = SOURCE_KEYS.some((key) => draftSources[key]);
+
+  const handleSourceChange = (key: SourceKey, value: RecordRef | null) =>
+    setDraftSources((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
     if (!onUpdate || hasValidationError) return;
     setSaving(true);
+    setSaveError(null);
     try {
-      const body: RecordPatchBody = { name: record.name };
-      if (!refsEqual(record.series, draftSeries)) body.series = draftSeries ? cleanRef(draftSeries) : null;
-      if (!refsEqual(record.movie, draftMovie)) body.movie = draftMovie ? cleanRef(draftMovie) : null;
-      if (actorsChanged) body.actors = cleanRefs(draftActors);
-      if (tagsChanged) body.tags = cleanRefs(draftTags);
-      await onUpdate(body);
+      await onUpdate(
+        buildRecordPatch(record, { ...draftSources, actors: draftActors, tags: draftTags })
+      );
       setEditing(false);
       onEditingChange?.(false);
-    } catch {
-      // Stay in edit mode so the user can retry
+    } catch (error: unknown) {
+      // Stay in edit mode so the user can retry, and say why it refused.
+      setSaveError(error instanceof Error ? error.message : "Could not save the record");
     } finally {
       setSaving(false);
     }
@@ -112,55 +130,23 @@ export default function ContentTable({ record, onUpdate, onEditingChange }: Cont
           </div>
         </div>
 
+        {saveError && (
+          <p className="save-error" role="alert">
+            {saveError}
+          </p>
+        )}
+
         <div className="content-table-row">
           <div className="content-table-col">
-            <div className="content-field">
-              <span className="field-label">Series:</span>
-              {draftSeries ? (
-                <div className="edit-pill-row">
-                  <span className="edit-pill">
-                    {draftSeries.name}
-                    <button
-                      className="pill-remove"
-                      onClick={() => setDraftSeries(null)}
-                    >
-                      <IoClose size={12} />
-                    </button>
-                  </span>
-                </div>
-              ) : (
-                <CategoryAutocomplete
-                  apiPath="series"
-                  placeholder="Search series..."
-                  onSelect={(item) => setDraftSeries(item)}
-                  disabled={!!draftMovie}
-                />
-              )}
-            </div>
-
-            <div className="content-field">
-              <span className="field-label">Movie:</span>
-              {draftMovie ? (
-                <div className="edit-pill-row">
-                  <span className="edit-pill">
-                    {draftMovie.name}
-                    <button
-                      className="pill-remove"
-                      onClick={() => setDraftMovie(null)}
-                    >
-                      <IoClose size={12} />
-                    </button>
-                  </span>
-                </div>
-              ) : (
-                <CategoryAutocomplete
-                  apiPath="movie"
-                  placeholder="Search movies..."
-                  onSelect={(item) => setDraftMovie(item)}
-                  disabled={!!draftSeries}
-                />
-              )}
-            </div>
+            {SOURCE_FIELDS.map((field) => (
+              <SourceRow
+                key={field.key}
+                field={field}
+                value={draftSources[field.key]}
+                lockedOut={hasSource && !draftSources[field.key]}
+                onChange={handleSourceChange}
+              />
+            ))}
 
             <div className="content-field">
               <span className="field-label">Actors:</span>
@@ -250,22 +236,9 @@ export default function ContentTable({ record, onUpdate, onEditingChange }: Cont
 
       <div className="content-table-row">
         <div className="content-table-col">
-          {record.series && (
-            <div className="content-field">
-              <span className="field-label">Series:</span>
-              <Link to={`/series/${record.series.id}`}>
-                {record.series.name}
-              </Link>
-            </div>
-          )}
-          {record.movie && (
-            <div className="content-field">
-              <span className="field-label">Movie:</span>
-              <Link to={`/movies/${record.movie.id}`}>
-                {record.movie.name}
-              </Link>
-            </div>
-          )}
+          {SOURCE_FIELDS.map((field) => (
+            <SourceLink key={field.key} field={field} value={record[field.key]} />
+          ))}
           {record.actors?.length > 0 && (
             <div className="content-field">
               <span className="field-label">Actors:</span>
@@ -296,6 +269,67 @@ export default function ContentTable({ record, onUpdate, onEditingChange }: Cont
       </div>
 
       <style>{`${sharedStyles}`}</style>
+    </div>
+  );
+}
+
+interface SourceRowProps {
+  field: SourceField;
+  value: RecordRef | null;
+  lockedOut: boolean;
+  onChange: (key: SourceKey, value: RecordRef | null) => void;
+}
+
+function SourceRow({ field, value, lockedOut, onChange }: SourceRowProps) {
+  function handleRemove() {
+    onChange(field.key, null);
+  }
+
+  function handleSelect(selected: RecordRef) {
+    onChange(field.key, selected);
+  }
+
+  return (
+    <div className="content-field">
+      <span className="field-label">{field.label}:</span>
+      {value ? (
+        <div className="edit-pill-row">
+          <span className="edit-pill">
+            {value.name}
+            <button
+              className="pill-remove"
+              aria-label={`Remove ${field.key}`}
+              onClick={handleRemove}
+            >
+              <IoClose size={12} />
+            </button>
+          </span>
+        </div>
+      ) : (
+        <CategoryAutocomplete
+          apiPath={field.key}
+          placeholder={field.placeholder}
+          onSelect={handleSelect}
+          disabled={lockedOut}
+        />
+      )}
+    </div>
+  );
+}
+
+interface SourceLinkProps {
+  field: SourceField;
+  value: RecordRef | undefined;
+}
+
+function SourceLink({ field, value }: SourceLinkProps) {
+  const route = value && catalogueRoute(field.key, value.id);
+  if (!value || !route) return null;
+
+  return (
+    <div className="content-field">
+      <span className="field-label">{field.label}:</span>
+      <Link to={route}>{value.name}</Link>
     </div>
   );
 }
@@ -384,6 +418,11 @@ const editStyles = `
     color: var(--color-danger);
     display: block;
     margin-bottom: var(--space-xs);
+  }
+  .save-error {
+    font-size: var(--text-body-sm);
+    color: var(--color-error-text);
+    margin: 0 0 var(--space-sm);
   }
   .edit-pill-row {
     display: flex;

@@ -48,8 +48,14 @@ export interface RecordRef {
 export interface ContentRecord {
   id: string;
   name: string;
+  /**
+   * HALO-278: a record holds exactly one of `series`, `movie` or `webscene`,
+   * never two. `webscene` is the one the migration gave to ~48% of the
+   * catalogue, so a record this client did not know how to read is common.
+   */
   series?: RecordRef;
   movie?: RecordRef;
+  webscene?: RecordRef;
   actors: RecordRef[];
   tags: RecordRef[];
   images: RecordImage[];
@@ -63,6 +69,7 @@ export interface RecordPatchBody {
   name: string;
   series?: RecordRefInput | null;
   movie?: RecordRefInput | null;
+  webscene?: RecordRefInput | null;
   actors?: RecordRefInput[];
   tags?: RecordRefInput[];
 }
@@ -104,7 +111,13 @@ export interface RefreshResponse {
   };
 }
 
-export type CategoryType = "actors" | "series" | "movies" | "franchises" | "tags";
+export type CategoryType =
+  | "actors"
+  | "series"
+  | "movies"
+  | "webscenes"
+  | "franchises"
+  | "tags";
 
 export interface CategoryConfig {
   type: CategoryType;
@@ -122,6 +135,7 @@ export const CATEGORIES: CategoryConfig[] = [
   { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true, clickTrackable: true },
   { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false, clickTrackable: true },
   { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false, clickTrackable: true },
+  { type: "webscenes", label: "Webscenes", apiPath: "webscene", idParam: "webscene_id", filterable: true, genderFilterable: false, clickTrackable: true },
   { type: "franchises", label: "Franchises", apiPath: "franchise", idParam: "franchise_id", filterable: true, genderFilterable: false, clickTrackable: false },
   { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false, clickTrackable: true },
 ];
@@ -133,7 +147,13 @@ export function getCategoryConfig(
 }
 
 // Stats types
-export type StatsEntityType = "tag" | "record" | "actor" | "series" | "movie";
+export type StatsEntityType =
+  | "tag"
+  | "record"
+  | "actor"
+  | "series"
+  | "movie"
+  | "webscene";
 export type StatsGranularity = "day" | "week" | "month";
 export type StatsEventType = "click" | "view";
 

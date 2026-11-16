@@ -37,6 +37,7 @@ describe("Sidebar", () => {
       "Actors",
       "Series",
       "Movies",
+      "Webscenes",
       "Franchises",
       "Tags",
       "Browser",

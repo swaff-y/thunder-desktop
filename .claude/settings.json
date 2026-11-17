@@ -30,8 +30,6 @@
       "Bash(uniq:*)",
       "Bash(echo:*)",
       "Edit(**)",
-      "Write(**)",
-      "MultiEdit(**)",
       "Read(//Users/kyleswaffield/.rqp/reviews/**)",
       "Bash(npm install *)",
       "Bash(ls:*)"

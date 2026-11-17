@@ -1,53 +1,45 @@
 ---
-description: Senior-engineer code review of the current branch vs main
-argument-hint: <ticket-md-path>
+description: Review the current branch against main with pstack's thermos audit plus this repo's own hazards, and write docs/reviews/<branch>.md
+argument-hint: [TD-NNN | #issue | ticket path]
+allowed-tools: Bash(git branch:*), Bash(git diff:*)
 ---
 
-You are a senior engineer performing a code review.
-
 Base branch: `main`
-Review branch: current branch (!`git branch --show-current`)
+Review branch: !`git branch --show-current`
 Review path: `docs/reviews/`!`git branch --show-current`.md
-Ticket path: `$1`
+Ticket: `$1`
 
 ## Task
 
-1. If no ticket path was provided in `$1`, stop and ask the user: "No ticket path provided. Continue without a ticket, or supply a ticket md path?" Wait for their response before continuing.
-2. If a ticket path is provided, read it to understand the requirements and acceptance criteria.
-3. Run `git diff main...HEAD` to see all changes on the current branch vs `main`.
-4. Invoke the following skills via the Skill tool and apply their guidance to the diff:
+1. If `$1` is given, spawn the `ticket-parser` agent with it and take its brief as the acceptance criteria to check. If it is empty, review without a ticket and say so in the file.
+2. If the branch is `main`, stop and ask for a feature branch.
+3. The diff under review is `git diff main...HEAD`. Keep it out of this thread: the subagents below read it.
+4. Invoke the `pstack:thermos` skill over the diff. It runs the bug/security and code-quality review subagents in parallel and synthesises their findings. Carry every surviving finding into Key findings with its severity.
+5. Spawn one `pstack:poteto-agent` reviewer (run in the background) with the review path, the ticket brief, and this file's remaining steps. It loads these skills and applies them to the diff:
    - `clean-typescript`
    - `modern-best-practice-react-components`
    - `modern-accessible-html-jsx`
    - `use-modern-browser-apis`
    - `web-security`
-5. Analyze the diff for:
-   - Whether the implementation satisfies the ticket's requirements and acceptance criteria (skip if no ticket)
-   - Breaking changes or regressions
-   - Code quality issues
-   - Security concerns (esp. anything crossing the main/preload/renderer IPC boundary, token handling, or `window.api` surface)
-   - Performance implications
-   - Code patterns against existing codebase (e.g. mock-mode passthrough flags, Zod-validated endpoints, `useCallMachine` state transitions)
-6. Write your review to the review path above.
+   then checks this repo's own hazards. A review that only covers general code quality has not reviewed this repo:
+   - The IPC boundary: tokens and the keychain live in main; the renderer reaches them only through `window.api` from preload. An Electron API in the renderer is a finding.
+   - AI chat lives in `@swaff-y/thunder-chat-core` and thunder-context, not here. Chat logic reappearing in this repo is a regression of the TC migration.
+   - Patterns: the mock-mode fixtures under `src/renderer/src/mocks/`, the existing TanStack Query hooks, the existing form and modal components.
+   It writes the review to the review path in the format below and returns only the path and a one-paragraph summary.
+6. Merge the thermos findings into the file's Key findings, then report the path and the summary. When `/implement` calls this command, the fix-up pass that follows is its step, not this one's.
 
-## File Instructions
+## Review format
 
-This is a new review. Use the Write tool to create or overwrite the review path with your complete review.
+Write the review path with the Write tool (create or overwrite) as markdown with:
 
-## Review Format
+- Ticket (id and source, with a one-line summary of what it asks for, or "no ticket provided").
+- Summary of changes.
+- Acceptance criteria coverage, required when a ticket is given, as a table with one row per criterion:
 
-Structure your review as markdown with:
-
-- Ticket reference (path + a one-line summary of requirements/ACs, or "no ticket provided")
-- Summary of changes
-- **Acceptance Criteria coverage** — REQUIRED when a ticket is provided. Render as a markdown table with one row per AC:
-
-  | # | Acceptance Criterion | Status | Evidence (file:line / notes) |
+  | # | Acceptance criterion | Status | Evidence (file:line / notes) |
   |---|----------------------|--------|------------------------------|
-  | 1 | <verbatim AC text>   | Met / Partial / Missing | <where in the diff it's satisfied, or what's missing> |
+  | 1 | <verbatim AC text>   | Met / Partial / Missing | <where the diff satisfies it, or what is missing> |
 
-  Every AC from the ticket must appear as its own row. Do not collapse or summarise them. Omit this section only when no ticket was provided.
-- Key findings (issues, concerns, suggestions) - use checkboxes: [ ] for open issues, [x] for fixed
-- Overall assessment
-
-IMPORTANT: You MUST write the review to the review path. Do not just output the review - save it to the file.
+  Every criterion appears as its own row, never collapsed or summarised.
+- Key findings, each with a severity and a file:line, as checkboxes: `[ ]` open, `[x]` fixed.
+- Overall assessment.

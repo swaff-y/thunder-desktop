@@ -5,10 +5,13 @@ export interface CategoryItem {
   id: string;
   name: string;
   description: string;
-  url: string;
+  /** Every category but webscene carries its own avatar in `url` and `status`. */
+  url?: string;
   imageKey?: string;
   imageVersion?: number | string;
-  status: "processing" | "processed";
+  status?: "processing" | "processed";
+  /** A webscene's record slots (HALO-280); `[]` when it has no record. */
+  images?: ImageSlot[];
   /** Actors only; `null` is a row halo could not read a gender off. */
   gender?: ActorGender | null;
 }
@@ -16,7 +19,7 @@ export interface CategoryItem {
 /** Halo's per-slot processing state — `url` is only set on `processed`. */
 export type ImageSlotStatus = "awaiting" | "processing" | "processed" | "failed";
 
-export interface RecordImage {
+export interface ImageSlot {
   url: string;
   imageKey?: string;
   imageVersion?: number | string;
@@ -38,6 +41,29 @@ export interface EntityDetail {
   imageKey?: string;
   imageVersion?: number | string;
   clicks?: number;
+  /** A webscene's record slots (HALO-280); it has no avatar fields. */
+  images?: ImageSlot[];
+}
+
+/** An avatar is a one-slot list, so every consumer reads slots. */
+export function imageSlotsOf(entity: {
+  id: string;
+  url?: string;
+  imageKey?: string;
+  imageVersion?: number | string;
+  status?: ImageSlotStatus;
+  images?: ImageSlot[];
+}): ImageSlot[] {
+  return (
+    entity.images ?? [
+      {
+        url: entity.url ?? "",
+        imageKey: entity.imageKey ?? entity.id,
+        imageVersion: entity.imageVersion,
+        status: entity.status,
+      },
+    ]
+  );
 }
 
 export interface RecordRef {
@@ -58,7 +84,7 @@ export interface ContentRecord {
   webscene?: RecordRef;
   actors: RecordRef[];
   tags: RecordRef[];
-  images: RecordImage[];
+  images: ImageSlot[];
   likes?: number | null;
   views?: number | null;
 }

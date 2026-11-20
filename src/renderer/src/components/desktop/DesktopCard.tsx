@@ -3,7 +3,7 @@ import { Card } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { IoAddCircleOutline, IoRemoveCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
-import type { ContentRecord, RecordImage } from "../../types";
+import type { ContentRecord, ImageSlot } from "../../types";
 
 interface DesktopCardProps {
   record: ContentRecord;
@@ -12,7 +12,7 @@ interface DesktopCardProps {
 const CAROUSEL_INTERVAL = 3000;
 
 interface CardImageProps {
-  image: RecordImage;
+  image: ImageSlot;
   alt: string;
   isActive: boolean;
 }

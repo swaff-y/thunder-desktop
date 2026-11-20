@@ -104,6 +104,15 @@ describe("ActionCardUpload", () => {
     expect(blank).toBeEmptyDOMElement();
   });
 
+  it("draws nothing for a webscene, whose pictures belong to its record (HALO-280)", () => {
+    const webscene = { entityType: "webscene", id: "f93d", name: "Harbour Chase" };
+    const { container } = renderCard(uploadAction(webscene, subject("processing")));
+
+    expect(container).toBeEmptyDOMElement();
+    expect(requestUploadUrl).not.toHaveBeenCalled();
+    expect(fetchEntity).not.toHaveBeenCalled();
+  });
+
   it("sends nothing at all until a file is supplied", () => {
     renderCard(uploadAction(TOM, subject("processing")));
 

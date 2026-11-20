@@ -11,7 +11,7 @@
 
 import { useEntity } from "../../hooks/useEntity";
 import { useRecord } from "../../hooks/useRecord";
-import type { ImageSlotStatus, RecordImage } from "../../types";
+import { imageSlotsOf, type ImageSlot, type ImageSlotStatus } from "../../types";
 import type { CarouselImage } from "../shared/ImageCarousel";
 import type { ImageTarget } from "./entity-routes";
 
@@ -39,7 +39,7 @@ function labelFor(status: ImageSlotStatus | undefined): string | undefined {
   return status === undefined ? undefined : SLOT_LABEL[status];
 }
 
-function slideFor(image: RecordImage, index: number): CarouselImage {
+function slideFor(image: ImageSlot, index: number): CarouselImage {
   return {
     url: image.url || undefined,
     imageKey: image.imageKey ?? `slot-${index}`,
@@ -67,18 +67,8 @@ export function useActionImages(target: ImageTarget | undefined): ActionImages {
   }
 
   if (isEntity) {
-    const avatar = entity.data;
     return {
-      slides:
-        avatar === undefined
-          ? []
-          : [
-              {
-                url: avatar.url || undefined,
-                imageKey: avatar.imageKey ?? avatar.id,
-                label: labelFor(avatar.status),
-              },
-            ],
+      slides: entity.data === undefined ? [] : imageSlotsOf(entity.data).map(slideFor),
       isLoading: entity.isLoading,
       isError: entity.isError,
     };

@@ -196,3 +196,56 @@ describe("CategoryList franchises", () => {
     expect(trackEntityClick).toHaveBeenCalledWith("actor", "1");
   });
 });
+
+describe("CategoryList webscenes", () => {
+  function webscene(images: CategoryItem["images"]): CategoryItem {
+    return { id: "w-1", name: "Harbour Chase", description: "", images };
+  }
+
+  it("draws the first processed slot, skipping an awaiting one ahead of it", async () => {
+    fetchCategoryItems.mockResolvedValue(
+      page([
+        webscene([
+          { url: "", status: "awaiting" },
+          { url: "https://halo.test/chase.jpg", status: "processed" },
+        ]),
+      ])
+    );
+    renderCategory("webscenes");
+
+    const image = await screen.findByRole("img", { name: "Harbour Chase" });
+    expect(image).toHaveAttribute("src", "https://halo.test/chase.jpg");
+  });
+
+  it("shows the placeholder when no slot is processed", async () => {
+    fetchCategoryItems.mockResolvedValue(
+      page([
+        webscene([
+          { url: "", status: "awaiting" },
+          { url: "", status: "processing" },
+          { url: "", status: "failed" },
+        ]),
+      ])
+    );
+    renderCategory("webscenes");
+
+    await screen.findByText("Harbour Chase");
+    expect(screen.getByText("Processing...")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("renders a webscene with no record and no slots", async () => {
+    fetchCategoryItems.mockResolvedValue(page([webscene([])]));
+    renderCategory("webscenes");
+
+    await screen.findByText("Harbour Chase");
+    expect(screen.getByText("Processing...")).toBeInTheDocument();
+  });
+
+  it("still draws an actor's avatar", async () => {
+    renderCategory("actors");
+
+    const image = await screen.findByRole("img", { name: "Anna" });
+    expect(image).toHaveAttribute("src", "https://halo.test/anna.jpg");
+  });
+});

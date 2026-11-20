@@ -111,6 +111,9 @@ export default function ActionCardUpload({
 }: {
   action: ChatAction;
 }): React.JSX.Element | null {
+  // HALO-280: a webscene's pictures are its record's, and halo has no
+  // `POST /v1/webscene/{id}/upload` for this card to call.
+  if (action.target?.entityType === "webscene") return null;
   const card = toUploadCard(action);
   if (card === undefined) return null;
   return <UploadCardBody card={card} />;

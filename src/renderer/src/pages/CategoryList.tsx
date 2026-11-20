@@ -4,8 +4,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Row, Col, ToggleButton, ToggleButtonGroup } from "react-bootstrap";
 import { useCategoryList } from "../hooks/useCategories";
 import { useListFilter } from "../hooks/useListFilter";
-import { getCategoryConfig } from "../types";
-import type { ActorGender } from "../types";
+import { getCategoryConfig, imageSlotsOf } from "../types";
+import type { ActorGender, CategoryItem } from "../types";
 import { trackEntityClick } from "../api/halo";
 import FilterBar from "../components/shared/FilterBar";
 import LoadMore from "../components/shared/LoadMore";
@@ -15,6 +15,10 @@ import ErrorState from "../components/shared/ErrorState";
 /** react-bootstrap types `ToggleButtonGroup`'s value as `any`, so narrow it here. */
 function toGender(value: unknown): ActorGender | null {
   return value === "male" || value === "female" ? value : null;
+}
+
+function thumbnailUrl(item: CategoryItem): string | undefined {
+  return imageSlotsOf(item).find((slot) => slot.status === "processed" && slot.url)?.url;
 }
 
 export default function CategoryList() {
@@ -143,33 +147,36 @@ export default function CategoryList() {
       {!isLoading && !isError && (
         <>
           <Row xs={2} md={3} lg={4} className="g-3">
-            {items.map((item, i) => (
-              <Col key={item.id ?? i}>
-                <div
-                  className="desktop-list-card"
-                  onClick={() => {
-                    // Halo has no `PUT /v1/franchise/{id}/click`, so the only
-                    // thing the call could do there is 404.
-                    if (config.clickTrackable) trackEntityClick(config.apiPath, item.id);
-                    navigate(`/${category}/${item.id}`);
-                  }}
-                >
-                  <div className="dlc-image">
-                    {item.status === "processed" && item.url ? (
-                      <img src={item.url} alt={item.name} />
-                    ) : (
-                      <div className="dlc-placeholder">Processing...</div>
-                    )}
-                    <div className="dlc-overlay">
-                      <h3 className="dlc-title">{item.name}</h3>
-                      {item.description && (
-                        <p className="dlc-desc">{item.description}</p>
+            {items.map((item, i) => {
+              const thumbnail = thumbnailUrl(item);
+              return (
+                <Col key={item.id ?? i}>
+                  <div
+                    className="desktop-list-card"
+                    onClick={() => {
+                      // Halo has no `PUT /v1/franchise/{id}/click`, so the only
+                      // thing the call could do there is 404.
+                      if (config.clickTrackable) trackEntityClick(config.apiPath, item.id);
+                      navigate(`/${category}/${item.id}`);
+                    }}
+                  >
+                    <div className="dlc-image">
+                      {thumbnail ? (
+                        <img src={thumbnail} alt={item.name} />
+                      ) : (
+                        <div className="dlc-placeholder">Processing...</div>
                       )}
+                      <div className="dlc-overlay">
+                        <h3 className="dlc-title">{item.name}</h3>
+                        {item.description && (
+                          <p className="dlc-desc">{item.description}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Col>
-            ))}
+                </Col>
+              );
+            })}
           </Row>
           {emptyState}
           <LoadMore

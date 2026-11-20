@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoListOutline, IoCloseCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
-import type { RecordImage } from "../../types";
+import type { ImageSlot } from "../../types";
 
-function ThumbImage({ image }: { image: RecordImage }) {
+function ThumbImage({ image }: { image: ImageSlot }) {
   return <img src={image.url} alt="" />;
 }
 

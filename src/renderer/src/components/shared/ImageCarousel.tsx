@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
  * image slots in place so the dot count still matches the record. A slide
  * without a `url` renders its `label` instead of a broken image.
  *
- * `RecordImage` satisfies this shape, so existing callers pass unchanged.
+ * `ImageSlot` satisfies this shape, so existing callers pass unchanged.
  */
 export interface CarouselImage {
   url?: string;

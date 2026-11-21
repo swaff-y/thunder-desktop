@@ -1,6 +1,13 @@
 /** The only two values `GET /v1/actor?gender=` accepts — the stored `m`/`f` is a 400. */
 export type ActorGender = "male" | "female";
 
+export interface Nationality {
+  /** An ISO 3166-1 alpha-2 region code, such as `AU`. */
+  code: string;
+  /** The demonym, such as `Australian`. */
+  displayName: string;
+}
+
 export interface CategoryItem {
   id: string;
   name: string;
@@ -14,6 +21,8 @@ export interface CategoryItem {
   images?: ImageSlot[];
   /** Actors only; `null` is a row halo could not read a gender off. */
   gender?: ActorGender | null;
+  /** Actors only; `null` is a row with no nationality, or one halo could not read. */
+  nationality?: Nationality | null;
 }
 
 /** Halo's per-slot processing state — `url` is only set on `processed`. */
@@ -152,18 +161,20 @@ export interface CategoryConfig {
   idParam: string;
   filterable: boolean;
   genderFilterable: boolean;
+  /** Only actor cards wear a nationality flag, whatever a row carries (TD-103). */
+  showsNationality: boolean;
   /** Halo defines `PUT /v1/{type}/{id}/click` for every type but `franchise`. */
   clickTrackable: boolean;
 }
 
 /** TD-096: this order is the tab order — `useTabHistory` derives `TAB_KEYS` from it. */
 export const CATEGORIES: CategoryConfig[] = [
-  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true, clickTrackable: true },
-  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false, clickTrackable: true },
-  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false, clickTrackable: true },
-  { type: "webscenes", label: "Webscenes", apiPath: "webscene", idParam: "webscene_id", filterable: true, genderFilterable: false, clickTrackable: true },
-  { type: "franchises", label: "Franchises", apiPath: "franchise", idParam: "franchise_id", filterable: true, genderFilterable: false, clickTrackable: false },
-  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false, clickTrackable: true },
+  { type: "actors", label: "Actors", apiPath: "actor", idParam: "actor_id", filterable: true, genderFilterable: true, showsNationality: true, clickTrackable: true },
+  { type: "series", label: "Series", apiPath: "series", idParam: "series_id", filterable: true, genderFilterable: false, showsNationality: false, clickTrackable: true },
+  { type: "movies", label: "Movies", apiPath: "movie", idParam: "movie_id", filterable: true, genderFilterable: false, showsNationality: false, clickTrackable: true },
+  { type: "webscenes", label: "Webscenes", apiPath: "webscene", idParam: "webscene_id", filterable: true, genderFilterable: false, showsNationality: false, clickTrackable: true },
+  { type: "franchises", label: "Franchises", apiPath: "franchise", idParam: "franchise_id", filterable: true, genderFilterable: false, showsNationality: false, clickTrackable: false },
+  { type: "tags", label: "Tags", apiPath: "tag", idParam: "tag_id", filterable: true, genderFilterable: false, showsNationality: false, clickTrackable: true },
 ];
 
 export function getCategoryConfig(

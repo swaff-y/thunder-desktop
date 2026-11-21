@@ -51,6 +51,7 @@ function renderCategory(category: string) {
       <MemoryRouter initialEntries={[`/${category}`]}>
         <Routes>
           <Route path="/:category" element={<CategoryList />} />
+          <Route path="/:category/:id" element={<div>detail page</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -247,5 +248,55 @@ describe("CategoryList webscenes", () => {
 
     const image = await screen.findByRole("img", { name: "Anna" });
     expect(image).toHaveAttribute("src", "https://halo.test/anna.jpg");
+  });
+});
+
+describe("CategoryList actor nationality", () => {
+  const AUSTRALIAN = { code: "AU", displayName: "Australian" };
+  const AU_FLAG = "\u{1F1E6}\u{1F1FA}";
+
+  it("shows the flag with the demonym as its name and title", async () => {
+    fetchCategoryItems.mockResolvedValue(page([{ ...ANNA, nationality: AUSTRALIAN }]));
+    renderCategory("actors");
+
+    const flag = await screen.findByRole("img", { name: "Australian" });
+
+    expect(flag).toHaveTextContent(AU_FLAG);
+    expect(flag).toHaveAttribute("title", "Australian");
+    expect(fetchCategoryItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no flag for a null or absent nationality", async () => {
+    fetchCategoryItems.mockResolvedValue(
+      page([
+        { ...ANNA, nationality: null },
+        { ...ANNA, id: "2", name: "Bea" },
+      ])
+    );
+    renderCategory("actors");
+
+    await screen.findByText("Bea");
+
+    const imageNames = screen.getAllByRole("img").map((image) => image.getAttribute("alt"));
+    expect(imageNames).toEqual(["Anna", "Bea"]);
+  });
+
+  it("shows no flag on a movie that carries a nationality", async () => {
+    fetchCategoryItems.mockResolvedValue(page([{ ...ANNA, nationality: AUSTRALIAN }]));
+    renderCategory("movies");
+
+    await screen.findByText("Anna");
+
+    expect(screen.queryByRole("img", { name: "Australian" })).not.toBeInTheDocument();
+  });
+
+  it("opens the actor when the flag is clicked", async () => {
+    fetchCategoryItems.mockResolvedValue(page([{ ...ANNA, nationality: AUSTRALIAN }]));
+    renderCategory("actors");
+
+    await userEvent.click(await screen.findByRole("img", { name: "Australian" }));
+
+    expect(await screen.findByText("detail page")).toBeInTheDocument();
+    expect(trackEntityClick).toHaveBeenCalledWith("actor", "1");
   });
 });

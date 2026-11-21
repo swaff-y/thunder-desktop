@@ -8,6 +8,7 @@ import { getCategoryConfig, imageSlotsOf } from "../types";
 import type { ActorGender, CategoryItem } from "../types";
 import { trackEntityClick } from "../api/halo";
 import FilterBar from "../components/shared/FilterBar";
+import NationalityFlag from "../components/shared/NationalityFlag";
 import LoadMore from "../components/shared/LoadMore";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
 import ErrorState from "../components/shared/ErrorState";
@@ -172,6 +173,12 @@ export default function CategoryList() {
                           <p className="dlc-desc">{item.description}</p>
                         )}
                       </div>
+                      {config.showsNationality && item.nationality && (
+                        <NationalityFlag
+                          nationality={item.nationality}
+                          className="dlc-flag"
+                        />
+                      )}
                     </div>
                   </div>
                 </Col>
@@ -256,6 +263,11 @@ export default function CategoryList() {
           right: 0;
           background: linear-gradient(transparent, rgba(0,0,0,0.8));
           padding: var(--space-xl) var(--space-md) var(--space-md);
+        }
+        .dlc-flag {
+          position: absolute;
+          top: var(--space-sm);
+          right: var(--space-sm);
         }
         .dlc-title {
           font-size: var(--text-body);

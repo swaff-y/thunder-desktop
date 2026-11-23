@@ -3,6 +3,7 @@ import { Card } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { IoAddCircleOutline, IoRemoveCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
+import NationalityFlags from "../shared/NationalityFlags";
 import type { ContentRecord, ImageSlot } from "../../types";
 
 interface DesktopCardProps {
@@ -64,6 +65,7 @@ export default function DesktopCard({ record }: DesktopCardProps) {
         <div className="desktop-card-overlay">
           <span className="play-icon">&#9654;</span>
         </div>
+        <NationalityFlags actors={record.actors ?? []} className="desktop-card-flags" />
       </div>
       <Card.Body className="desktop-card-body">
         <h3 className="desktop-card-title">{record.name}</h3>
@@ -131,6 +133,11 @@ export default function DesktopCard({ record }: DesktopCardProps) {
         }
         .desktop-card:hover .desktop-card-overlay {
           opacity: 1;
+        }
+        .desktop-card-flags {
+          position: absolute;
+          top: var(--space-sm);
+          right: var(--space-sm);
         }
         .play-icon {
           font-size: 2rem;

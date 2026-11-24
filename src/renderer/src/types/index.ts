@@ -41,9 +41,10 @@ export interface ImageSlot {
 }
 
 /**
- * `GET /v1/{type}/{id}`. `franchise` answers with `{id, name}` alone, and
- * `image` answers without `clicks` — both absences are the type saying it
- * has no such field, not a zero.
+ * `GET /v1/{type}/{id}`. `franchise` answers with `status`, `url` (null
+ * until processed), `imageKey` and `imageVersion` but no `clicks`, and
+ * `image` answers without `clicks` either. The absence is the type saying
+ * it has no such field, not a zero.
  */
 export interface EntityDetail extends ActorTraits {
   id: string;
@@ -94,6 +95,12 @@ export interface ContentRecord {
   series?: RecordRef;
   movie?: RecordRef;
   webscene?: RecordRef;
+  /**
+   * Halo writes this on every record, `null` when unset. Unlike the three
+   * sources above it is not exclusive: a record can have a franchise and a
+   * series, movie or webscene.
+   */
+  franchise?: RecordRef | null;
   actors: RecordRef[];
   tags: RecordRef[];
   images: ImageSlot[];

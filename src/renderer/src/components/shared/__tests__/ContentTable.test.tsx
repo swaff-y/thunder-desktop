@@ -1,10 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ContentRecord, RecordPatchBody } from "../../../types";
 import ContentTable from "../ContentTable";
+
+const fetchEntity = vi.fn();
+
+vi.mock("../../../api/halo", () => ({
+  fetchEntity: (...args: unknown[]) => fetchEntity(...args),
+}));
+
+vi.mock("../../../hooks/useAuth", () => ({
+  useAuth: () => ({ isAuthenticated: true }),
+}));
 
 vi.mock("../../../hooks/useCategories", () => ({
   useCategoryList: () => ({ data: undefined }),
@@ -19,18 +29,43 @@ const WEBSCENE_RECORD: ContentRecord = {
   images: [],
 };
 
-function renderTable(onUpdate?: (body: RecordPatchBody) => Promise<void>) {
+function renderTable(
+  onUpdate?: (body: RecordPatchBody) => Promise<void>,
+  record: ContentRecord = WEBSCENE_RECORD
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ContentTable record={WEBSCENE_RECORD} onUpdate={onUpdate} />
+        <ContentTable record={record} onUpdate={onUpdate} />
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
 describe("ContentTable", () => {
+  beforeEach(() => {
+    fetchEntity.mockReset();
+    fetchEntity.mockResolvedValue({ id: "f-1", name: "Harbour Saga", status: "processing", url: null });
+  });
+
+  it("shows a franchise row with a link to the franchise in view mode", () => {
+    renderTable(undefined, { ...WEBSCENE_RECORD, franchise: { id: "f-1", name: "Harbour Saga" } });
+
+    expect(screen.getByText("Franchise:")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Franchise: Harbour Saga" })).toHaveAttribute(
+      "href",
+      "/franchises/f-1"
+    );
+  });
+
+  it("shows no franchise row and reads no franchise when the record has none", () => {
+    renderTable(undefined, { ...WEBSCENE_RECORD, franchise: null });
+
+    expect(screen.queryByText("Franchise:")).not.toBeInTheDocument();
+    expect(fetchEntity).not.toHaveBeenCalled();
+  });
+
   it("links a webscene record to its webscene in view mode", () => {
     renderTable();
 

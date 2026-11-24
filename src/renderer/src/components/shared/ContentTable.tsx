@@ -4,6 +4,7 @@ import { IoPencil, IoCheckmark, IoClose } from "react-icons/io5";
 import type { ContentRecord, RecordRef, RecordPatchBody } from "../../types";
 import { catalogueRoute } from "../chat/entity-routes";
 import CategoryAutocomplete from "./CategoryAutocomplete";
+import FranchiseChip from "./FranchiseChip";
 import { buildRecordPatch, refArraysEqual, SOURCE_KEYS, type SourceKey } from "./record-patch";
 
 interface SourceField {
@@ -239,6 +240,12 @@ export default function ContentTable({ record, onUpdate, onEditingChange }: Cont
           {SOURCE_FIELDS.map((field) => (
             <SourceLink key={field.key} field={field} value={record[field.key]} />
           ))}
+          {record.franchise && (
+            <div className="content-field">
+              <span className="field-label">Franchise:</span>
+              <FranchiseChip franchise={record.franchise} />
+            </div>
+          )}
           {record.actors?.length > 0 && (
             <div className="content-field">
               <span className="field-label">Actors:</span>

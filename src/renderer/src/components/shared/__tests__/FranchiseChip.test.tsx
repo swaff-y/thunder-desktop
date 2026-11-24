@@ -21,7 +21,7 @@ const franchise = { id: "f-1", name: "Harbour Saga" };
 
 function renderChip() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
@@ -31,6 +31,7 @@ function renderChip() {
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return { ...view, client };
 }
 
 beforeEach(() => {
@@ -62,9 +63,11 @@ describe("FranchiseChip", () => {
   it("shows the initial in the same sized avatar while the url is null", async () => {
     fetchEntity.mockResolvedValue({ id: "f-1", name: "Harbour Saga", status: "processing", url: null });
 
-    const { container } = renderChip();
+    const { container, client } = renderChip();
 
-    await vi.waitFor(() => expect(fetchEntity).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(client.getQueryState(["entity", "franchise", "f-1"])?.status).toBe("success")
+    );
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector(".franchise-chip-avatar")).toHaveTextContent("H");
     expect(screen.getByRole("link", { name: "Franchise: Harbour Saga" })).toBeInTheDocument();

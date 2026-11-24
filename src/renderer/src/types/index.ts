@@ -79,6 +79,11 @@ export function imageSlotsOf(entity: {
   );
 }
 
+/** The url of the first slot Halo has finished processing, if any. */
+export function processedImageUrl(entity: Parameters<typeof imageSlotsOf>[0]): string | undefined {
+  return imageSlotsOf(entity).find((slot) => slot.status === "processed" && slot.url)?.url;
+}
+
 export interface RecordRef {
   id: string;
   name: string;

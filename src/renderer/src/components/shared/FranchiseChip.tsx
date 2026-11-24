@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEntity } from "../../hooks/useEntity";
-import { imageSlotsOf } from "../../types";
+import { processedImageUrl } from "../../types";
 import type { RecordRef } from "../../types";
 import { catalogueRoute } from "../chat/entity-routes";
 
@@ -13,9 +13,7 @@ export default function FranchiseChip({ franchise }: FranchiseChipProps) {
   const to = catalogueRoute("franchise", franchise.id);
   if (!to) return null;
 
-  const avatar = entity
-    ? imageSlotsOf(entity).find((slot) => slot.status === "processed" && slot.url)
-    : undefined;
+  const avatarUrl = entity && processedImageUrl(entity);
 
   return (
     <>
@@ -25,12 +23,8 @@ export default function FranchiseChip({ franchise }: FranchiseChipProps) {
         className="franchise-chip"
       >
         <span className="franchise-chip-avatar">
-          {avatar ? (
-            <img
-              key={`${avatar.imageKey}:${avatar.imageVersion}`}
-              src={avatar.url}
-              alt=""
-            />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" />
           ) : (
             franchise.name.charAt(0).toUpperCase()
           )}

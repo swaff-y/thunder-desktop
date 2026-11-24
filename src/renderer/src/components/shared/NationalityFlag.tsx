@@ -4,18 +4,20 @@ import { flagEmojiOf } from "../../utils/flagEmoji";
 interface NationalityFlagProps {
   nationality: Nationality;
   className?: string;
+  label?: string;
 }
 
 export default function NationalityFlag({
   nationality,
   className,
+  label = nationality.displayName,
 }: NationalityFlagProps) {
   return (
     <>
       <span
         role="img"
-        title={nationality.displayName}
-        aria-label={nationality.displayName}
+        title={label}
+        aria-label={label}
         className={className ? `nationality-flag ${className}` : "nationality-flag"}
       >
         {flagEmojiOf(nationality.code)}

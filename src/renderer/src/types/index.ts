@@ -8,7 +8,14 @@ export interface Nationality {
   displayName: string;
 }
 
-export interface CategoryItem {
+export interface ActorTraits {
+  /** Actors only; `null` is a row halo could not read a gender off. */
+  gender?: ActorGender | null;
+  /** Actors only; `null` is a row with no nationality, or one halo could not read. */
+  nationality?: Nationality | null;
+}
+
+export interface CategoryItem extends ActorTraits {
   id: string;
   name: string;
   description: string;
@@ -19,10 +26,6 @@ export interface CategoryItem {
   status?: "processing" | "processed";
   /** A webscene's record slots (HALO-280); `[]` when it has no record. */
   images?: ImageSlot[];
-  /** Actors only; `null` is a row halo could not read a gender off. */
-  gender?: ActorGender | null;
-  /** Actors only; `null` is a row with no nationality, or one halo could not read. */
-  nationality?: Nationality | null;
 }
 
 /** Halo's per-slot processing state — `url` is only set on `processed`. */
@@ -42,7 +45,7 @@ export interface ImageSlot {
  * `image` answers without `clicks` — both absences are the type saying it
  * has no such field, not a zero.
  */
-export interface EntityDetail {
+export interface EntityDetail extends ActorTraits {
   id: string;
   name: string;
   status?: ImageSlotStatus;

@@ -54,7 +54,7 @@ export default function FranchiseChip({ franchise }: FranchiseChipProps) {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--color-surface);
+          background: var(--color-surface-light);
           color: var(--color-text-muted);
           font-size: var(--text-caption);
           font-weight: var(--weight-semibold);

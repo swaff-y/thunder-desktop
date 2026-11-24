@@ -73,6 +73,26 @@ describe("FranchiseChip", () => {
     expect(screen.getByRole("link", { name: "Franchise: Harbour Saga" })).toBeInTheDocument();
   });
 
+  it("reads a franchise once however many chips show it", async () => {
+    fetchEntity.mockResolvedValue({ id: "f-1", name: "Harbour Saga", status: "processing", url: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <FranchiseChip franchise={franchise} />
+          <FranchiseChip franchise={franchise} />
+          <FranchiseChip franchise={franchise} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await vi.waitFor(() =>
+      expect(client.getQueryState(["entity", "franchise", "f-1"])?.status).toBe("success")
+    );
+    expect(fetchEntity).toHaveBeenCalledTimes(1);
+  });
+
   it("links to the franchise page with an accessible name", () => {
     fetchEntity.mockReturnValue(new Promise(() => {}));
 

@@ -4,8 +4,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Row, Col, ToggleButton, ToggleButtonGroup } from "react-bootstrap";
 import { useCategoryList } from "../hooks/useCategories";
 import { useListFilter } from "../hooks/useListFilter";
-import { getCategoryConfig, imageSlotsOf } from "../types";
-import type { ActorGender, CategoryItem } from "../types";
+import { getCategoryConfig, processedImageUrl } from "../types";
+import type { ActorGender } from "../types";
 import { trackEntityClick } from "../api/halo";
 import FilterBar from "../components/shared/FilterBar";
 import NationalityFlag from "../components/shared/NationalityFlag";
@@ -16,10 +16,6 @@ import ErrorState from "../components/shared/ErrorState";
 /** react-bootstrap types `ToggleButtonGroup`'s value as `any`, so narrow it here. */
 function toGender(value: unknown): ActorGender | null {
   return value === "male" || value === "female" ? value : null;
-}
-
-function thumbnailUrl(item: CategoryItem): string | undefined {
-  return imageSlotsOf(item).find((slot) => slot.status === "processed" && slot.url)?.url;
 }
 
 export default function CategoryList() {
@@ -149,7 +145,7 @@ export default function CategoryList() {
         <>
           <Row xs={2} md={3} lg={4} className="g-3">
             {items.map((item, i) => {
-              const thumbnail = thumbnailUrl(item);
+              const thumbnail = processedImageUrl(item);
               return (
                 <Col key={item.id ?? i}>
                   <div

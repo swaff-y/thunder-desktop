@@ -3,6 +3,7 @@ import { Card } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { IoAddCircleOutline, IoRemoveCircleOutline } from "react-icons/io5";
 import { useCart } from "../../hooks/useCart";
+import FranchiseChip from "../shared/FranchiseChip";
 import NationalityFlags from "../shared/NationalityFlags";
 import type { ContentRecord, ImageSlot } from "../../types";
 
@@ -70,9 +71,13 @@ export default function DesktopCard({ record }: DesktopCardProps) {
       <Card.Body className="desktop-card-body">
         <h3 className="desktop-card-title">{record.name}</h3>
         <div className="desktop-card-footer">
-          <span className="desktop-card-meta">
-            {record.series?.name || record.movie?.name || ""}
-          </span>
+          {record.franchise ? (
+            <FranchiseChip franchise={record.franchise} />
+          ) : (
+            <span className="desktop-card-meta">
+              {record.series?.name || record.movie?.name || ""}
+            </span>
+          )}
           {record.id && (
             <button
               className={`cart-btn ${inCart ? "in-cart" : ""}`}

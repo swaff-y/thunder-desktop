@@ -6,10 +6,9 @@ import { catalogueRoute } from "../chat/entity-routes";
 
 interface FranchiseChipProps {
   franchise: RecordRef;
-  className?: string;
 }
 
-export default function FranchiseChip({ franchise, className }: FranchiseChipProps) {
+export default function FranchiseChip({ franchise }: FranchiseChipProps) {
   const { data: entity } = useEntity("franchise", franchise.id);
   const to = catalogueRoute("franchise", franchise.id);
   if (!to) return null;
@@ -23,7 +22,7 @@ export default function FranchiseChip({ franchise, className }: FranchiseChipPro
       <Link
         to={to}
         aria-label={`Franchise: ${franchise.name}`}
-        className={className ? `franchise-chip ${className}` : "franchise-chip"}
+        className="franchise-chip"
       >
         <span className="franchise-chip-avatar">
           {avatar ? (
